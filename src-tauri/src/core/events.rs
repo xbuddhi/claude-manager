@@ -16,6 +16,9 @@ pub const MENU: &str = "menu";
 /// Payload: `IndexChanged` (`sessions::types`): the index has a new generation; fetch it with `get_index`.
 pub const INDEX_CHANGED: &str = "index-changed";
 // ---- pty + launch (WP2) ----
+/// Payload: `number`, a terminal id. A pop-out window gave its terminal back; the main window takes it
+/// over with `pty_attach`.
+pub const PTY_RETURNED: &str = "pty-returned";
 // ---- live + notify (WP3) ----
 // ---- usage (WP7) ----
 // ---- git (WP8) ----
