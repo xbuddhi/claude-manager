@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# agent worktrees (other branches checked out under this repo)
+.claude/worktrees/
