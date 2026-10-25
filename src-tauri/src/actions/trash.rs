@@ -129,8 +129,35 @@ pub fn repo_path(path: &str, root: &str) -> AppResult<PathBuf> {
             path.display()
         )));
     }
-    if path.symlink_metadata().is_err() {
+    // Windows drops trailing dots and spaces (".git." is ".git"); refuse such names in any case
+    let names_git = path
+        .strip_prefix(&root)
+        .into_iter()
+        .flat_map(|rest| rest.components())
+        .any(|c| {
+            c.as_os_str()
+                .to_string_lossy()
+                .trim_end_matches(['.', ' '])
+                .eq_ignore_ascii_case(".git")
+        });
+    if names_git {
+        return Err(AppError::InvalidInput(format!(
+            "Refusing to move the repository's .git folder: {}",
+            path.display()
+        )));
+    }
+    let Ok(meta) = path.symlink_metadata() else {
         return Err(AppError::NotFound(format!("File not found\n{}", path.display())));
+    };
+    // the real target (8.3 names such as GIT~1 resolved) must not be .git or inside it
+    if !meta.file_type().is_symlink()
+        && let (Ok(real), Ok(real_git)) = (std::fs::canonicalize(&path), std::fs::canonicalize(&git))
+        && (paths::same(&real, &real_git) || paths::is_within(&real, &real_git))
+    {
+        return Err(AppError::InvalidInput(format!(
+            "Refusing to move the repository's .git folder: {}",
+            path.display()
+        )));
     }
     // a junction or symlinked folder on the way must not lead out of the repository
     let parent = path
@@ -334,9 +361,18 @@ mod tests {
             "src/../../keep.txt".into(),
             ".git".into(),
             ".git/config".into(),
+            // Windows strips trailing dots and spaces and ignores case
+            ".git.".into(),
+            ".git .".into(),
+            ".GIT".into(),
+            ".Git./config".into(),
             root.clone(),
         ] {
             assert!(repo_path(&bad, &root).is_err(), "{bad}");
+        }
+        // the 8.3 name, where the volume makes them
+        if r.path().join("GIT~1").exists() {
+            assert!(matches!(repo_path("GIT~1", &root), Err(AppError::InvalidInput(_))));
         }
         assert!(matches!(
             repo_path("src/missing.txt", &root),
