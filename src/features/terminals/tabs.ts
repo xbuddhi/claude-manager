@@ -82,6 +82,7 @@ export class Strip {
     this.tabs = tabs;
     this.active = active;
     this.slot.hidden = tabs.length === 0;
+    document.documentElement.classList.toggle("has-tabs", tabs.length > 0);
     if (!tabs.length) {
       this.pillShown = false;
       this.seen.clear();

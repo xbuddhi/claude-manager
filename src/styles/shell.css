@@ -13,59 +13,18 @@ body {
   grid-template-columns: minmax(0, 1fr) minmax(200px, 380px) minmax(0, 1fr);
   column-gap: 24px;
   align-items: center;
-  /* room for the traffic lights: ours on Windows, the native ones on macOS */
-  padding: 0 14px 0 80px;
+  padding: 0 14px;
 }
-html.fullscreen #titlebar {
-  padding-left: 14px;
+/* macOS: room for the native traffic lights (titleBarStyle Overlay), except in full screen */
+html.os-macos:not(.fullscreen) #titlebar {
+  padding-left: 80px;
 }
-
-#tb-lights {
-  position: absolute;
-  top: 18px;
-  left: 14px;
-  display: flex;
-  gap: 8px;
-}
-html.os-macos #tb-lights {
+/* Windows: the native title bar already names the app */
+html.os-windows .tb-name {
   display: none;
 }
-.tb-light {
-  position: relative;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.2);
-  display: grid;
-  place-items: center;
-  color: rgb(0 0 0 / 0.6);
-  transition: background-color 0.15s var(--ease);
-}
-.tb-light svg {
-  width: 8px;
-  height: 8px;
-  stroke-width: 1.6;
-  opacity: 0;
-  transition: opacity 0.12s var(--ease);
-}
-.tb-light[data-action="close"] {
-  background: var(--traffic-close);
-}
-.tb-light[data-action="minimize"] {
-  background: var(--traffic-min);
-}
-.tb-light[data-action="maximize"] {
-  background: var(--traffic-max);
-}
-.tb-light:focus-visible svg {
-  opacity: 1;
-}
-#tb-lights:hover .tb-light svg {
-  opacity: 1;
-}
-/* inactive window: grey until hovered, like macOS */
-html.window-inactive #tb-lights:not(:hover) .tb-light {
-  background: var(--light-off);
+html.os-windows .tb-sub {
+  font-size: 12.5px;
 }
 
 #tb-title {

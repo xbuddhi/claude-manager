@@ -45,12 +45,8 @@
   --term-bright-white: #a5a5a5;
   --backdrop: rgb(0 0 0 / 0.18);
   --shadow-pop: 0 10px 30px rgb(0 0 0 / 0.16), 0 1px 3px rgb(0 0 0 / 0.1);
-  --light-off: #cdcdd1; /* traffic lights while the window is inactive */
 
   /* fixed */
-  --traffic-close: #ff5f57;
-  --traffic-min: #febc2e;
-  --traffic-max: #28c840;
   --live: rgb(48 209 88);
   --warn: #ff9f0a;
   --lane-1: #ffb000;
@@ -113,6 +109,5 @@
     --term-bright-white: #eeeeec;
     --backdrop: rgb(0 0 0 / 0.4);
     --shadow-pop: 0 12px 36px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.06);
-    --light-off: #4d4d50;
   }
 }
