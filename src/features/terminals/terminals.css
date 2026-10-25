@@ -71,9 +71,9 @@ html.has-tabs:not(.mode-terminal) #sidebar-slot {
 .term-tab::before {
   content: "";
   position: absolute;
-  inset: 3px 0 4px;
+  inset: 0 0 3px;
   z-index: -1;
-  border-radius: 7px;
+  border-radius: 8px;
   transition: background-color 0.18s var(--ease);
 }
 .term-tab:not(.active):hover::before {
@@ -154,8 +154,8 @@ html.has-tabs:not(.mode-terminal) #sidebar-slot {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 25px;
-  margin: 0 0 4px auto;
+  height: 29px;
+  margin: 0 0 3px auto;
   padding: 0 10px;
   border: 0;
   border-radius: 7px;
