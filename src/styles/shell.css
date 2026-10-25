@@ -26,6 +26,13 @@ html.os-macos:not(.fullscreen) #titlebar {
 html.os-windows #titlebar {
   padding-right: 158px; /* 3 x 46px buttons + 20px */
 }
+/* Windows has no native title bar above ours, so the header is taller and the tabs get room to breathe */
+html.os-windows {
+  --titlebar-h: 58px;
+}
+html.os-windows #main {
+  padding-top: 4px;
+}
 html.os-windows #tb-caption {
   position: absolute;
   top: 0;
