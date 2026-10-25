@@ -1,16 +1,13 @@
-// Keeps store.index current. TEMPORARY port of the prototype: polls list_projects every 15 s and when the
-// window gets focus; WP1 replaces this with a file watcher and incremental scans.
+// Keeps store.index current: fetches on start and whenever the backend reports a new index generation
+// (its file watcher sees transcripts change). F5 / "Refresh" reads every transcript again.
 
+import { listen } from "../../core/api";
 import { on } from "../../core/bus";
-import { refreshIndex } from "./api";
-
-const POLL_MS = 15_000;
+import { refreshIndex, rescanIndex } from "./api";
 
 export function mount(): void {
   void refreshIndex();
-  setInterval(() => {
-    if (!document.hidden) void refreshIndex();
-  }, POLL_MS);
-  window.addEventListener("focus", () => void refreshIndex());
-  on("refresh:full", () => void refreshIndex());
+  // fetch again once listening, so a change between the first fetch and the listener is not missed
+  void listen("index-changed", () => void refreshIndex()).then(() => refreshIndex());
+  on("refresh:full", () => void rescanIndex());
 }
