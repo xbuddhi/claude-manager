@@ -26,7 +26,10 @@ pub fn now_ms() -> i64 {
 
 /// How long to pause after a 429: Retry-After seconds (120 when absent or not a number), 10 to 60 minutes.
 pub fn backoff(retry_after: Option<&str>) -> Duration {
-    let wait = retry_after.and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(120.0);
+    let wait = retry_after
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|w| w.is_finite()) // "NaN" parses, and would panic below
+        .unwrap_or(120.0);
     Duration::from_secs_f64(wait.clamp(600.0, 3600.0))
 }
 
@@ -299,6 +302,9 @@ mod tests {
         assert_eq!(backoff(Some("1200")), Duration::from_secs(1200));
         assert_eq!(backoff(Some("99999")), Duration::from_secs(3600));
         assert_eq!(backoff(Some("Wed, 21 Oct 2026 07:28:00 GMT")), Duration::from_secs(600));
+        for odd in ["NaN", "nan", "inf", "-inf", "-5"] {
+            assert_eq!(backoff(Some(odd)), Duration::from_secs(600), "{odd}");
+        }
     }
 
     #[test]
