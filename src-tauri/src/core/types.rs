@@ -1,8 +1,10 @@
 //! Types shared across features and with the webview. Each derives `TS` and is exported to
 //! `src/bindings/` when `cargo test` runs; CI fails if the committed bindings differ.
 //!
-//! Adding a field is fine; renaming or removing one is a contract change for every feature.
-//! Still to come here: `LiveSession` (provided by WP3) and `TermInfo` (provided by WP2).
+//! Only types that several features or the foundation itself use live here. A type used by one feature's
+//! commands and events lives in that feature's module (e.g. `live/types.rs`); ts-rs exports it from
+//! there the same way. Adding a field is fine; renaming or removing one is a contract change for every
+//! feature.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -18,7 +20,7 @@ pub struct Profile {
     pub name: String,
     /// `oauthAccount.emailAddress` from the profile's `.claude.json`; null when not signed in.
     pub email: Option<String>,
-    /// Whether usable credentials exist. Null until the usage feature checks it (provided by WP7).
+    /// Whether usable credentials exist; null when unknown (the usage feature registers the check, WP7).
     pub signed_in: Option<bool>,
     pub is_default: bool,
 }
@@ -45,6 +47,8 @@ pub struct Session {
     pub profile: String,
     /// Name of the `projects/<slug>` folder.
     pub slug: String,
+    /// The transcript is only partly read yet (fast first scan): `count` is a lower bound.
+    pub partial: bool,
 }
 
 /// Sessions grouped by the folder they ran in.
@@ -55,7 +59,28 @@ pub struct Project {
     pub path: String,
     pub name: String,
     pub modified: u64,
+    /// In `settings.pinned`; a pinned folder is listed even without sessions.
+    pub pinned: bool,
+    /// The folder no longer exists on disk.
+    pub missing: bool,
     pub sessions: Vec<Session>,
+}
+
+/// A claude process that is running now (found by the live-session scan, provided by WP3).
+#[derive(Serialize, TS, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LiveSession {
+    pub session_id: String,
+    pub pid: u32,
+    /// 1 = open and idle, 2 = working.
+    #[ts(type = "1 | 2")]
+    pub level: u8,
+    pub cwd: Option<String>,
+    /// Profile folder the session belongs to.
+    pub profile: String,
+    /// Whether the app can bring it to the front (one of its own terminals, or a terminal window).
+    pub reachable: bool,
 }
 
 /// How "New session" opens by default.
@@ -182,13 +207,14 @@ pub enum QuitDecision {
     Keep,
 }
 
-/// Payload of `app:open-args`: a second launch forwarded its command line (program name removed).
-/// Untrusted input: features validate every value before acting on it.
-#[derive(Serialize, TS, Clone, Debug)]
+/// A validated request from outside the app to start a session in a folder (see `core::open_request`).
+#[derive(Serialize, TS, Clone, Debug, PartialEq, Eq)]
 #[ts(export)]
-pub struct OpenArgs {
-    pub args: Vec<String>,
-    pub cwd: String,
+pub struct OpenRequest {
+    /// An existing folder.
+    pub dir: String,
+    /// A discovered profile folder; null = the start profile.
+    pub profile: Option<String>,
 }
 
 /// Payload of `menu`: a native menu item with a custom id was chosen.

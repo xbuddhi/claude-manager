@@ -3,12 +3,16 @@
 pub mod env;
 pub mod error;
 pub mod events;
+pub mod fsio;
 pub mod lifecycle;
+pub mod open;
+pub mod open_request;
 pub mod paths;
 pub mod procs;
 pub mod profiles;
 pub mod settings;
 pub mod spawn;
+pub mod terms;
 pub mod types;
 pub mod webview;
 
@@ -26,21 +30,27 @@ pub fn init(app: &mut App) -> AppResult<()> {
     }
     env::start();
     app.manage(lifecycle::ShutdownRegistry::default());
+    app.manage(open_request::OpenRequests::default());
+    app.manage(terms::TermPidsRegistry::default());
     app.manage(procs::Procs::new());
     app.manage(profiles::Profiles::default());
     settings::init(app)?;
     Ok(())
 }
 
-/// Log file in the app log folder (5 MB, one old file kept, local time), stdout, and the webview console.
+/// Log file in the app log folder (5 MB, one old file kept, local time) and stdout. Debug builds also
+/// forward every line to the webview console, which helps while developing and only costs in release.
 pub fn log_plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    let mut targets = vec![
+        Target::new(TargetKind::LogDir { file_name: None }),
+        Target::new(TargetKind::Stdout),
+    ];
+    if cfg!(debug_assertions) {
+        targets.push(Target::new(TargetKind::Webview));
+    }
     tauri_plugin_log::Builder::new()
         .clear_targets()
-        .targets([
-            Target::new(TargetKind::LogDir { file_name: None }),
-            Target::new(TargetKind::Stdout),
-            Target::new(TargetKind::Webview),
-        ])
+        .targets(targets)
         .max_file_size(5_000_000)
         .rotation_strategy(RotationStrategy::KeepOne)
         .timezone_strategy(TimezoneStrategy::UseLocal)

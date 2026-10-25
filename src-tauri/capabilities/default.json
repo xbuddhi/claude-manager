@@ -8,6 +8,7 @@
   ],
   "permissions": [
     "core:event:default",
+    "core:app:allow-version",
     "core:window:allow-start-dragging",
     "core:window:allow-close",
     "core:window:allow-minimize",
@@ -19,7 +20,6 @@
     "core:window:allow-is-fullscreen",
     "dialog:allow-open",
     "clipboard-manager:allow-write-text",
-    "clipboard-manager:allow-read-text",
     "notification:default",
     "log:default",
     "window-state:default",

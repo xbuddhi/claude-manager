@@ -17,6 +17,8 @@ export interface LaunchRequest {
   resume?: { sessionId: string; fork?: boolean };
   /** Tab or window title, e.g. the session label. */
   label?: string;
+  /** Open a plain shell in `dir` instead of claude ("Terminal here"); external windows only. */
+  shellOnly?: boolean;
 }
 
 export interface AppEvents {

@@ -1,5 +1,6 @@
 // The app's icon set: inline 16x16 stroke SVGs (no icon font, so they look the same on both OSes).
-// They take currentColor; size them with CSS on the svg element.
+// They take currentColor; size them with CSS on the svg element. A feature that needs an icon nobody else
+// uses keeps it in its own folder and passes the element (IconSpec) instead of adding it here.
 
 import { raw, type SafeHtml } from "./dom";
 
@@ -31,9 +32,36 @@ export const icons = {
   search: svg(`<circle cx="7" cy="7" r="4.5"/><path d="M10.3 10.3l3.2 3.2"/>`),
   more: svg(`<circle cx="3.5" cy="8" r=".6"/><circle cx="8" cy="8" r=".6"/><circle cx="12.5" cy="8" r=".6"/>`),
   info: svg(`<circle cx="8" cy="8" r="6"/><path d="M8 7.2v4"/><circle cx="8" cy="4.9" r=".35"/>`),
+  copy: svg(
+    `<rect x="5.5" y="5.5" width="8" height="8" rx="1"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/>`,
+  ),
+  fork: svg(`<circle cx="4.5" cy="3.5" r="1.5"/><circle cx="11.5" cy="3.5" r="1.5"/><circle cx="8" cy="12.5" r="1.5"/>
+    <path d="M4.5 5v1a1.5 1.5 0 0 0 1.5 1.5h4A1.5 1.5 0 0 0 11.5 6V5M8 7.5V11"/>`),
+  gear: svg(`<circle cx="8" cy="8" r="2.2"/>
+    <path d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M3.6 12.4l1.2-1.2M11.2 4.8l1.2-1.2"/>`),
+  file: svg(`<path d="M4 1.5h5l3 3v10H4zM9 1.5v3h3"/>`),
+  history: svg(`<path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.2h2.2M8 5v3.2l2 1.3"/>`),
+  /** Discard changes. */
+  undo: svg(`<path d="M5.5 3.5l-3 3 3 3M2.5 6.5h7a3.5 3.5 0 0 1 0 7H7"/>`),
+  stash: svg(`<path d="M2 9.5l1.5-6h9l1.5 6v3.5H2zM2 9.5h3.5l1 1.5h3l1-1.5H14"/>`),
+  commit: svg(`<circle cx="8" cy="8" r="2.5"/><path d="M1.5 8h4M10.5 8h4"/>`),
+  bell: svg(`<path d="M4 11V7a4 4 0 0 1 8 0v4l1.2 1.5H2.8zM6.5 14h3"/>`),
+  /** Opens outside the app (browser, another program). */
+  external: svg(`<path d="M9.5 2.5h4v4M13.5 2.5l-6 6M11.5 9v3.5a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1H7"/>`),
 } as const;
 
 export type IconName = keyof typeof icons;
+
+/** A shared icon by name, or a feature's own icon element. */
+export type IconSpec = IconName | Element;
+
+/** The icon as a new element (a passed element is used as is, so pass a fresh one each time). */
+export function iconNode(spec: IconSpec): Element {
+  if (typeof spec !== "string") return spec;
+  const t = document.createElement("template");
+  t.innerHTML = icons[spec];
+  return t.content.firstElementChild as Element;
+}
 
 /** Icon markup for html`` templates. */
 export function icon(name: IconName): SafeHtml {

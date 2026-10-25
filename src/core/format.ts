@@ -78,3 +78,10 @@ export function leaf(path: string): string {
   const trimmed = path.replace(/[\\/]+$/, "");
   return trimmed.split(/[\\/]/).pop() || path;
 }
+
+/** Colour for a usage level in percent: accent below 70, orange from 70, red from 90 (Usage ring). */
+export function levelColor(percent: number): string {
+  if (percent >= 90) return "var(--danger)";
+  if (percent >= 70) return "var(--warn)";
+  return "var(--accent)";
+}

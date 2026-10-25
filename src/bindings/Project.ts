@@ -4,4 +4,12 @@ import type { Session } from "./Session";
 /**
  * Sessions grouped by the folder they ran in.
  */
-export type Project = { path: string, name: string, modified: number, sessions: Array<Session>, };
+export type Project = { path: string, name: string, modified: number, 
+/**
+ * In `settings.pinned`; a pinned folder is listed even without sessions.
+ */
+pinned: boolean, 
+/**
+ * The folder no longer exists on disk.
+ */
+missing: boolean, sessions: Array<Session>, };

@@ -3,15 +3,20 @@
 //! - Closing the main window or quitting while terminals run asks first: the backend emits
 //!   `app:close-requested` and the frontend answers with `app_quit_decision` (cancel / close / keep).
 //! - With nothing running, closing the window exits on Windows and hides it on macOS (Dock reopens it).
+//! - "Keep running" hides the window: on macOS the Dock brings it back, on Windows the tray icon (WP9
+//!   calls [`set_tray_present`]); until a tray exists, Windows minimizes instead, so the window can
+//!   always be found again.
+//! - On macOS an exit request from outside the app (Dock Quit, logout, shutdown) is not cancelled: the
+//!   app's own Quit goes through [`request_quit`], and asking here would cancel the user's logout. The
+//!   hooks still end the terminals; their sessions stay saved and can be resumed.
 //! - On exit, every registered [`ShutdownHook`] runs once (terminals are killed, settings flushed).
 //!
 //! Features plug in through [`register`]: the terminal feature reports how many terminals are live and
 //! kills them on shutdown.
 
 use super::error::{AppResult, blocking, lock};
-use super::events;
-use super::settings;
-use super::types::{CloseRequest, OpenArgs, QuitDecision};
+use super::types::{CloseRequest, QuitDecision};
+use super::{events, open_request, settings};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Window, WindowEvent};
@@ -35,6 +40,8 @@ pub struct ShutdownRegistry {
     /// The user confirmed quitting (or nothing needed confirming); exit requests pass through.
     quit_confirmed: AtomicBool,
     hooks_ran: AtomicBool,
+    /// A tray icon exists, so a hidden window can be brought back on Windows.
+    tray_present: AtomicBool,
 }
 
 impl ShutdownRegistry {
@@ -64,6 +71,13 @@ impl ShutdownRegistry {
 
 pub fn register(app: &AppHandle, hook: impl ShutdownHook) {
     app.state::<ShutdownRegistry>().register(Arc::new(hook));
+}
+
+/// Called by the tray feature (WP9) once its icon exists: "Keep running" may then hide the window.
+pub fn set_tray_present(app: &AppHandle) {
+    app.state::<ShutdownRegistry>()
+        .tray_present
+        .store(true, Ordering::SeqCst);
 }
 
 /// `Builder::on_window_event` handler.
@@ -102,8 +116,9 @@ pub fn on_run_event(app: &AppHandle, event: RunEvent) {
     match event {
         RunEvent::ExitRequested { code, api, .. } => {
             let registry = app.state::<ShutdownRegistry>();
-            // Some(code) = app.exit()/restart() called by us; those already went through the decision
-            if code.is_some() || registry.quit_confirmed.load(Ordering::SeqCst) {
+            // Some(code) = app.exit()/restart() called by us; those already went through the decision.
+            // On macOS a request without a code comes from outside (see the module docs).
+            if code.is_some() || registry.quit_confirmed.load(Ordering::SeqCst) || cfg!(target_os = "macos") {
                 return;
             }
             let live = registry.live_count();
@@ -132,13 +147,11 @@ pub fn request_quit(app: &AppHandle) {
     }
 }
 
-/// tauri-plugin-single-instance callback: a second launch focuses this one and forwards its arguments.
+/// tauri-plugin-single-instance callback: a second launch focuses this one and hands over its arguments.
 pub fn on_second_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
     show_main(app);
-    let args = args.into_iter().skip(1).collect(); // drop the program path
-    if let Err(e) = app.emit(events::APP_OPEN_ARGS, OpenArgs { args, cwd }) {
-        log::error!("could not forward second-instance arguments: {e}");
-    }
+    // drop the program path
+    open_request::receive(app, args.get(1..).unwrap_or_default(), std::path::Path::new(&cwd));
 }
 
 pub fn show_main(app: &AppHandle) {
@@ -174,7 +187,13 @@ async fn decide(app: AppHandle, decision: QuitDecision) -> AppResult<()> {
         QuitDecision::Cancel => {}
         QuitDecision::Keep => {
             if let Some(w) = app.get_webview_window(MAIN_WINDOW) {
-                w.hide()?;
+                let can_come_back =
+                    cfg!(target_os = "macos") || app.state::<ShutdownRegistry>().tray_present.load(Ordering::SeqCst);
+                if can_come_back {
+                    w.hide()?;
+                } else {
+                    w.minimize()?;
+                }
             }
         }
         QuitDecision::Close => {

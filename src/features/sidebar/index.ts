@@ -12,10 +12,8 @@ import { animate, Spring, scroller } from "../../core/motion";
 import { profileName } from "../../core/profiles";
 import { type AppState, store } from "../../core/store";
 import { setSubtitle } from "../../core/titlebar";
-import { refreshIndex, startProfile, visibleProjects } from "../index-data/api";
-import { mountSearch } from "./search";
+import { refreshIndex, visibleProjects } from "../index-data/api";
 import "./sidebar.css";
-import "./state";
 
 const el = {} as { profile: HTMLSelectElement; projects: HTMLElement; list: HTMLElement; pill: HTMLElement };
 const expanded = new Set<string>();
@@ -183,8 +181,7 @@ function select(path: string) {
 function newSession(path: string | undefined) {
   const p = findProject(path);
   if (!p) return;
-  const s = store.get();
-  emit("launch", { dir: p.path, profile: startProfile(p, s.currentProfile, s.profiles) });
+  emit("launch", { dir: p.path }); // the handler picks the start profile
 }
 
 function resume(sessionId: string | undefined) {
@@ -238,7 +235,6 @@ export function mount(): void {
   el.projects = $(".sb-projects", slot);
   el.list = $(".sb-list", slot);
   el.pill = $(".sb-pill", slot);
-  mountSearch($("#tb-search-slot"));
 
   el.projects.addEventListener("click", onClick);
   el.projects.addEventListener("dblclick", onDoubleClick);

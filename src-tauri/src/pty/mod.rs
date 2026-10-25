@@ -4,7 +4,7 @@ pub mod command;
 pub mod manager;
 
 use crate::core::error::{AppResult, blocking};
-use crate::core::{env, lifecycle, paths, profiles, settings};
+use crate::core::{env, lifecycle, paths, procs, profiles, settings, terms as term_pids};
 use command::Launch;
 use manager::{PtyEvent, Terms};
 use tauri::ipc::Channel;
@@ -13,6 +13,7 @@ use tauri::{App, AppHandle, Manager, State};
 pub fn init(app: &mut App) -> AppResult<()> {
     let terms = Terms::default();
     app.manage(terms.clone());
+    term_pids::register(app.handle(), terms.clone());
     lifecycle::register(app.handle(), terms);
     Ok(())
 }
@@ -102,7 +103,7 @@ pub async fn pty_kill(terms: State<'_, Terms>, id: u32) -> AppResult<()> {
 pub async fn pty_kill_all(terms: State<'_, Terms>) -> AppResult<()> {
     let terms = terms.inner().clone();
     blocking(move || {
-        terms.kill_all();
+        terms.kill_all(procs::GRACE);
         Ok(())
     })
     .await

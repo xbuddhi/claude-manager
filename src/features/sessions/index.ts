@@ -11,7 +11,7 @@ import { profileName } from "../../core/profiles";
 import { store } from "../../core/store";
 import { registerView } from "../../core/views";
 import { button } from "../../ui/button";
-import { startProfile, visibleProjects } from "../index-data/api";
+import { visibleProjects } from "../index-data/api";
 import "./sessions.css";
 
 let body: HTMLElement;
@@ -23,8 +23,7 @@ function current(): Project | undefined {
 }
 
 function newSession(p: Project) {
-  const s = store.get();
-  emit("launch", { dir: p.path, profile: startProfile(p, s.currentProfile, s.profiles) });
+  emit("launch", { dir: p.path }); // the handler picks the start profile
 }
 
 function resume(p: Project, sessionId: string | undefined) {

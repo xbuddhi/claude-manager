@@ -1,9 +1,10 @@
 // Public API of the session index (features may import this file, never the others in this folder).
-// TEMPORARY: a port of the prototype's polling refresh; WP1 replaces the internals with the event-driven
-// index and keeps these names.
+// WP1 owns it. refreshIndex() is a TEMPORARY port of the prototype's polling refresh; WP1 replaces the
+// internals with the event-driven index. The query helpers below already work on store.index; WP1 may
+// change their bodies (e.g. to use its own lookups) but keeps the names and signatures.
 
-import type { Profile } from "../../bindings/Profile";
 import type { Project } from "../../bindings/Project";
+import type { Session } from "../../bindings/Session";
 import { call } from "../../core/api";
 import { store } from "../../core/store";
 
@@ -68,7 +69,31 @@ export function visibleProjects(projects: readonly Project[], profile: string | 
     );
 }
 
-/** The profile a new session in `project` starts with: the one in view, else the one used there last. */
-export function startProfile(project: Project, current: string | null, profiles: readonly Profile[]): string {
-  return current ?? project.sessions[0]?.profile ?? profiles[0]?.dir ?? "";
+/** Projects with only the sessions of `profile` (null = all profiles); pinned projects stay even when empty. */
+export function projectsFor(
+  profile: string | null,
+  projects: readonly Project[] = store.get().index.projects,
+): Project[] {
+  if (profile === null) return [...projects];
+  return projects
+    .map((p) => ({ ...p, sessions: p.sessions.filter((s) => s.profile === profile) }))
+    .filter((p) => p.sessions.length > 0 || p.pinned);
+}
+
+/** A session by id, with the project it is listed under. */
+export function findSession(sessionId: string): { session: Session; project: Project } | null {
+  for (const project of store.get().index.projects) {
+    const session = project.sessions.find((s) => s.id === sessionId);
+    if (session) return { session, project };
+  }
+  return null;
+}
+
+/** Number of sessions of `profile` (null = all profiles), e.g. for the profile picker. */
+export function countFor(profile: string | null): number {
+  let n = 0;
+  for (const p of store.get().index.projects) {
+    n += profile === null ? p.sessions.length : p.sessions.filter((s) => s.profile === profile).length;
+  }
+  return n;
 }

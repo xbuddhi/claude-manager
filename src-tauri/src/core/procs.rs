@@ -3,12 +3,22 @@
 //! Killing only the direct child leaves node, MCP servers and tool shells running. On Windows every
 //! child is also put in one Job Object that closes when this app exits (even on a crash), which ends
 //! whole trees; on Unix the PTY child leads its own process group (portable-pty calls setsid), so the
-//! group is signalled.
+//! group is signalled, and every descendant is signalled as well (some move to groups of their own).
+//!
+//! Pids are reused. Every walk of the process tree checks start times: a process is another's child only
+//! if it did not start before it, and a process is signalled only while its start time still matches.
 
 use super::error::lock;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+use std::time::Duration;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+
+/// How long each polite signal gets before the next, harder one (Unix; Windows ends trees at once).
+/// Closing a tab or ending a background session can wait for claude to save.
+pub const GRACE: Duration = Duration::from_secs(2);
+/// The same while the app quits, which must not hang.
+pub const GRACE_ON_EXIT: Duration = Duration::from_millis(300);
 
 /// Process table, refreshed on demand. Managed as state by `core::init`.
 pub struct Procs {
@@ -66,35 +76,55 @@ impl Procs {
 
     /// Parent, grandparent, ... of `pid`, nearest first.
     pub fn parent_chain(&self, pid: u32) -> Vec<u32> {
-        self.with(ProcessesToUpdate::All, |s| parent_chain_in(s, pid))
+        self.with(ProcessesToUpdate::All, |s| parent_chain(&table(s), pid))
     }
 
     /// Every process below `pid`, parents before children.
     pub fn descendants_of(&self, pid: u32) -> Vec<u32> {
-        self.with(ProcessesToUpdate::All, |s| descendants_in(s, pid))
+        self.with(ProcessesToUpdate::All, |s| descendants(&table(s), pid))
     }
 }
 
-fn parent_chain_in(sys: &System, pid: u32) -> Vec<u32> {
+/// pid -> (recorded parent pid, start time).
+type Table = HashMap<u32, (Option<u32>, u64)>;
+
+fn table(sys: &System) -> Table {
+    sys.processes()
+        .iter()
+        .map(|(pid, p)| (pid.as_u32(), (p.parent().map(Pid::as_u32), p.start_time())))
+        .collect()
+}
+
+/// The parent of `pid`, if it is still the process that started it. Windows keeps a dead parent's pid in
+/// its children's records, so once that pid is reused an unrelated, newer process would look like their
+/// parent. A real parent never starts after its child (start times have one-second resolution: `<=`).
+fn real_parent(t: &Table, pid: u32) -> Option<u32> {
+    let &(parent, start) = t.get(&pid)?;
+    let parent = parent?;
+    let &(_, parent_start) = t.get(&parent)?;
+    (parent_start <= start).then_some(parent)
+}
+
+fn parent_chain(t: &Table, pid: u32) -> Vec<u32> {
     let mut chain = Vec::new();
     let mut seen = HashSet::from([pid]);
-    let mut cur = Pid::from_u32(pid);
-    while let Some(parent) = sys.process(cur).and_then(|p| p.parent()) {
-        // pid reuse can make the table cyclic
-        if !seen.insert(parent.as_u32()) {
+    let mut cur = pid;
+    while let Some(parent) = real_parent(t, cur) {
+        // equal start times can still form a cycle after pid reuse
+        if !seen.insert(parent) {
             break;
         }
-        chain.push(parent.as_u32());
+        chain.push(parent);
         cur = parent;
     }
     chain
 }
 
-fn descendants_in(sys: &System, pid: u32) -> Vec<u32> {
+fn descendants(t: &Table, pid: u32) -> Vec<u32> {
     let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
-    for (p, proc_) in sys.processes() {
-        if let Some(parent) = proc_.parent() {
-            children.entry(parent.as_u32()).or_default().push(p.as_u32());
+    for &child in t.keys() {
+        if let Some(parent) = real_parent(t, child) {
+            children.entry(parent).or_default().push(child);
         }
     }
     let mut out = Vec::new();
@@ -111,29 +141,31 @@ fn descendants_in(sys: &System, pid: u32) -> Vec<u32> {
     out
 }
 
-/// Ends each process in `pids` together with everything it started. Blocks for up to about 0.6 s on
-/// Unix (graceful signals first), so call it off the UI thread.
-pub fn kill_trees(pids: &[u32]) {
+/// Ends each process in `pids` together with everything it started. On Unix it sends SIGHUP, then
+/// SIGTERM, then SIGKILL, waiting up to `grace` after each of the first two, so call it off the UI thread.
+pub fn kill_trees(pids: &[u32], grace: Duration) {
     if pids.is_empty() {
         return;
     }
-    imp::kill_trees(pids);
+    imp::kill_trees(pids, grace);
 }
 
+/// [`kill_trees`] for one process, with the normal [`GRACE`].
 pub fn kill_tree(pid: u32) {
-    kill_trees(&[pid]);
+    kill_trees(&[pid], GRACE);
 }
 
 #[cfg(windows)]
 mod imp {
     use super::*;
 
-    pub fn kill_trees(pids: &[u32]) {
+    pub fn kill_trees(pids: &[u32], _grace: Duration) {
         let mut sys = System::new();
         sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+        let t = table(&sys);
         for &root in pids {
             // children first, so nothing gets a chance to respawn into the tree
-            let mut tree = descendants_in(&sys, root);
+            let mut tree = descendants(&t, root);
             tree.reverse();
             tree.push(root);
             for pid in tree {
@@ -147,46 +179,113 @@ mod imp {
 
 #[cfg(unix)]
 mod imp {
-    use std::time::{Duration, Instant};
+    use super::*;
+    use std::time::Instant;
+    use sysinfo::ProcessStatus;
 
-    const GRACE: Duration = Duration::from_millis(300);
+    /// A process to signal, with the start time that tells it apart from a later process with its pid.
+    struct Target {
+        pid: libc::pid_t,
+        start: u64,
+    }
 
-    pub fn kill_trees(pids: &[u32]) {
+    pub fn kill_trees(roots: &[u32], grace: Duration) {
+        let mut sys = System::new();
+        refresh(&mut sys);
+        // groups led by a root: killpg also reaches members started after this snapshot
+        let groups: Vec<Target> = roots
+            .iter()
+            .filter_map(|&r| target(&sys, r))
+            .filter(|t| pgid(t.pid) == Some(t.pid))
+            .collect();
+        let targets = snapshot(&sys, roots);
         // SIGHUP is what a closing terminal sends; claude saves and exits on it
         for signal in [libc::SIGHUP, libc::SIGTERM] {
-            signal_all(pids, signal);
-            if wait_gone(pids, GRACE) {
+            send(&mut sys, &groups, &targets, signal);
+            if wait_gone(&mut sys, &targets, grace) {
                 return;
             }
         }
-        signal_all(pids, libc::SIGKILL);
+        send(&mut sys, &groups, &targets, libc::SIGKILL);
     }
 
-    fn signal_all(pids: &[u32], signal: i32) {
-        for &pid in pids {
-            let Ok(pid) = i32::try_from(pid) else { continue };
-            // SAFETY: plain syscalls; pid > 0 so neither call can target our own group or every process
-            unsafe {
-                if pid > 0 && libc::killpg(pid, signal) != 0 {
-                    // not a group leader: signal the process alone
-                    libc::kill(pid, signal);
-                }
+    fn refresh(sys: &mut System) {
+        sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+    }
+
+    fn target(sys: &System, pid: u32) -> Option<Target> {
+        let raw = libc::pid_t::try_from(pid).ok().filter(|&p| p > 0)?;
+        let p = sys.process(Pid::from_u32(pid))?;
+        Some(Target {
+            pid: raw,
+            start: p.start_time(),
+        })
+    }
+
+    fn pgid(pid: libc::pid_t) -> Option<libc::pid_t> {
+        // SAFETY: getpgid only reads the process table
+        let g = unsafe { libc::getpgid(pid) };
+        (g > 0).then_some(g)
+    }
+
+    /// Each root, its descendants, and every member of a group a root leads (a member whose parent
+    /// already exited is no longer anyone's descendant).
+    fn snapshot(sys: &System, roots: &[u32]) -> Vec<Target> {
+        let t = table(sys);
+        let mut pids: Vec<u32> = Vec::new();
+        for &root in roots {
+            pids.push(root);
+            pids.extend(descendants(&t, root));
+            if let Some(leader) = target(sys, root).filter(|r| pgid(r.pid) == Some(r.pid)) {
+                let members = t
+                    .keys()
+                    .copied()
+                    .filter(|&p| libc::pid_t::try_from(p).ok().and_then(pgid) == Some(leader.pid));
+                pids.extend(members);
             }
+        }
+        let mut seen = HashSet::new();
+        pids.into_iter()
+            .filter(|p| seen.insert(*p))
+            .filter_map(|p| target(sys, p))
+            .collect()
+    }
+
+    /// Still the process that was found: not exited, not a zombie, pid not reused.
+    fn running(sys: &System, t: &Target) -> bool {
+        sys.process(Pid::from_u32(t.pid as u32))
+            .is_some_and(|p| p.start_time() == t.start && p.status() != ProcessStatus::Zombie)
+    }
+
+    fn send(sys: &mut System, groups: &[Target], targets: &[Target], signal: i32) {
+        refresh(sys);
+        for g in groups {
+            // a reaped leader's group can outlive it, and its id is not reused while the group exists
+            let same_leader = sys
+                .process(Pid::from_u32(g.pid as u32))
+                .is_none_or(|p| p.start_time() == g.start);
+            if same_leader {
+                // SAFETY: plain syscall; g.pid > 0, so it never targets every process or our own group
+                unsafe { libc::killpg(g.pid, signal) };
+            }
+        }
+        for t in targets.iter().filter(|t| running(sys, t)) {
+            // SAFETY: plain syscall on a positive pid that was just checked to be the same process
+            unsafe { libc::kill(t.pid, signal) };
         }
     }
 
-    fn wait_gone(pids: &[u32], timeout: Duration) -> bool {
+    fn wait_gone(sys: &mut System, targets: &[Target], timeout: Duration) -> bool {
         let start = Instant::now();
         loop {
-            // SAFETY: signal 0 only checks that the group still exists
-            let any_alive = pids.iter().any(|&pid| unsafe { libc::killpg(pid as i32, 0) == 0 });
-            if !any_alive {
+            refresh(sys);
+            if !targets.iter().any(|t| running(sys, t)) {
                 return true;
             }
             if start.elapsed() >= timeout {
                 return false;
             }
-            std::thread::sleep(Duration::from_millis(20));
+            std::thread::sleep(Duration::from_millis(50));
         }
     }
 }
@@ -270,10 +369,11 @@ mod job {
 mod tests {
     use super::*;
     use std::process::{Child, Command, Stdio};
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
 
-    /// A child that stays alive for about 30 s and starts a grandchild.
-    fn spawn_tree() -> Child {
+    /// A child that stays alive for about 30 s and starts a grandchild; on Unix optionally leading its
+    /// own process group, like a PTY child.
+    fn spawn_tree(own_group: bool) -> Child {
         let mut cmd = if cfg!(windows) {
             let mut c = Command::new("cmd");
             c.args(["/d", "/c", "ping -n 30 127.0.0.1 >NUL"]);
@@ -284,10 +384,12 @@ mod tests {
             c
         };
         #[cfg(unix)]
-        {
+        if own_group {
             use std::os::unix::process::CommandExt;
-            cmd.process_group(0); // like a PTY child, which leads its own group
+            cmd.process_group(0);
         }
+        #[cfg(windows)]
+        let _ = own_group;
         cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn().unwrap()
     }
 
@@ -313,9 +415,28 @@ mod tests {
     }
 
     #[test]
-    fn kill_tree_ends_child_and_grandchild() {
+    fn stale_parent_links_are_not_followed() {
+        // 20 started at t=100 under 10; 10 died and its pid went to a process started at t=200
+        let t: Table = HashMap::from([
+            (1, (None, 0)),
+            (10, (Some(1), 200)),
+            (20, (Some(10), 100)),
+            (30, (Some(20), 150)),
+            (40, (Some(10), 250)),
+        ]);
+        assert_eq!(real_parent(&t, 20), None);
+        assert_eq!(parent_chain(&t, 30), [20]);
+        assert_eq!(parent_chain(&t, 40), [10, 1]);
+        assert_eq!(descendants(&t, 10), [40]);
+        assert_eq!(descendants(&t, 20), [30]);
+        // reused pids with equal start times can form a cycle; the walk still ends
+        let cyclic: Table = HashMap::from([(1, (Some(2), 5)), (2, (Some(1), 5))]);
+        assert_eq!(parent_chain(&cyclic, 1), [2]);
+    }
+
+    fn kills_child_and_grandchild(own_group: bool) {
         let procs = Procs::new();
-        let mut child = spawn_tree();
+        let mut child = spawn_tree(own_group);
         let pid = child.id();
         assert!(
             wait_for(|| !procs.descendants_of(pid).is_empty()),
@@ -332,11 +453,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn kill_tree_ends_a_group_leader_and_its_children() {
+        kills_child_and_grandchild(true);
+    }
+
+    #[test]
+    fn kill_tree_ends_a_process_that_leads_no_group() {
+        kills_child_and_grandchild(false);
+    }
+
     #[cfg(windows)]
     #[test]
     fn assigns_children_to_the_job() {
         init_job().unwrap();
-        let mut child = spawn_tree();
+        let mut child = spawn_tree(true);
         assign_to_job(child.id()).unwrap();
         kill_tree(child.id());
         let _ = child.wait();

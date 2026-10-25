@@ -76,6 +76,9 @@ pub fn projects(home: &Path) -> Vec<Project> {
                 .unwrap_or_else(|| path.clone()),
             path: path.clone(),
             modified: 0,
+            // pinned folders come with WP1, which groups with the settings in hand
+            pinned: false,
+            missing: !Path::new(&path).is_dir(),
             sessions: vec![],
         });
         proj.modified = proj.modified.max(s.modified);
@@ -109,6 +112,7 @@ fn read_session(path: &Path, profile: &str) -> Option<Session> {
         size_kb: meta.len().div_ceil(1024),
         profile: profile.to_string(),
         slug: path.parent()?.file_name()?.to_string_lossy().to_string(),
+        partial: false,
     })
 }
 

@@ -30,7 +30,7 @@ export function splitter(opts: SplitterOptions): void {
     el.setAttribute("aria-valuemin", String(opts.min));
     el.setAttribute("aria-valuemax", String(Math.round(opts.max())));
   };
-  aria(opts.get());
+  aria(clamp(opts.get()));
 
   let startX = 0;
   let startSize = 0;
@@ -41,7 +41,8 @@ export function splitter(opts: SplitterOptions): void {
     e.preventDefault();
     el.setPointerCapture(e.pointerId);
     startX = e.clientX;
-    startSize = size = opts.get();
+    // whole pixels from the start: a click without a move commits this value, and layout sizes are fractional
+    startSize = size = clamp(opts.get());
     document.documentElement.classList.add("resizing");
   });
   el.addEventListener("pointermove", (e) => {

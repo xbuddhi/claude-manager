@@ -7,12 +7,11 @@
 //! - Updates are validated as a whole, then saved atomically (temp file + rename) after 200 ms of quiet.
 
 use super::error::{AppError, AppResult, lock};
-use super::events;
+use super::fsio::write_atomic;
 use super::lifecycle::{self, ShutdownHook};
-use super::paths;
 use super::types::Settings;
+use super::{env, events, paths};
 use serde_json::{Map, Value};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -95,7 +94,12 @@ impl SettingsStore {
         merged.extend(patch);
         let next: Settings = serde_json::from_value(Value::Object(merged))
             .map_err(|e| AppError::InvalidInput(format!("invalid settings: {e}")))?;
-        *current = sanitize(next);
+        let next = sanitize(next);
+        // the webview can set this path and terminals then run it: it must name claude itself
+        if let Some(p) = &next.claude_path {
+            env::check_claude_override(p)?;
+        }
+        *current = next;
         let snapshot = current.clone();
         drop(current);
         self.schedule_save();
@@ -185,27 +189,12 @@ fn to_map(settings: &Settings) -> Map<String, Value> {
 
 /// Repairs values that parse but make no sense, the same way the Windows app did on load.
 fn sanitize(mut s: Settings) -> Settings {
+    s.claude_path = s.claude_path.filter(|p| !p.trim().is_empty());
     s.pinned.retain(|p| !p.trim().is_empty());
     for g in &mut s.groups {
         g.folders.retain(|f| !f.trim().is_empty());
     }
     s
-}
-
-/// Writes `bytes` to a temp file next to `path`, flushes it to disk, then renames it over `path`,
-/// so a crash leaves either the old or the new file, never a half-written one.
-pub fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
-    let dir = path
-        .parent()
-        .ok_or_else(|| AppError::Internal(format!("no parent folder: {}", path.display())))?;
-    std::fs::create_dir_all(dir)?;
-    let tmp = path.with_extension("json.tmp");
-    let mut file = std::fs::File::create(&tmp)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    drop(file);
-    std::fs::rename(&tmp, path)?;
-    Ok(())
 }
 
 /// The Windows app's settings file, if this platform had one.
@@ -327,6 +316,34 @@ mod tests {
         assert!(store.update(json!(["not", "an", "object"])).is_err());
         let next = store.update(json!({ "openIn": "embed", "claudePath": null })).unwrap();
         assert_eq!(next.open_in, OpenIn::Embed);
+    }
+
+    #[test]
+    fn claude_path_must_name_claude() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::open(dir.path().join(FILE_NAME), None);
+        let exe = if cfg!(windows) { "claude.exe" } else { "claude" };
+        let good = dir.path().join("bin").join(exe).to_string_lossy().into_owned();
+        assert_eq!(
+            store
+                .update(json!({ "claudePath": good }))
+                .unwrap()
+                .claude_path
+                .as_deref(),
+            Some(good.as_str())
+        );
+        let calc = dir.path().join("calc.exe").to_string_lossy().into_owned();
+        for bad in [calc.as_str(), exe, "bin/claude"] {
+            assert!(
+                matches!(
+                    store.update(json!({ "claudePath": bad })),
+                    Err(AppError::InvalidInput(_))
+                ),
+                "{bad}"
+            );
+        }
+        assert_eq!(store.get().claude_path.as_deref(), Some(good.as_str()));
+        assert_eq!(store.update(json!({ "claudePath": "  " })).unwrap().claude_path, None);
     }
 
     #[test]

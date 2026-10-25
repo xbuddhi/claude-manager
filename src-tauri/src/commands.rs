@@ -1,5 +1,5 @@
-//! The one list of IPC commands. Each feature owns a marked block and only adds lines inside it;
-//! the commands themselves live in the feature's module.
+//! The one list of IPC commands. Each feature owns a marked block and only adds lines directly under its
+//! own marker (never edit a marker); the commands themselves live in the feature's module.
 
 use tauri::ipc::Invoke;
 
@@ -13,6 +13,9 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::core::env::env_status,
         crate::core::env::platform_info,
         crate::core::lifecycle::app_quit_decision,
+        crate::core::open_request::take_open_request,
+        crate::core::open::open_log_dir,
+        crate::core::open::open_url_https,
         // ---- sessions (WP1) ----
         crate::sessions::list_projects,
         // ---- pty + launch (WP2) ----
@@ -23,6 +26,7 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::pty::pty_kill,
         crate::pty::pty_kill_all,
         // ---- live + notify (WP3) ----
+        // ---- fsutil (WP4) ----
         // ---- actions (WP5) ----
         // ---- profiles UI (WP6) ----
         // ---- usage (WP7) ----

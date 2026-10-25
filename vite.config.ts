@@ -1,5 +1,8 @@
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+
+const page = (file: string) => fileURLToPath(new URL(file, import.meta.url));
 
 const host = process.env.TAURI_DEV_HOST;
 
@@ -31,5 +34,12 @@ export default defineConfig(() => ({
     target: ["es2021", "chrome105", "safari15"],
     // the bundle loads from disk, not a network; xterm alone is most of its size
     chunkSizeWarningLimit: 1500,
+    rolldownOptions: {
+      // every HTML page of the app; a package adds its page under its own marker
+      input: {
+        main: page("index.html"),
+        // WP2 terminal pop-out window (popout.html)
+      },
+    },
   },
 }));

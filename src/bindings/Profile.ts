@@ -13,6 +13,6 @@ name: string,
  */
 email: string | null, 
 /**
- * Whether usable credentials exist. Null until the usage feature checks it (provided by WP7).
+ * Whether usable credentials exist; null when unknown (the usage feature registers the check, WP7).
  */
 signedIn: boolean | null, isDefault: boolean, };

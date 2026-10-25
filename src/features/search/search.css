@@ -1,0 +1,42 @@
+/* TEMPORARY search box in the title bar, ported from the prototype; WP5 replaces it with the dropdown. */
+.search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  transition:
+    border-color 0.2s var(--ease),
+    box-shadow 0.2s var(--ease);
+}
+.search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(217 119 87 / 0.2);
+}
+html.mode-terminal .search {
+  visibility: hidden;
+}
+.search-icon {
+  display: grid;
+  color: var(--muted);
+}
+.search-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+.search-input:focus-visible {
+  outline: none;
+}
+.search-input::placeholder {
+  color: var(--muted);
+}

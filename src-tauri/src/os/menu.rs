@@ -4,12 +4,15 @@
 //! running session without asking. The Edit menu must stay: WKWebView copy, paste and undo only work
 //! through it. Items with a custom id are sent to the frontend as `menu` events ({ id }), except the
 //! ones handled here (quit, show logs). WP9 adds the remaining items in the marked blocks.
+//!
+//! The ids below are the contract with the frontend: they are also its command ids (`core/commands.ts`),
+//! "<area>:<action>" with a colon. Anything that triggers one of these actions (tray menu, shortcuts)
+//! uses the same id, e.g. the tray's "New session" emits `menu` with `session:new`.
 
 use crate::core::types::MenuEvent;
-use crate::core::{events, lifecycle, paths};
+use crate::core::{events, lifecycle, open};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Builder, Emitter, Runtime, Wry};
-use tauri_plugin_opener::OpenerExt;
 
 // ---- menu ids (also used as command ids by the frontend shortcut registry) ----
 pub const SETTINGS: &str = "app:settings";
@@ -119,23 +122,15 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 pub fn on_menu_event(app: &AppHandle, id: &str) {
     match id {
         QUIT => lifecycle::request_quit(app),
-        SHOW_LOGS => show_logs(app),
+        SHOW_LOGS => {
+            if let Err(e) = open::show_log_dir(app) {
+                log::error!("{e}");
+            }
+        }
         _ => {
             if let Err(e) = app.emit(events::MENU, MenuEvent { id: id.to_string() }) {
                 log::error!("could not send menu event {id}: {e}");
             }
         }
-    }
-}
-
-fn show_logs(app: &AppHandle) {
-    let opened = paths::app_log_dir(app).and_then(|dir| {
-        std::fs::create_dir_all(&dir)?;
-        app.opener()
-            .open_path(dir.to_string_lossy(), None::<&str>)
-            .map_err(|e| crate::core::error::AppError::Internal(e.to_string()))
-    });
-    if let Err(e) = opened {
-        log::error!("could not open the log folder: {e}");
     }
 }

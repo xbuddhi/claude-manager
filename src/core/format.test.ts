@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ago, fmtTokens, leaf, plural, resetText, size, truncate, until } from "./format";
+import { ago, fmtTokens, leaf, levelColor, plural, resetText, size, truncate, until } from "./format";
 
 // Sunday 25 October 2026, 12:00 local time
 const NOW = new Date(2026, 9, 25, 12, 0, 0).getTime();
@@ -87,5 +87,15 @@ describe("text helpers", () => {
     expect(leaf("C:\\src\\app\\")).toBe("app");
     expect(leaf("/Users/me/app")).toBe("app");
     expect(leaf("/")).toBe("/");
+  });
+});
+
+describe("levelColor", () => {
+  it("switches at 70 and 90 percent", () => {
+    expect(levelColor(0)).toBe("var(--accent)");
+    expect(levelColor(69.9)).toBe("var(--accent)");
+    expect(levelColor(70)).toBe("var(--warn)");
+    expect(levelColor(89)).toBe("var(--warn)");
+    expect(levelColor(90)).toBe("var(--danger)");
   });
 });

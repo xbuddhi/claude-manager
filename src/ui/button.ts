@@ -2,14 +2,14 @@
 // plain (transparent until hovered). Optional icon before the label, or icon only (give a `title` then).
 
 import { h } from "../core/dom";
-import { type IconName, icons } from "../core/icons";
+import { type IconSpec, iconNode } from "../core/icons";
 import "./button.css";
 
 export type ButtonKind = "primary" | "secondary" | "danger" | "plain";
 
 export interface ButtonOptions {
   label?: string;
-  icon?: IconName;
+  icon?: IconSpec;
   kind?: ButtonKind;
   /** Tooltip (themed, see tooltip.ts) and accessible name for icon-only buttons. */
   title?: string;
@@ -24,7 +24,7 @@ export function button(opts: ButtonOptions): HTMLButtonElement {
     class: `btn btn-${kind}${opts.label ? "" : " btn-icon"}`,
     disabled: opts.disabled ?? false,
   });
-  if (opts.icon) b.insertAdjacentHTML("beforeend", icons[opts.icon]);
+  if (opts.icon) b.append(iconNode(opts.icon));
   if (opts.label) b.append(h("span", { class: "btn-label" }, opts.label));
   if (opts.title) {
     b.dataset.tip = opts.title;

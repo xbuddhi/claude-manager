@@ -7,14 +7,14 @@
 //            { at: { x: e.clientX, y: e.clientY } });
 
 import { h } from "../core/dom";
-import { type IconName, icons } from "../core/icons";
+import { type IconSpec, iconNode, icons } from "../core/icons";
 import { shortcutLabel } from "../core/platform";
 import "./menu.css";
 
 export interface MenuAction {
   kind?: "item";
   label: string;
-  icon?: IconName | HTMLElement;
+  icon?: IconSpec;
   checked?: boolean;
   danger?: boolean;
   disabled?: boolean;
@@ -113,8 +113,7 @@ class Level {
     });
     const iconCell = h("span", { class: "mi-icon" });
     if (item.checked) iconCell.innerHTML = icons.check;
-    else if (item.icon instanceof HTMLElement) iconCell.append(item.icon);
-    else if (item.icon) iconCell.innerHTML = icons[item.icon];
+    else if (item.icon) iconCell.append(iconNode(item.icon));
     const side = h("span", { class: "mi-side" });
     if (item.submenu) side.innerHTML = icons.chevron;
     else if (item.shortcut) side.textContent = shortcutLabel(item.shortcut);

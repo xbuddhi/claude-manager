@@ -7,12 +7,14 @@
 use crate::core::error::{AppError, AppResult, lock};
 use crate::core::lifecycle::ShutdownHook;
 use crate::core::procs;
+use crate::core::terms::TermPids;
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::ipc::Channel;
 use ts_rs::TS;
 
@@ -29,7 +31,28 @@ struct Term {
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
     child: Mutex<Box<dyn Child + Send + Sync>>,
-    pid: Option<u32>,
+    /// Cleared once the child has exited: on Unix `try_wait` reaps it, and its pid may then be reused.
+    pid: Mutex<Option<u32>>,
+}
+
+impl Term {
+    /// The child's pid while it runs; `None` once it has exited (and from then on).
+    fn running_pid(&self) -> Option<u32> {
+        let mut pid = lock(&self.pid);
+        pid.as_ref()?;
+        match lock(&self.child).try_wait() {
+            Ok(None) => *pid,
+            Ok(Some(_)) => {
+                *pid = None;
+                None
+            }
+            // not reaped, so the pid is still this child's; the next call asks again
+            Err(e) => {
+                log::warn!("could not check terminal process {pid:?}: {e}");
+                *pid
+            }
+        }
+    }
 }
 
 /// All terminals. Cheap to clone; clones share the same map.
@@ -91,7 +114,7 @@ impl Terms {
             master: Mutex::new(pair.master),
             writer: Mutex::new(writer),
             child: Mutex::new(child),
-            pid,
+            pid: Mutex::new(pid),
         };
         lock(&self.inner.map).insert(id, Arc::new(term));
 
@@ -151,40 +174,44 @@ impl Terms {
     pub fn kill(&self, id: u32) {
         let removed = lock(&self.inner.map).remove(&id);
         if let Some(term) = removed {
-            end(&[term]);
+            end(&[term], procs::GRACE);
         }
     }
 
-    pub fn kill_all(&self) {
+    pub fn kill_all(&self, grace: Duration) {
         let all: Vec<Arc<Term>> = lock(&self.inner.map).drain().map(|(_, t)| t).collect();
-        end(&all);
+        end(&all, grace);
     }
 
-    /// Terminals whose process is still running.
-    pub fn live_count(&self) -> usize {
+    /// Pids of the terminals whose process is still running.
+    pub fn running_pids(&self) -> Vec<u32> {
         let terms: Vec<Arc<Term>> = lock(&self.inner.map).values().cloned().collect();
-        terms
-            .iter()
-            .filter(|t| matches!(lock(&t.child).try_wait(), Ok(None)))
-            .count()
+        terms.iter().filter_map(|t| t.running_pid()).collect()
     }
 }
 
-fn end(terms: &[Arc<Term>]) {
-    let pids: Vec<u32> = terms.iter().filter_map(|t| t.pid).collect();
-    procs::kill_trees(&pids);
+fn end(terms: &[Arc<Term>], grace: Duration) {
+    // an exited child's pid is not signalled: it may belong to another process by now
+    let pids: Vec<u32> = terms.iter().filter_map(|t| t.running_pid()).collect();
+    procs::kill_trees(&pids, grace);
     for t in terms {
-        // covers a child whose pid was unknown; harmless when it already ended
+        // covers a child whose pid was unknown; does nothing for one that already ended
         let _ = lock(&t.child).kill();
     }
 }
 
 impl ShutdownHook for Terms {
     fn live_count(&self) -> usize {
-        Terms::live_count(self)
+        self.running_pids().len()
     }
 
     fn shutdown(&self) {
-        self.kill_all();
+        self.kill_all(procs::GRACE_ON_EXIT);
+    }
+}
+
+impl TermPids for Terms {
+    fn pids(&self) -> Vec<u32> {
+        self.running_pids()
     }
 }

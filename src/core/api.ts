@@ -14,7 +14,7 @@ import type { AppError } from "../bindings/AppError";
 import type { CloseRequest } from "../bindings/CloseRequest";
 import type { EnvStatus } from "../bindings/EnvStatus";
 import type { MenuEvent } from "../bindings/MenuEvent";
-import type { OpenArgs } from "../bindings/OpenArgs";
+import type { OpenRequest } from "../bindings/OpenRequest";
 import type { PlatformInfo } from "../bindings/PlatformInfo";
 import type { Profile } from "../bindings/Profile";
 import type { QuitDecision } from "../bindings/QuitDecision";
@@ -32,6 +32,11 @@ export interface Commands {
   env_status: { args: undefined; result: EnvStatus };
   platform_info: { args: undefined; result: PlatformInfo };
   app_quit_decision: { args: { decision: QuitDecision }; result: null };
+  /** Requests to open a folder that arrived from outside (command line, Explorer menu), oldest first. */
+  take_open_request: { args: undefined; result: OpenRequest[] };
+  open_log_dir: { args: undefined; result: null };
+  /** Opens an https link in the default browser; anything else is refused. */
+  open_url_https: { args: { url: string }; result: null };
 }
 
 export interface BackendEvents {
@@ -39,8 +44,8 @@ export interface BackendEvents {
   "profiles-changed": Profile[];
   /** The main window is shown first. Answer with `app_quit_decision`. */
   "app:close-requested": CloseRequest;
-  /** Untrusted: validate every value. */
-  "app:open-args": OpenArgs;
+  /** An OpenRequest is waiting: take it with `take_open_request`. Handled by the os feature (WP9). */
+  "app:open-request": null;
   menu: MenuEvent;
 }
 

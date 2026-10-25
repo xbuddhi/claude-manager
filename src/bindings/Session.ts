@@ -31,4 +31,8 @@ profile: string,
 /**
  * Name of the `projects/<slug>` folder.
  */
-slug: string, };
+slug: string, 
+/**
+ * The transcript is only partly read yet (fast first scan): `count` is a lower bound.
+ */
+partial: boolean, };

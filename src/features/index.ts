@@ -1,18 +1,51 @@
-// Every feature mounts here, one line each, inside the marked blocks. A feature package adds only its own
-// import and mount line; it renders into its shell slot and talks to others through core/bus and the store.
+// Every feature mounts here. A work package adds its import and mount lines directly under its own marker
+// in the two blocks below, and never edits a marker or another package's lines, so packages merge without
+// conflicts. A feature renders into its shell slot and talks to others through core/bus and the store.
 
-// ---- feature imports (one line each) ----
+// ---- feature imports ----
+// WP1 index-data
 import { mount as mountIndexData } from "./index-data";
-import { mount as mountSessions } from "./sessions";
-import { mount as mountSidebar } from "./sidebar";
+
+// WP2 terminals
 import { mount as mountTerminals } from "./terminals";
+
+// WP3 live
+
+// WP4 sidebar
+import { mount as mountSidebar } from "./sidebar";
+
+// WP5 sessions + search
+import { mount as mountSearch } from "./search";
+import { mount as mountSessions } from "./sessions";
+
+// WP6 profiles + settings
+
+// WP7 usage
+
+// WP8 git
+
+// WP9 os
+
+// WP10 updater
+
 // ---- end feature imports ----
 
 export function mountFeatures(): void {
-  // ---- feature mounts (one line each) ----
+  // ---- feature mounts (order is mount order) ----
+  // WP1 index-data
   mountIndexData();
-  mountSidebar();
-  mountSessions();
+  // WP2 terminals
   mountTerminals();
+  // WP3 live
+  // WP4 sidebar
+  mountSidebar();
+  // WP5 sessions + search
+  mountSessions();
+  mountSearch();
+  // WP6 profiles + settings
+  // WP7 usage
+  // WP8 git
+  // WP9 os
+  // WP10 updater
   // ---- end feature mounts ----
 }

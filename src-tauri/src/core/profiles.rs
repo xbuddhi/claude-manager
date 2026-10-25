@@ -8,16 +8,21 @@ use super::paths;
 use super::types::Profile;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, State};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// Files or folders that make a `~/.claude-*` folder a profile.
 const MARKERS: &[&str] = &["projects", ".credentials.json", "settings.json", ".claude.json"];
+
+/// Tells whether a profile folder holds usable credentials; `None` = unknown. Registered by the usage
+/// feature (WP7), which knows where each OS keeps them; it must be quick or cache its answers.
+pub type SignedInFn = dyn Fn(&Path) -> Option<bool> + Send + Sync;
 
 /// Cached emails (reading `.claude.json` can mean megabytes). Managed as state by `core::init`.
 #[derive(Default)]
 pub struct Profiles {
     emails: Mutex<HashMap<String, Option<String>>>,
+    signed_in: Mutex<Option<Arc<SignedInFn>>>,
 }
 
 impl Profiles {
@@ -26,30 +31,49 @@ impl Profiles {
         lock(&self.emails).clear();
     }
 
-    /// Discovered profiles with names and emails.
+    /// Installs the source of `Profile::signed_in` (see [`SignedInFn`]).
+    pub fn set_signed_in(&self, f: impl Fn(&Path) -> Option<bool> + Send + Sync + 'static) {
+        *lock(&self.signed_in) = Some(Arc::new(f));
+    }
+
+    /// Discovered profiles with names, emails and, when known, whether they are signed in.
     pub fn list(&self) -> AppResult<Vec<Profile>> {
         let home = paths::home()?;
         let dirs = discover(&home, launch_config_dir().as_deref());
-        let mut emails = lock(&self.emails);
+        let emails: Vec<Option<String>> = {
+            let mut cache = lock(&self.emails);
+            dirs.iter()
+                .map(|dir| {
+                    let key = paths::key(&dir.to_string_lossy());
+                    cache.entry(key).or_insert_with(|| email(dir, &home)).clone()
+                })
+                .collect()
+        };
+        // asked without any lock held: it may read files or the keychain
+        let signed_in = lock(&self.signed_in).clone();
         Ok(dirs
             .iter()
-            .map(|dir| {
-                let key = paths::key(&dir.to_string_lossy());
-                let email = emails.entry(key).or_insert_with(|| email(dir, &home)).clone();
-                to_profile(dir, &home, email)
+            .zip(emails)
+            .map(|(dir, email)| Profile {
+                dir: dir.to_string_lossy().into_owned(),
+                name: name(dir),
+                email,
+                signed_in: signed_in.as_ref().and_then(|f| f(dir)),
+                is_default: is_default(dir, &home),
             })
             .collect())
     }
 }
 
-fn to_profile(dir: &Path, home: &Path, email: Option<String>) -> Profile {
-    Profile {
-        dir: dir.to_string_lossy().into_owned(),
-        name: name(dir),
-        email,
-        signed_in: None,
-        is_default: is_default(dir, home),
-    }
+/// Rediscovers profiles (emails read again) and broadcasts `profiles-changed`. For anything that learns
+/// the profiles changed: the refresh command, profile creation (WP6), the index watcher seeing a new
+/// `~/.claude-*` folder (WP1). Blocking: call it off the UI thread.
+pub fn refresh(app: &AppHandle) -> AppResult<Vec<Profile>> {
+    let profiles = app.state::<Profiles>();
+    profiles.invalidate();
+    let list = profiles.list()?;
+    app.emit(events::PROFILES_CHANGED, &list)?;
+    Ok(list)
 }
 
 /// CLAUDE_CONFIG_DIR as this app was launched with (it is removed from children, never from us).
@@ -183,12 +207,8 @@ pub async fn list_profiles(app: AppHandle) -> AppResult<Vec<Profile>> {
 
 /// Drops cached emails, rediscovers, and broadcasts `profiles-changed`.
 #[tauri::command]
-pub async fn refresh_profiles(app: AppHandle, profiles: State<'_, Profiles>) -> AppResult<Vec<Profile>> {
-    profiles.invalidate();
-    let handle = app.clone();
-    let list = blocking(move || handle.state::<Profiles>().list()).await?;
-    app.emit(events::PROFILES_CHANGED, &list)?;
-    Ok(list)
+pub async fn refresh_profiles(app: AppHandle) -> AppResult<Vec<Profile>> {
+    blocking(move || refresh(&app)).await
 }
 
 #[cfg(test)]

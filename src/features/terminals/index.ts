@@ -27,6 +27,7 @@ import { settings } from "../../core/settings";
 import { store, type TermInfo } from "../../core/store";
 import { choose } from "../../ui/dialog";
 import { refreshIndex } from "../index-data/api";
+import { startProfile } from "../profiles/api";
 import "./terminals.css";
 
 declare module "../../core/api" {
@@ -75,9 +76,10 @@ function publish() {
   store.set({
     terminals: tabs
       .filter((t) => !t.closing)
-      .map(({ id, ptyId, title, sub, dir, profile, sessionId, exited }) => ({
+      .map(({ id, ptyId, pid, title, sub, dir, profile, sessionId, exited }) => ({
         id,
         ptyId,
+        pid,
         title,
         sub,
         dir,
@@ -251,7 +253,7 @@ function termTheme() {
 }
 
 function launch(req: LaunchRequest) {
-  const profile = req.profile ?? store.get().profiles[0]?.dir ?? "";
+  const profile = req.profile ?? startProfile() ?? "";
   if (req.resume) {
     const { sessionId } = req.resume;
     // already open? go to it
@@ -308,6 +310,8 @@ async function openTerminal(req: LaunchRequest, profile: string, title: string, 
   const tab: Tab = {
     id: nextKey++,
     ptyId: null,
+    // the backend does not report it yet (WP2: pty_new returns it with the id)
+    pid: null,
     title,
     sub,
     dir: req.dir,

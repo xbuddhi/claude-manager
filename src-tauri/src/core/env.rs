@@ -92,14 +92,58 @@ pub fn wait_env() -> &'static ResolvedEnv {
     })
 }
 
+/// File names the Settings override may have. The webview can set that path and terminals run it, so it
+/// must name claude itself, never some other program.
+const CLAUDE_NAMES: &[&str] = if cfg!(windows) {
+    &["claude.exe", "claude.cmd"]
+} else {
+    &["claude"]
+};
+
+/// Checks the shape of a claude path from Settings: absolute, and named like claude. Existence is checked
+/// at launch, so a path can be saved before claude is installed there.
+pub fn check_claude_override(path: &str) -> AppResult<PathBuf> {
+    let p = Path::new(path.trim());
+    let named_claude = p
+        .file_name()
+        .and_then(OsStr::to_str)
+        .is_some_and(|n| CLAUDE_NAMES.iter().any(|c| n.eq_ignore_ascii_case(c)));
+    if !p.is_absolute() || !named_claude {
+        return Err(AppError::InvalidInput(format!(
+            "The Claude path must be the full path to {}:\n{path}",
+            CLAUDE_NAMES.join(" or ")
+        )));
+    }
+    Ok(p.to_path_buf())
+}
+
 /// The claude executable to run: the Settings override when it is set, else the discovered one.
 pub fn claude_executable(override_path: Option<&str>) -> AppResult<PathBuf> {
     match override_path.map(str::trim).filter(|p| !p.is_empty()) {
-        Some(p) if Path::new(p).is_file() => Ok(PathBuf::from(p)),
-        Some(p) => Err(AppError::NotFound(format!(
-            "The Claude path set in Settings does not exist:\n{p}"
-        ))),
+        Some(p) => {
+            let path = check_claude_override(p)?;
+            if path.is_file() {
+                Ok(path)
+            } else {
+                Err(AppError::NotFound(format!(
+                    "The Claude path set in Settings does not exist:\n{p}"
+                )))
+            }
+        }
         None => wait_env().claude.clone().ok_or(AppError::ClaudeNotFound),
+    }
+}
+
+/// The signed-in user's account name (the macOS keychain item's account): from the password database on
+/// Unix (not $USER, which a parent may have changed), USERNAME on Windows.
+pub fn user_name() -> Option<String> {
+    #[cfg(unix)]
+    {
+        unix::passwd_field(|pw| pw.pw_name)
+    }
+    #[cfg(windows)]
+    {
+        std::env::var("USERNAME").ok().filter(|n| !n.is_empty())
     }
 }
 
@@ -285,22 +329,30 @@ mod unix {
         pub path: OsString,
     }
 
+    /// One string field of this user's password database entry.
+    pub fn passwd_field(field: fn(&libc::passwd) -> *mut libc::c_char) -> Option<String> {
+        // getpwuid returns a pointer into storage that the next getpw* call overwrites: the lock keeps
+        // this app's own calls apart, and the value is copied out before it is released.
+        static PASSWD: Mutex<()> = Mutex::new(());
+        let _guard = lock(&PASSWD);
+        // SAFETY: both pointers are checked for null and read while the lock is held.
+        unsafe {
+            let pw = libc::getpwuid(libc::getuid());
+            if pw.is_null() {
+                return None;
+            }
+            let value = field(&*pw);
+            if value.is_null() {
+                return None;
+            }
+            std::ffi::CStr::from_ptr(value).to_str().ok().map(str::to_string)
+        }
+    }
+
     /// The user's login shell from the password database (not $SHELL, which a parent may have changed).
     pub fn login_shell() -> PathBuf {
-        // SAFETY: getpwuid returns a pointer into static storage or null; it is read immediately and
-        // nothing else in this process calls getpw* concurrently during startup resolution.
-        let from_passwd = unsafe {
-            let pw = libc::getpwuid(libc::getuid());
-            if pw.is_null() || (*pw).pw_shell.is_null() {
-                None
-            } else {
-                std::ffi::CStr::from_ptr((*pw).pw_shell)
-                    .to_str()
-                    .ok()
-                    .map(PathBuf::from)
-            }
-        };
-        from_passwd
+        passwd_field(|pw| pw.pw_shell)
+            .map(PathBuf::from)
             .filter(|p| p.is_file())
             .unwrap_or_else(|| PathBuf::from("/bin/zsh"))
     }
@@ -466,16 +518,31 @@ mod tests {
     }
 
     #[test]
-    fn override_must_exist() {
+    fn override_must_exist_and_name_claude() {
         let dir = tempfile::tempdir().unwrap();
-        let exe = dir.path().join("claude");
+        let name = if cfg!(windows) { "claude.exe" } else { "claude" };
+        let exe = dir.path().join(name);
         std::fs::write(&exe, b"").unwrap();
         assert_eq!(claude_executable(Some(exe.to_str().unwrap())).unwrap(), exe);
-        let missing = dir.path().join("nope");
+        let missing = dir.path().join("gone").join(name);
         assert!(matches!(
             claude_executable(Some(missing.to_str().unwrap())),
             Err(AppError::NotFound(_))
         ));
+        // an existing file that is not claude, and a relative path, are refused before anything runs
+        let other = dir.path().join(if cfg!(windows) { "calc.exe" } else { "sh" });
+        std::fs::write(&other, b"").unwrap();
+        for bad in [other.to_str().unwrap(), name] {
+            assert!(
+                matches!(claude_executable(Some(bad)), Err(AppError::InvalidInput(_))),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn knows_the_user_name() {
+        assert!(user_name().is_some_and(|n| !n.is_empty()));
     }
 
     #[test]

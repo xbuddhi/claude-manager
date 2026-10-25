@@ -6,6 +6,7 @@
 //   declare module "../../core/store" { interface AppState { searchQuery: string } }
 //   defineState({ searchQuery: "" });
 
+import type { LiveSession } from "../bindings/LiveSession";
 import type { PlatformInfo } from "../bindings/PlatformInfo";
 import type { Profile } from "../bindings/Profile";
 import type { Project } from "../bindings/Project";
@@ -109,6 +110,8 @@ export interface TermInfo {
   id: number;
   /** Backend terminal id; null until the PTY has started (or when it failed to start). */
   ptyId: number | null;
+  /** Process id of the terminal's child (claude); null until known or once it exited. */
+  pid: number | null;
   title: string;
   sub: string;
   dir: string;
@@ -126,6 +129,10 @@ export interface CoreState {
   screen: Screen;
   settings: Settings;
   index: IndexState;
+  /** Running claude sessions by session id (kept current by the live feature, WP3). */
+  live: Record<string, LiveSession>;
+  /** Highest live level per folder, keyed by pathKey() of the folder: 1 = open, 2 = working. */
+  liveCwd: Record<string, 1 | 2>;
   sidebarSelection: SidebarSelection | null;
   terminals: TermInfo[];
   /** Tab id of the terminal in front; null = the workspace (Home). */
@@ -170,6 +177,8 @@ const coreDefaults: CoreState = {
   screen: "main",
   settings: DEFAULT_SETTINGS,
   index: { gen: 0, projects: [], loaded: "loading", error: null },
+  live: {},
+  liveCwd: {},
   sidebarSelection: null,
   terminals: [],
   activeTerminal: null,

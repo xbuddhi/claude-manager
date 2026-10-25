@@ -1,11 +1,27 @@
-//! Claude Manager: builder, plugins and feature registration only. Each feature lives in its own
-//! module; it registers here with one line in the feature init block and its commands in `commands.rs`.
+//! Claude Manager: builder, plugins and feature registration only. Each feature lives in its own module.
+//!
+//! A work package registers its feature by adding lines directly under its own marker comment in the
+//! blocks below (and its commands in `commands.rs`). Never edit a marker or another package's lines:
+//! packages that each insert under their own marker merge without conflicts.
 
 pub mod commands;
 pub mod core;
-pub mod os;
-pub mod pty;
+
+// ---- feature modules ----
+// WP1 sessions
 pub mod sessions;
+// WP2 pty + launch
+pub mod pty;
+// WP3 live + notify
+// WP4 fsutil
+// WP5 actions
+// WP6 profiles_cmd
+// WP7 usage
+// WP8 git
+// WP9 os
+pub mod os;
+// WP10 updater
+// ---- end feature modules ----
 
 use tauri_plugin_window_state::StateFlags;
 
@@ -33,13 +49,28 @@ pub fn run() {
         .on_window_event(crate::core::lifecycle::on_window_event)
         .setup(|app| {
             crate::core::init(app)?;
-            // ---- feature init (one line each) ----
+            // ---- feature init ----
+            // WP1 sessions
+            // WP2 pty + launch
             pty::init(app)?;
+            // WP3 live + notify
+            // WP4 fsutil
+            // WP5 actions
+            // WP6 profiles_cmd
+            // WP7 usage
+            // WP8 git
+            // WP9 os
+            // WP10 updater
             // ---- end feature init ----
             crate::core::webview::create_main_window(app)?;
             Ok(())
         });
+
+    // ---- builder extensions (`let builder = <feature>::attach(builder);`) ----
+    // WP9 os
     let builder = os::menu::attach(builder);
+    // WP10 updater: registers the plugin only when an endpoint and key are configured (docs/port/FOUNDATION.md)
+    // ---- end builder extensions ----
 
     match builder.build(tauri::generate_context!()) {
         Ok(app) => app.run(crate::core::lifecycle::on_run_event),
