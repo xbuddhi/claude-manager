@@ -19,6 +19,60 @@ body {
 html.os-macos:not(.fullscreen) #titlebar {
   padding-left: 80px;
 }
+/* Windows caption buttons, flush with the top-right corner */
+#tb-caption {
+  display: none;
+}
+html.os-windows #titlebar {
+  padding-right: 152px; /* 3 x 46px buttons + 14px */
+}
+html.os-windows #tb-caption {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 36px;
+  display: flex;
+}
+.tb-cap {
+  width: 46px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  transition:
+    background-color 0.12s var(--ease),
+    color 0.12s var(--ease);
+}
+.tb-cap svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+.tb-cap:hover {
+  background: var(--hover);
+}
+.tb-cap:active {
+  background: var(--ctrl-hover);
+}
+.tb-cap.tb-close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+.tb-cap.tb-close:active {
+  background: #b22a1d;
+  color: #fff;
+}
+html.window-inactive .tb-cap:not(:hover) {
+  color: var(--muted);
+}
+
 #tb-left {
   min-width: 0;
   display: flex;
