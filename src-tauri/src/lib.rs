@@ -20,6 +20,7 @@ pub mod notify;
 // WP5 actions
 pub mod actions;
 // WP6 profiles_cmd
+pub mod profiles_cmd;
 // WP7 usage
 // WP8 git
 // WP9 os

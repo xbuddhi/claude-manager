@@ -1,0 +1,225 @@
+/* Profiles: the picker screen, the title-bar avatar and the profile popover. */
+
+/* "All profiles" and "Add profile" pictures: control fill with text ink */
+.avatar.prof-avatar-all {
+  background: var(--ctrl);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+/* while the picker shows, the title bar keeps only the title (search, usage ring and avatar go) */
+html.prof-picker-open #tb-search-slot,
+html.prof-picker-open #tb-right-slot {
+  visibility: hidden;
+}
+
+/* ---------- picker ---------- */
+#picker-root.prof-picker-root {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  /* centred 20px above the middle, never closer than 20px to the top */
+  padding: 20px 20px 60px;
+}
+#picker-root.prof-picker-root[hidden] {
+  display: none;
+}
+.prof-picker {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.prof-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  text-align: center;
+}
+.prof-sub {
+  margin: 14px 0 0;
+  color: var(--muted);
+  text-align: center;
+}
+.prof-cards {
+  margin-top: 26px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  /* wraps only when the window is too narrow */
+  max-width: max(420px, calc(100vw - 60px));
+}
+.prof-card {
+  position: relative;
+  width: 176px;
+  height: 206px;
+  margin: 10px;
+  padding: 22px 8px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  transition:
+    background-color 0.15s var(--ease),
+    border-color 0.15s var(--ease);
+}
+.prof-card:hover,
+.prof-card:focus-visible {
+  background: var(--ctrl-hover);
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.prof-card:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.prof-card > span:not(.avatar) {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+.prof-card-name {
+  margin-top: 10px;
+  height: 24px;
+  line-height: 24px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.prof-card-mail,
+.prof-card-count {
+  height: 20px;
+  line-height: 20px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.prof-card-mail {
+  margin-top: 2px;
+}
+.prof-toggle {
+  margin-top: 26px;
+  color: var(--muted);
+}
+.prof-toggle .tg-row {
+  gap: 10px;
+}
+
+/* ---------- avatar button ---------- */
+.prof-avatar-btn {
+  order: 99; /* always the right-most item of the title bar */
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.prof-avatar-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- popover ---------- */
+.prof-pop {
+  width: 300px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+}
+.prof-pop-head {
+  height: 150px;
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.prof-pop-name {
+  margin-top: 8px;
+  max-width: 100%;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 26px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prof-pop-mail {
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prof-pop-sep {
+  height: 13px;
+  flex: none;
+  position: relative;
+}
+.prof-pop-sep::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 6px;
+  border-top: 1px solid var(--border);
+}
+.prof-pop-label-row {
+  height: 28px;
+  line-height: 28px;
+  padding-left: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.prof-pop-row {
+  height: 38px;
+  padding: 0 14px 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--text);
+}
+button.prof-pop-row:hover,
+button.prof-pop-row:focus-visible,
+.prof-pop-toggle:hover {
+  background: var(--ctrl-hover);
+  outline: none;
+}
+.prof-pop-profile {
+  height: 48px;
+  padding-left: 10px;
+}
+.prof-pop-toggle {
+  height: 40px;
+}
+.prof-pop-icon {
+  width: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.prof-pop-row:hover .prof-pop-icon {
+  color: var(--text);
+}
+.prof-pop-label,
+.prof-pop-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prof-pop-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 18px;
+}
+.prof-pop-side {
+  color: var(--muted);
+  font-size: 12px;
+}
