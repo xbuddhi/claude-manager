@@ -309,6 +309,8 @@ mod tests {
         assert_eq!(ps_quote("$env:X; calc"), "'$env:X; calc'");
     }
 
+    // Windows paths: on macOS the test home is not a home folder, so the default profile is not recognised
+    #[cfg(windows)]
     #[test]
     fn powershell_script_sets_the_profile_and_loads_profiles_after_claude() {
         let home = Path::new(r"C:\Users\me");
