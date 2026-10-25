@@ -27,6 +27,7 @@ import { mount as mountSessions } from "./sessions";
 // WP9 os
 
 // WP10 updater
+import { mount as mountUpdater } from "./updater";
 
 // ---- end feature imports ----
 
@@ -47,5 +48,6 @@ export function mountFeatures(): void {
   // WP8 git
   // WP9 os
   // WP10 updater
+  mountUpdater();
   // ---- end feature mounts ----
 }
