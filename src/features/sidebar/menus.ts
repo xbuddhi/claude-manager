@@ -3,7 +3,7 @@
 
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import type { Session } from "../../bindings/Session";
-import { bus, emit, type LaunchMode } from "../../core/bus";
+import { emit, type LaunchMode } from "../../core/bus";
 import { describeError, log } from "../../core/log";
 import { settings } from "../../core/settings";
 import { store } from "../../core/store";
@@ -12,7 +12,7 @@ import { type MenuItem, type MenuPosition, showMenu } from "../../ui/menu";
 import { toast } from "../../ui/toast";
 import { copyText, folderLabel, openFolder, openInCode, terminalHere, terminalHereLabel } from "../os/api";
 import { profileColor, profileInitial, startProfile } from "../profiles/api";
-import { deleteSessions } from "../sessions/api";
+import { continueLast as continueSession, deleteSessions } from "../sessions/api";
 import {
   deleteProject,
   groupOf,
@@ -34,20 +34,16 @@ export function newSession(dir: string, mode?: LaunchMode, profile?: string): vo
   emit("launch", { dir, profile: profile ?? startProfile() ?? undefined, mode });
 }
 
-/** Resumes the newest of `sessions` (switching to it when it runs); without one starts a new session in `dir`. */
+/**
+ * Continues the newest of `sessions` through the sessions feature, which switches to it when it runs and
+ * asks before starting a second copy of one that runs elsewhere; without one starts a new session in `dir`.
+ */
 export function continueLast(sessions: readonly Session[], dir: string | null, mode?: LaunchMode): void {
-  const s = sessions[0];
-  if (!s) {
+  if (!sessions[0]) {
     if (dir) newSession(dir, mode);
     return;
   }
-  if (bus.handled("session:resume")) {
-    emit("session:resume", { sessionId: s.id, mode });
-    return;
-  }
-  // the sessions feature is not there: resume directly
-  const cwd = s.cwd ?? dir;
-  if (cwd) emit("launch", { dir: cwd, profile: s.profile, mode, resume: { sessionId: s.id }, label: s.label });
+  void continueSession(sessions, dir, mode);
 }
 
 /** Trashes the folder's sessions (asking first) and unpins it; a folder without sessions is only unpinned. */
