@@ -28,6 +28,8 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         // ---- live + notify (WP3) ----
         // ---- fsutil (WP4) ----
         // ---- actions (WP5) ----
+        crate::actions::trash::trash_sessions,
+        crate::actions::trash::trash_path,
         // ---- profiles UI (WP6) ----
         // ---- usage (WP7) ----
         // ---- git (WP8) ----
