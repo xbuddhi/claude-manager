@@ -117,6 +117,8 @@ html.has-tabs:not(.mode-terminal) #sidebar-slot {
 .term-tab:not(.active):hover::before {
   background: color-mix(in srgb, var(--side) 80%, transparent);
   border-color: color-mix(in srgb, var(--border) 60%, transparent);
+  /* fades out before the panel line, so it never ends in a hard edge over the gap between panels */
+  mask-image: linear-gradient(to bottom, #000 45%, transparent 100%);
 }
 .term-tab.active {
   color: var(--text);
