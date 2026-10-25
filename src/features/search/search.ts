@@ -273,9 +273,9 @@ export function mountSearch(slot: HTMLElement): void {
     () => isOpen() && update(),
     { equals: (a, b) => a.every((v, i) => v === b[i]) },
   );
-  // hidden on the picker and behind a terminal tab
+  // hidden on the picker; it stays on terminal tabs, and picking a result goes back to Home
   store.select(
-    (s) => s.screen === "picker" || s.activeTerminal !== null,
+    (s) => s.screen === "picker",
     (away) => {
       field.classList.toggle("away", away);
       if (away) hide();
@@ -291,8 +291,6 @@ export function mountSearch(slot: HTMLElement): void {
 
   on("search:focus", () => {
     if (store.get().screen === "picker") return;
-    // the box is hidden while a terminal is in front; bring the workspace back first
-    if (store.get().activeTerminal !== null) emit("terminal:show", { id: null });
     input.focus();
     input.select();
   });

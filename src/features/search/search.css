@@ -16,9 +16,8 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
-/* hidden on the profile picker and while a terminal tab is in front */
-.search.away,
-html.mode-terminal .search {
+/* hidden on the profile picker */
+.search.away {
   visibility: hidden;
 }
 .search-icon {
