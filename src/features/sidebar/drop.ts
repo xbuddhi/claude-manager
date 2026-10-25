@@ -6,6 +6,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { call } from "../../core/api";
 import { h } from "../../core/dom";
+import { modalOpen } from "../../core/keyboard";
 import { describeError, log } from "../../core/log";
 import { store } from "../../core/store";
 import { pin } from "./groups";
@@ -28,9 +29,10 @@ function showOverlay(on: boolean) {
   }
 }
 
-function accepts(): boolean {
+/** A drop is taken on the main screen with no terminal in front and no dialog or Settings sheet open. */
+export function accepts(): boolean {
   const s = store.get();
-  return s.screen === "main" && s.activeTerminal === null && !document.querySelector(".dlg-backdrop");
+  return s.screen === "main" && s.activeTerminal === null && !modalOpen();
 }
 
 /** Starts a session in every folder among `paths` and pins them. Returns the folders. */
