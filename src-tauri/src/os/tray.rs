@@ -2,7 +2,7 @@
 //! window hidden by "Keep running" can always be brought back. Its menu items go through the one menu
 //! event handler in `menu.rs`.
 
-use super::menu::{NEW_SESSION, QUIT, SHOW_WINDOW};
+use super::menu::{QUIT, SHOW_WINDOW, TRAY_NEW_SESSION};
 use crate::core::lifecycle;
 use tauri::AppHandle;
 use tauri::image::Image;
@@ -17,7 +17,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         app,
         &[
             &MenuItem::with_id(app, SHOW_WINDOW, "Show Claude Sessions", true, None::<&str>)?,
-            &MenuItem::with_id(app, NEW_SESSION, "New session", true, None::<&str>)?,
+            &MenuItem::with_id(app, TRAY_NEW_SESSION, "New session", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, QUIT, "Quit", true, None::<&str>)?,
         ],
@@ -33,13 +33,11 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 lifecycle::show_main(tray.app_handle());
             }
         });
-    if let Some(icon) = app.default_window_icon() {
-        builder = if mac {
-            // a template image follows the menu bar's light and dark appearance
-            builder.icon(template(icon)).icon_as_template(true)
-        } else {
-            builder.icon(icon.clone().to_owned())
-        };
+    if mac {
+        // a template image follows the menu bar's light and dark appearance
+        builder = builder.icon(menu_bar_template()).icon_as_template(true);
+    } else if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone().to_owned());
     }
     builder.build(app)?;
     lifecycle::set_tray_present(app);
@@ -61,14 +59,10 @@ fn shows_window(event: &TrayIconEvent) -> bool {
     )
 }
 
-/// The icon's shape in black: macOS draws template images in the menu bar's own colour.
-fn template(icon: &Image<'_>) -> Image<'static> {
-    Image::new_owned(silhouette(icon.rgba()), icon.width(), icon.height())
-}
-
-/// RGBA pixels with the colour removed and the alpha kept.
-fn silhouette(rgba: &[u8]) -> Vec<u8> {
-    rgba.chunks_exact(4).flat_map(|px| [0, 0, 0, px[3]]).collect()
+/// The menu bar icon: black and alpha only, drawn by scripts/make-icons.mjs (trayLayers). The app icon
+/// cannot serve: its opaque rounded square would turn into a solid blob.
+fn menu_bar_template() -> Image<'static> {
+    tauri::include_image!("icons/tray-template.png")
 }
 
 #[cfg(test)]
@@ -76,8 +70,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn silhouette_keeps_only_the_alpha() {
-        let px = [10, 20, 30, 0, 200, 100, 50, 255, 1, 2, 3, 128];
-        assert_eq!(silhouette(&px), vec![0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 128]);
+    fn the_menu_bar_icon_is_a_black_template_with_shape() {
+        let icon = menu_bar_template();
+        assert_eq!((icon.width(), icon.height()), (44, 44));
+        let px: Vec<&[u8]> = icon.rgba().chunks_exact(4).collect();
+        assert!(px.iter().all(|p| p[..3] == [0, 0, 0]));
+        // transparent around the mark, not one filled square
+        assert!(px.iter().any(|p| p[3] == 0) && px.iter().any(|p| p[3] == 255));
     }
 }
