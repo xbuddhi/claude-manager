@@ -29,6 +29,8 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         // ---- fsutil (WP4) ----
         // ---- actions (WP5) ----
         // ---- profiles UI (WP6) ----
+        crate::profiles_cmd::create_profile,
+        crate::profiles_cmd::open_profile_folder,
         // ---- usage (WP7) ----
         // ---- git (WP8) ----
         // ---- os (WP9) ----

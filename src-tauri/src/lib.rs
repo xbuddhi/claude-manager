@@ -16,6 +16,7 @@ pub mod pty;
 // WP4 fsutil
 // WP5 actions
 // WP6 profiles_cmd
+pub mod profiles_cmd;
 // WP7 usage
 // WP8 git
 // WP9 os
