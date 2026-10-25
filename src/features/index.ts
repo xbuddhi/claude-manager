@@ -21,6 +21,7 @@ import { mount as mountSessions } from "./sessions";
 // WP6 profiles + settings
 
 // WP7 usage
+import { mount as mountUsage } from "./usage";
 
 // WP8 git
 
@@ -44,6 +45,7 @@ export function mountFeatures(): void {
   mountSearch();
   // WP6 profiles + settings
   // WP7 usage
+  mountUsage();
   // WP8 git
   // WP9 os
   // WP10 updater
