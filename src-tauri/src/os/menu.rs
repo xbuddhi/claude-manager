@@ -1,9 +1,10 @@
-//! Native application menu (macOS only; Windows has no menu bar).
+//! Native application menu (macOS only; Windows has no menu bar) and the handler for every menu event,
+//! the tray menu's included.
 //!
 //! Replaces Tauri's default macOS menu, whose Close Window (Cmd+W) and Quit (Cmd+Q) would end every
 //! running session without asking. The Edit menu must stay: WKWebView copy, paste and undo only work
 //! through it. Items with a custom id are sent to the frontend as `menu` events ({ id }), except the
-//! ones handled here (quit, show logs). WP9 adds the remaining items in the marked blocks.
+//! ones handled here (quit, show logs, show window).
 //!
 //! The ids below are the contract with the frontend: they are also its command ids (`core/commands.ts`),
 //! "<area>:<action>" with a colon. Anything that triggers one of these actions (tray menu, shortcuts)
@@ -12,7 +13,7 @@
 use crate::core::types::MenuEvent;
 use crate::core::{events, lifecycle, open};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Builder, Emitter, Runtime, Wry};
+use tauri::{AppHandle, Builder, Emitter, Manager, Runtime, Wry};
 
 // ---- menu ids (also used as command ids by the frontend shortcut registry) ----
 pub const SETTINGS: &str = "app:settings";
@@ -24,14 +25,15 @@ pub const PREV_TAB: &str = "tab:prev";
 pub const FIND: &str = "search:focus";
 pub const REFRESH: &str = "refresh:full";
 pub const SHOW_LOGS: &str = "help:logs";
+/// The tray menu's "Show Claude Sessions"; handled here.
+pub const SHOW_WINDOW: &str = "app:show";
 
-/// Installs the menu on macOS. Called once in `lib.rs` on the builder.
+/// Installs the menu on macOS, and the menu event handler everywhere. The tray menu uses the same
+/// handler: Tauri sends every menu event to every global handler, so there must be exactly one.
 pub fn attach(builder: Builder<Wry>) -> Builder<Wry> {
+    let builder = builder.on_menu_event(|app, event| on_menu_event(app, event.id().as_ref()));
     if cfg!(target_os = "macos") {
-        builder
-            .enable_macos_default_menu(false)
-            .menu(build)
-            .on_menu_event(|app, event| on_menu_event(app, event.id().as_ref()))
+        builder.enable_macos_default_menu(false).menu(build)
     } else {
         builder
     }
@@ -122,15 +124,27 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 pub fn on_menu_event(app: &AppHandle, id: &str) {
     match id {
         QUIT => lifecycle::request_quit(app),
+        SHOW_WINDOW => lifecycle::show_main(app),
         SHOW_LOGS => {
             if let Err(e) = open::show_log_dir(app) {
                 log::error!("{e}");
             }
         }
         _ => {
+            // chosen while the window is hidden (tray, or macOS with the window closed): show it first
+            show_if_hidden(app);
             if let Err(e) = app.emit(events::MENU, MenuEvent { id: id.to_string() }) {
                 log::error!("could not send menu event {id}: {e}");
             }
+        }
+    }
+}
+
+fn show_if_hidden(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(lifecycle::MAIN_WINDOW) {
+        let hidden = !w.is_visible().unwrap_or(true) || w.is_minimized().unwrap_or(false);
+        if hidden {
+            lifecycle::show_main(app);
         }
     }
 }
