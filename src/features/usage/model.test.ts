@@ -9,6 +9,7 @@ import {
   plansStale,
   ringFraction,
   ringState,
+  sameDirs,
   samePlans,
   sessionPercent,
   statusLine,
@@ -67,6 +68,12 @@ describe("scope", () => {
     expect(samePlans(plans, ["c:/users/me/.claude/"], "windows")).toBe(true);
     expect(samePlans(plans, ["C:\\Users\\Me\\.claude", "x"], "windows")).toBe(false);
     expect(samePlans([], [], "windows")).toBe(true);
+  });
+
+  it("tells whether local counts belong to the profiles in view", () => {
+    expect(sameDirs(["C:\\Users\\Me\\.claude"], ["c:/users/me/.claude"], "windows")).toBe(true);
+    expect(sameDirs(["/h/.claude"], ["/h/.claude-work"], "macos")).toBe(false);
+    expect(sameDirs(["/h/.claude"], ["/h/.claude", "/h/.claude-x"], "macos")).toBe(false);
   });
 });
 

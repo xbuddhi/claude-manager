@@ -18,6 +18,11 @@ export function localScope(current: string | null, profiles: Profile[]): string[
   return current !== null ? [current] : profiles.map((p) => p.dir);
 }
 
+/** Whether two profile lists name the same folders, in order. */
+export function sameDirs(a: readonly string[], b: readonly string[], os: string): boolean {
+  return a.length === b.length && a.every((d, i) => samePath(d, b[i] ?? "", os));
+}
+
 /** Whether `plans` are the reports of exactly `dirs`, in order. */
 export function samePlans(plans: PlanReport[], dirs: string[], os: string): boolean {
   return plans.length === dirs.length && plans.every((p, i) => samePath(p.profile, dirs[i] ?? "", os));

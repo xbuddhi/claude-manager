@@ -12,7 +12,7 @@ import { $, setHtml } from "../../core/dom";
 import { store } from "../../core/store";
 import { openPopover, type Popover } from "../../ui/popover";
 import { profileLabel } from "../profiles/api";
-import { localScope, planScope, plansStale, ringFraction, ringState, samePlans } from "./model";
+import { localScope, planScope, plansStale, ringFraction, ringState, sameDirs, samePlans } from "./model";
 import { panelHtml } from "./popover";
 import { createRing, type Ring } from "./ring";
 import "./state";
@@ -76,11 +76,27 @@ async function refreshPlans(force = false) {
   else store.set({ usagePlansBusy: false });
 }
 
+/** Set when a refresh was asked for while one ran: it runs once more when that one ends. */
+let localAgain = false;
+/** The profiles `usageLocal` was counted for. */
+let localFor: string[] = [];
+
 async function refreshLocal() {
-  if (store.get().usageLocalBusy) return;
+  if (store.get().usageLocalBusy) {
+    localAgain = true;
+    return;
+  }
   store.set({ usageLocalBusy: true });
-  const res = await call("usage_local", { profiles: scopes().local }, { quiet: true });
-  store.set({ usageLocalBusy: false, ...(res.ok ? { usageLocal: res.value } : {}) });
+  const asked = scopes().local;
+  const res = await call("usage_local", { profiles: asked }, { quiet: true });
+  // the profile changed while it ran: these numbers belong to the old one
+  const inView = sameDirs(asked, scopes().local, store.get().platform.os);
+  if (res.ok && inView) localFor = asked;
+  store.set({ usageLocalBusy: false, ...(res.ok && inView ? { usageLocal: res.value } : {}) });
+  if (localAgain || !inView) {
+    localAgain = false;
+    void refreshLocal();
+  }
 }
 
 /** The profiles in view changed: saved numbers first, then fresh ones. */
@@ -90,6 +106,8 @@ async function scopeChanged() {
     const cached = await call("usage_cached", { profiles: scopes().plans }, { quiet: true });
     store.set({ usagePlans: cached.ok && isInView(cached.value) ? cached.value : [] });
   }
+  // never the previous profile's counts under this one
+  if (!sameDirs(localFor, scopes().local, store.get().platform.os)) store.set({ usageLocal: null });
   void refreshLocal();
   void refreshPlans();
 }
