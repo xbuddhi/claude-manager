@@ -51,6 +51,9 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::profiles_cmd::create_profile,
         crate::profiles_cmd::open_profile_folder,
         // ---- usage (WP7) ----
+        crate::usage::usage_cached,
+        crate::usage::usage_plans,
+        crate::usage::usage_local,
         // ---- git (WP8) ----
         // ---- os (WP9) ----
         crate::os::explorer_menu::explorer_menu_state,

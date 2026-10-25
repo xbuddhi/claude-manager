@@ -22,6 +22,7 @@ pub mod actions;
 // WP6 profiles_cmd
 pub mod profiles_cmd;
 // WP7 usage
+pub mod usage;
 // WP8 git
 // WP9 os
 pub mod os;
@@ -66,6 +67,7 @@ pub fn run() {
             // WP5 actions
             // WP6 profiles_cmd
             // WP7 usage
+            usage::init(app)?;
             // WP8 git
             // WP9 os
             os::init(app)?;

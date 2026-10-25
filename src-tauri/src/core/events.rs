@@ -25,5 +25,7 @@ pub const LIVE_CHANGED: &str = "live-changed";
 /// Payload: `NotifyClicked`: a finish notification was clicked; the window is already shown.
 pub const NOTIFY_CLICKED: &str = "notify:clicked";
 // ---- usage (WP7) ----
+/// Payload: `PlansUpdate` (usage::types): plan limits in view, at the start and the end of a refresh.
+pub const USAGE_PLANS: &str = "usage-plans";
 // ---- git (WP8) ----
 // ---- os (WP9) ----

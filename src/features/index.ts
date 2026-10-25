@@ -24,6 +24,7 @@ import { mount as mountProfiles } from "./profiles";
 import { mount as mountSettings } from "./settings";
 
 // WP7 usage
+import { mount as mountUsage } from "./usage";
 
 // WP8 git
 
@@ -51,6 +52,7 @@ export function mountFeatures(): void {
   mountSettings();
   mountProfiles();
   // WP7 usage
+  mountUsage();
   // WP8 git
   // WP9 os
   mountOs();

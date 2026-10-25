@@ -1,0 +1,226 @@
+/* Usage ring in the title bar and its popover (WP7). */
+
+.use-ring {
+  order: -1; /* left of the profile avatar, whichever mounts first */
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  cursor: default;
+}
+.use-ring[hidden] {
+  display: none;
+}
+.use-ring:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.use-ring svg {
+  display: block;
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.use-track {
+  stroke: var(--track);
+  transition: stroke 0.15s var(--ease);
+}
+.use-ring:hover .use-track,
+.use-ring[aria-expanded="true"] .use-track {
+  stroke: var(--ctrl-hover);
+}
+.use-arc {
+  stroke: var(--accent);
+  stroke-dasharray: 0 360;
+}
+.use-turn {
+  transform-box: view-box;
+  transform-origin: center;
+}
+.use-ring[data-state="loading"] .use-arc {
+  opacity: 0.7;
+}
+.use-ring[data-state="loading"] .use-turn {
+  animation: use-spin 1.2s linear infinite;
+}
+.use-ring[data-state="failed"] .use-arc {
+  stroke: var(--danger);
+  opacity: 0.8;
+}
+@keyframes use-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- popover ---- */
+
+.use-panel {
+  width: 330px;
+  padding: 12px 16px 14px;
+  font-size: 13px;
+  color: var(--text);
+}
+.use-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 16px;
+}
+.use-title {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.use-scope {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  white-space: pre;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--muted);
+}
+.use-spinner {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 1.6px solid var(--accent);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: use-spin 0.9s linear infinite;
+}
+.use-status {
+  margin: 6px 0 10px;
+  font-size: 12px;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.use-profile {
+  margin: 2px 0 4px;
+  font-weight: 600;
+}
+.use-error {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.use-limit {
+  height: 52px;
+}
+.use-limit-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  line-height: 18px;
+}
+.use-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.use-track-bar {
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 3px;
+  background: var(--track);
+  overflow: hidden;
+}
+.use-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s var(--ease);
+}
+.use-reset {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre;
+  color: var(--muted);
+}
+
+/* breathing placeholder rows while nothing has loaded yet */
+.use-skel {
+  height: 52px;
+}
+.use-skel i {
+  display: block;
+  border-radius: 5px;
+  background: var(--track);
+  animation: use-breathe 1.6s ease-in-out infinite;
+}
+.use-skel i:nth-child(1) {
+  width: 45%;
+  height: 10px;
+  margin-top: 4px;
+}
+.use-skel i:nth-child(2) {
+  height: 6px;
+  margin-top: 10px;
+}
+.use-skel i:nth-child(3) {
+  width: 60%;
+  height: 8px;
+  margin-top: 6px;
+}
+@keyframes use-breathe {
+  50% {
+    background: var(--ctrl-hover);
+  }
+}
+
+.use-foot {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+.use-foot span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: ellipsis;
+}
+.use-bars {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  width: 60px;
+  height: 18px;
+}
+.use-bars i {
+  flex: 1;
+  border-radius: 1.5px;
+  background: var(--muted);
+  opacity: 0.45;
+}
+.use-bars i.today {
+  background: var(--accent);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .use-skel i {
+    animation: none;
+  }
+  .use-fill {
+    transition: none;
+  }
+}
