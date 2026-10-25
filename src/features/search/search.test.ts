@@ -59,6 +59,15 @@ describe("search box", () => {
     selects.length = 0;
   });
 
+  it("is cleared when another profile is entered", () => {
+    type("app");
+    expect(input().value).toBe("app");
+    store.set({ currentProfile: "C:\\Users\\me\\.claude-work" });
+    expect(input().value).toBe("");
+    expect(store.get().searchQuery).toBe("");
+    store.set({ currentProfile: null });
+  });
+
   it("shows the shortcut in the placeholder for each OS", () => {
     expect(placeholder(false)).toBe("Search projects and sessions   (Ctrl+F)");
     expect(placeholder(true)).toBe("Search projects and sessions   (⌘F)");

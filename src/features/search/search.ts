@@ -297,4 +297,9 @@ export function mountSearch(slot: HTMLElement): void {
     input.select();
   });
   on("profile:enter", reset);
+  // entering a profile from anywhere (picker, avatar menu, new profile) clears the box
+  store.select(
+    (s) => s.currentProfile,
+    () => reset(),
+  );
 }
