@@ -24,13 +24,13 @@ html.os-macos:not(.fullscreen) #titlebar {
   display: none;
 }
 html.os-windows #titlebar {
-  padding-right: 152px; /* 3 x 46px buttons + 14px */
+  padding-right: 158px; /* 3 x 46px buttons + 20px */
 }
 html.os-windows #tb-caption {
   position: absolute;
   top: 0;
   right: 0;
-  height: 36px;
+  height: var(--titlebar-h); /* full height, so the glyphs share the header's centre line */
   display: flex;
 }
 .tb-cap {
