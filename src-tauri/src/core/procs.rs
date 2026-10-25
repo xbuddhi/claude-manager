@@ -300,7 +300,8 @@ mod job {
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation, SetInformationJobObject,
+        JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+        SetInformationJobObject,
     };
     use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
 
@@ -312,7 +313,14 @@ mod job {
     static JOB: OnceLock<Job> = OnceLock::new();
 
     /// Creates the app-wide job. Its handle is never closed: Windows closes it when this process ends,
-    /// and KILL_ON_JOB_CLOSE then ends every process assigned to it.
+    /// and KILL_ON_JOB_CLOSE then ends every process assigned to it, so a crash leaves no terminal's
+    /// process behind.
+    ///
+    /// SILENT_BREAKAWAY_OK keeps the job to the processes assigned to it (each terminal's own process):
+    /// what they start does not join it. Otherwise a browser that `/login` opens, `code .` or a dev server
+    /// started inside claude would be killed whenever Claude Manager quits. Console programs claude
+    /// starts still end with it: they share the terminal's console, which closes with this process; a
+    /// normal quit ends each terminal's whole tree (`kill_trees`).
     pub fn init_job() -> AppResult<()> {
         if JOB.get().is_some() {
             return Ok(());
@@ -324,7 +332,8 @@ mod job {
                 return Err(std::io::Error::last_os_error().into());
             }
             let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            info.BasicLimitInformation.LimitFlags =
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
             let ok = SetInformationJobObject(
                 handle,
                 JobObjectExtendedLimitInformation,
@@ -343,7 +352,7 @@ mod job {
         Ok(())
     }
 
-    /// Puts `pid` (and so everything it starts later) in the app-wide job.
+    /// Puts `pid` (not what it starts later, see `init_job`) in the app-wide job.
     pub fn assign_to_job(pid: u32) -> AppResult<()> {
         let job = JOB
             .get()
@@ -362,6 +371,25 @@ mod job {
             }
         }
         Ok(())
+    }
+
+    /// Whether `pid` is in the app-wide job (tests).
+    #[cfg(test)]
+    pub fn in_job(pid: u32) -> bool {
+        use windows_sys::Win32::System::JobObjects::IsProcessInJob;
+        use windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+        let Some(job) = JOB.get() else { return false };
+        // SAFETY: documented Win32 calls; the process handle is closed on every path.
+        unsafe {
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if process.is_null() {
+                return false;
+            }
+            let mut result = 0;
+            let ok = IsProcessInJob(process, job.0, &mut result);
+            CloseHandle(process);
+            ok != 0 && result != 0
+        }
     }
 }
 
@@ -469,6 +497,32 @@ mod tests {
         init_job().unwrap();
         let mut child = spawn_tree(true);
         assign_to_job(child.id()).unwrap();
+        kill_tree(child.id());
+        let _ = child.wait();
+    }
+
+    /// What an assigned process starts later (a browser opened by /login, `code .`) stays out of the
+    /// job, so quitting the app does not kill it.
+    #[cfg(windows)]
+    #[test]
+    fn processes_started_later_by_a_job_member_stay_out_of_the_job() {
+        init_job().unwrap();
+        let mut child = Command::new("cmd")
+            .args(["/d", "/c", "ping -n 2 127.0.0.1 >NUL & ping -n 30 127.0.0.1 >NUL"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        assign_to_job(child.id()).unwrap();
+        assert!(job::in_job(child.id()));
+        // the second ping starts about a second after the assignment
+        let started_later = || {
+            std::thread::sleep(Duration::from_millis(1500));
+            Procs::new().descendants_of(child.id())
+        };
+        let later = started_later();
+        assert!(!later.is_empty());
+        assert!(later.iter().all(|&pid| !job::in_job(pid)), "{later:?}");
         kill_tree(child.id());
         let _ = child.wait();
     }
