@@ -1,0 +1,15 @@
+{
+  "limits": [
+    { "kind": "five_hour", "group": "session", "scope": null, "percent": 37, "resets_at": "2026-10-25T15:00:00Z" },
+    { "kind": "seven_day", "group": "weekly", "scope": {}, "percent": 21.4, "resets_at": "2026-10-29T09:00:00+00:00" },
+    {
+      "kind": "seven_day_opus",
+      "group": "weekly",
+      "scope": { "model": { "display_name": "Opus" } },
+      "percent": 12.5,
+      "resets_at": "2026-10-29T09:00:00Z"
+    },
+    { "kind": "extra_usage", "group": "other", "percent": 0, "resets_at": null }
+  ],
+  "five_hour": { "utilization": 99, "resets_at": "2026-10-25T15:00:00Z" }
+}

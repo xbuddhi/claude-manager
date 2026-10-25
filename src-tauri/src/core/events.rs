@@ -16,5 +16,7 @@ pub const MENU: &str = "menu";
 // ---- pty + launch (WP2) ----
 // ---- live + notify (WP3) ----
 // ---- usage (WP7) ----
+/// Payload: `PlansUpdate` (usage::types): plan limits in view, at the start and the end of a refresh.
+pub const USAGE_PLANS: &str = "usage-plans";
 // ---- git (WP8) ----
 // ---- os (WP9) ----

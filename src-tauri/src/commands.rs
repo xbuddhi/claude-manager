@@ -30,6 +30,9 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         // ---- actions (WP5) ----
         // ---- profiles UI (WP6) ----
         // ---- usage (WP7) ----
+        crate::usage::usage_cached,
+        crate::usage::usage_plans,
+        crate::usage::usage_local,
         // ---- git (WP8) ----
         // ---- os (WP9) ----
     ]
