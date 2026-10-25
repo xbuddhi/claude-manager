@@ -1,0 +1,5 @@
+# ts-rs writes the TypeScript bindings straight into the frontend when `cargo test` runs.
+[env]
+TS_RS_EXPORT_DIR = { value = "../src/bindings", relative = true }
+# Timestamps and sizes are u64 in Rust; as JS numbers they stay exact far beyond any real value.
+TS_RS_LARGE_INT = "number"

@@ -1,0 +1,70 @@
+# Quality gate for every pull request and every push to main, on both target platforms.
+# Third-party actions are pinned by commit SHA (tag in the comment) so a moved tag cannot change what runs.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from package.json packageManager)
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # rustup reads the pinned toolchain (and clippy/rustfmt) from src-tauri/rust-toolchain.toml
+      - name: Install Rust toolchain
+        working-directory: src-tauri
+        run: rustup toolchain install
+
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Frontend lint (biome ci) and unit tests (vitest) join here with the frontend restructure (F5).
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: cargo fmt
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --locked
+
+      # cargo test regenerates src/bindings; any change or new file means the committed bindings are stale
+      - name: TypeScript bindings are up to date
+        shell: bash
+        run: |
+          git status --porcelain -- src/bindings
+          test -z "$(git status --porcelain -- src/bindings)"

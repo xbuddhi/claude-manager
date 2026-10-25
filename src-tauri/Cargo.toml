@@ -2,15 +2,13 @@
 name = "claude-manager"
 version = "0.1.0"
 description = "Claude Code session manager"
-authors = ["you"]
+authors = ["xbuddhi"]
 edition = "2024"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+rust-version = "1.94"
+publish = false
 
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+# The `_lib` suffix keeps the lib name distinct from the bin name (https://github.com/rust-lang/cargo/issues/8519).
 name = "claude_manager_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
@@ -19,17 +17,45 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-log = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 portable-pty = "0.9.0"
-dirs = "7.0.0"
+dirs = "7"
+thiserror = "2"
+ts-rs = "12"
+sysinfo = { version = "0.38", default-features = false, features = ["system"] }
+log = "0.4"
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+] }
 
-# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+# Dependencies are optimized in dev builds too: transcript scanning and the PTY pump are slow at opt-level 0.
+[profile.dev.package."*"]
+opt-level = 2
+
+# https://tauri.app/concept/size/#cargo-configuration
+# panic stays "unwind": a panic in a worker thread is logged and must not take running sessions down with it.
 [profile.release]
 codegen-units = 1
 lto = true
 opt-level = 3
-panic = "abort"
 strip = true

@@ -1,15 +1,23 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { message } from "@tauri-apps/plugin-dialog";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import "@xterm/xterm/css/xterm.css";
 import { Spring, animate, smoothScroll } from "./spring";
+import type { CloseRequest } from "./bindings/CloseRequest";
+import type { MenuEvent } from "./bindings/MenuEvent";
+import type { Profile } from "./bindings/Profile";
+import type { Project } from "./bindings/Project";
+import type { PtyEvent } from "./bindings/PtyEvent";
+import type { QuitDecision } from "./bindings/QuitDecision";
+import type { Session } from "./bindings/Session";
 
-type Session = { id: string; file: string; cwd: string | null; label: string; count: number; modified: number; sizeKb: number; profile: string };
-type Project = { path: string; name: string; modified: number; sessions: Session[] };
-type Profile = { dir: string; name: string };
-type PtyEvent = { kind: "data"; data: string } | { kind: "exit"; code: number | null };
+// what a terminal runs; the backend validates it and builds the claude command line itself
+type Launch = { kind: "new"; dir: string; profile: string } | { kind: "resume"; sessionId: string; profile: string; fork: boolean; dir: string };
 type Tab = { key: number; title: string; sub: string; pane: HTMLElement; term: Terminal; fit: FitAddon; ptyId: number | null; exited: boolean; armed: number; closing: boolean };
 
 const isWindows = navigator.userAgent.includes("Windows");
@@ -368,16 +376,18 @@ function closeTab(tab: Tab) {
 
 // ---------- terminals ----------
 function newSession(p: Project) {
-  openTerminal(p.path, startProfile(p), [], "New session", `${p.name} · ${profileName(startProfile(p))}`);
+  const profile = startProfile(p);
+  openTerminal({ kind: "new", dir: p.path, profile }, "New session", `${p.name} · ${profileName(profile)}`);
 }
 function resume(p: Project, s: Session) {
   // already open? go to it
   const open = tabs.find((t) => t.sub.endsWith(s.id.slice(0, 8)) && !t.exited && !t.closing);
   if (open) return showTab(open);
-  openTerminal(s.cwd ?? p.path, s.profile, ["--resume", s.id], s.label.slice(0, 40), `${p.name} · ${s.id.slice(0, 8)}`);
+  const launch: Launch = { kind: "resume", sessionId: s.id, profile: s.profile, fork: false, dir: s.cwd ?? p.path };
+  openTerminal(launch, s.label.slice(0, 40), `${p.name} · ${s.id.slice(0, 8)}`);
 }
 
-async function openTerminal(cwd: string, profile: string, args: string[], title: string, sub: string) {
+async function openTerminal(launch: Launch, title: string, sub: string) {
   const pane = document.createElement("div");
   pane.className = "term-pane";
   el.panes.appendChild(pane);
@@ -444,11 +454,17 @@ async function openTerminal(cwd: string, profile: string, args: string[], title:
     }
   };
   try {
-    tab.ptyId = await invoke<number>("pty_spawn", { cwd, profile, args, cols: term.cols, rows: term.rows, onEvent: ch });
+    const size = { cols: term.cols, rows: term.rows, onEvent: ch };
+    tab.ptyId =
+      launch.kind === "new"
+        ? await invoke<number>("pty_new", { dir: launch.dir, profile: launch.profile, ...size })
+        : await invoke<number>("pty_resume", { sessionId: launch.sessionId, profile: launch.profile, fork: launch.fork, dir: launch.dir, ...size });
     for (const d of pending.splice(0)) send(d);
   } catch (e) {
     tab.exited = true;
-    term.write(`\x1b[31m${String(e)}\x1b[0m\r\n`);
+    // commands reject with { code, message } (bindings/AppError)
+    const msg = typeof e === "object" && e !== null && "message" in e ? String(e.message) : String(e);
+    term.write(`\x1b[31m${msg.replace(/\n/g, "\r\n")}\x1b[0m\r\n`);
     renderTabs();
   }
 }
@@ -470,11 +486,29 @@ new ResizeObserver(() => {
 smoothScroll(el.projects);
 smoothScroll(el.home);
 
+// ---------- app close, native menu ----------
+// closing or quitting while terminals run: the backend waits for this answer
+listen<CloseRequest>("app:close-requested", async ({ payload }) => {
+  const n = payload.terminals;
+  const answer = await message(
+    "Keep running in the background? Claude can keep working, and they come back as tabs the next time you open the app. Closing them ends them; the sessions stay saved and can be resumed.",
+    { title: `${n} terminal${n === 1 ? " is" : "s are"} still open inside the app`, kind: "warning", buttons: { yes: "Keep running", no: "Close terminals", cancel: "Cancel" } },
+  );
+  const decision: QuitDecision = answer === "Keep running" ? "keep" : answer === "Close terminals" ? "close" : "cancel";
+  await invoke("app_quit_decision", { decision });
+});
+listen<MenuEvent>("menu", ({ payload }) => {
+  if (payload.id === "search:focus") el.search.focus();
+  else if (payload.id === "refresh:full") refresh();
+  else if (payload.id === "tab:close" && active) closeTab(active);
+});
+
 // ---------- start ----------
 window.addEventListener("DOMContentLoaded", async () => {
   renderTabs();
   renderHome();
   renderSidebar(); // "Loading sessions..." while the first scan runs
+  getCurrentWindow().show(); // created hidden, so it never flashes before the first paint
   invoke("pty_kill_all"); // after a reload, end terminals the old page had open
   profiles = await invoke<Profile[]>("list_profiles");
   el.profile.innerHTML = `<option value="all">All profiles</option>` + profiles.map((p) => `<option value="${esc(p.dir)}">${esc(p.name)}</option>`).join("");

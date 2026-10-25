@@ -1,58 +1,52 @@
-mod pty;
-mod sessions;
+//! Claude Manager: builder, plugins and feature registration only. Each feature lives in its own
+//! module; it registers here with one line in the feature init block and its commands in `commands.rs`.
 
-use pty::{PtyEvent, Terms};
-use tauri::ipc::Channel;
-use tauri::{Manager, State};
+pub mod commands;
+pub mod core;
+pub mod os;
+pub mod pty;
+pub mod sessions;
 
-#[tauri::command]
-fn list_profiles() -> Vec<sessions::Profile> {
-    sessions::profiles()
-}
-
-// file reading runs off the UI thread
-#[tauri::command]
-async fn list_projects() -> Result<Vec<sessions::Project>, String> {
-    tauri::async_runtime::spawn_blocking(sessions::projects).await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn pty_spawn(terms: State<Terms>, cwd: String, profile: String, args: Vec<String>, cols: u16, rows: u16, on_event: Channel<PtyEvent>) -> Result<u32, String> {
-    terms.spawn(&cwd, &profile, &args, cols, rows, on_event)
-}
-
-#[tauri::command]
-fn pty_write(terms: State<Terms>, id: u32, data: String) -> Result<(), String> {
-    terms.write(id, &data)
-}
-
-#[tauri::command]
-fn pty_resize(terms: State<Terms>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
-    terms.resize(id, cols, rows)
-}
-
-#[tauri::command]
-fn pty_kill(terms: State<Terms>, id: u32) {
-    terms.kill(id)
-}
-
-// the window was reloaded: terminals from the old page have no tab any more
-#[tauri::command]
-fn pty_kill_all(terms: State<Terms>) {
-    terms.kill_all()
-}
+use tauri_plugin_window_state::StateFlags;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
+        // must be the first plugin, so a second launch exits before anything else starts
+        .plugin(tauri_plugin_single_instance::init(
+            crate::core::lifecycle::on_second_instance,
+        ))
+        .plugin(crate::core::log_plugin())
+        // the window stays hidden until the frontend has painted; restoring must not show it early
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
+                .build(),
+        )
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_notification::init())
+        // used from Rust only; the webview has no opener permissions
         .plugin(tauri_plugin_opener::init())
-        .manage(Terms::default())
-        .invoke_handler(tauri::generate_handler![list_profiles, list_projects, pty_spawn, pty_write, pty_resize, pty_kill, pty_kill_all])
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Destroyed = event {
-                window.state::<Terms>().kill_all(); // closing the app ends its terminals
-            }
-        })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .plugin(tauri_plugin_process::init())
+        .invoke_handler(commands::handler())
+        .on_window_event(crate::core::lifecycle::on_window_event)
+        .setup(|app| {
+            crate::core::init(app)?;
+            // ---- feature init (one line each) ----
+            pty::init(app)?;
+            // ---- end feature init ----
+            crate::core::webview::create_main_window(app)?;
+            Ok(())
+        });
+    let builder = os::menu::attach(builder);
+
+    match builder.build(tauri::generate_context!()) {
+        Ok(app) => app.run(crate::core::lifecycle::on_run_event),
+        Err(e) => {
+            log::error!("could not start: {e}");
+            eprintln!("Claude Manager could not start: {e}");
+            std::process::exit(1);
+        }
+    }
 }
