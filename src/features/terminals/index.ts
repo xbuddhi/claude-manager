@@ -16,7 +16,7 @@ import { emit, type LaunchRequest, on } from "../../core/bus";
 import { registerCommand } from "../../core/commands";
 import { $ } from "../../core/dom";
 import { leaf } from "../../core/format";
-import { registerShortcut } from "../../core/keyboard";
+import { modalOpen, registerShortcut } from "../../core/keyboard";
 import { describeError, log } from "../../core/log";
 import { settleIn } from "../../core/motion";
 import { profileName } from "../../core/profiles";
@@ -440,9 +440,9 @@ export function mount(): void {
 
   // keep the visible terminal sized to its pane
   new ResizeObserver(() => active?.view.fitNow()).observe(panes);
-  // window focus -> the terminal in front gets the keys
+  // window focus -> the terminal in front gets the keys, unless a dialog is open (Enter would reach claude)
   window.addEventListener("focus", () => {
-    if (active && store.get().screen === "main") active.view.focus();
+    if (active && store.get().screen === "main" && !modalOpen()) active.view.focus();
   });
   if (isTauri()) installDrops();
 

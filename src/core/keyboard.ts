@@ -162,8 +162,8 @@ function isBrowserKey(e: KeyboardEvent, mac: boolean): boolean {
 
 let lastRun = { id: "", at: 0 };
 
-/** While a modal dialog is open, app shortcuts and menu commands wait (they would act behind it). */
-function modalOpen(): boolean {
+/** While a modal dialog or sheet is open, app shortcuts, menu commands and terminal focus wait (they would act behind it). */
+export function modalOpen(): boolean {
   return document.querySelector('[aria-modal="true"]') !== null;
 }
 

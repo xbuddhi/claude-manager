@@ -11,7 +11,7 @@ import type { PtyExit } from "../../bindings/PtyExit";
 import { call } from "../../core/api";
 import { registerCommand } from "../../core/commands";
 import { $, nextFrame } from "../../core/dom";
-import { installKeyboard, registerShortcut } from "../../core/keyboard";
+import { installKeyboard, modalOpen, registerShortcut } from "../../core/keyboard";
 import { captureGlobalErrors, describeError, log } from "../../core/log";
 import { initPlatform } from "../../core/platform";
 import { initProfiles, profileName } from "../../core/profiles";
@@ -77,7 +77,10 @@ async function start() {
   });
   view.open();
   new ResizeObserver(() => view.fitNow()).observe(view.pane);
-  window.addEventListener("focus", () => view.focus());
+  // not behind the close dialog: Enter or Esc would reach claude
+  window.addEventListener("focus", () => {
+    if (!modalOpen()) view.focus();
+  });
 
   registerCommand({
     id: "tab:close",

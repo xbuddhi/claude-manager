@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { registerCommand } from "./commands";
-import { handleKeydown, matchChord, parseChord, registerShortcut } from "./keyboard";
+import { handleKeydown, matchChord, modalOpen, parseChord, registerShortcut } from "./keyboard";
 
 const key = (k: string, code: string, mods: Partial<KeyboardEventInit> = {}) =>
   new KeyboardEvent("keydown", { key: k, code, bubbles: true, cancelable: true, ...mods });
@@ -81,7 +81,9 @@ describe("handleKeydown", () => {
     const reload = key("F5", "F5");
     press(plain, reload, false);
     expect(reload.defaultPrevented).toBe(true);
+    expect(modalOpen()).toBe(true);
     modal.remove();
+    expect(modalOpen()).toBe(false);
     expect(run).not.toHaveBeenCalled();
   });
 
