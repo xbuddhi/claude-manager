@@ -81,6 +81,17 @@ describe("searchItems", () => {
     expect(folders[1]).toMatchObject({ sub: "code", right: "", live: 0, group: null });
   });
 
+  it("sorts and ages folders by the sessions in view, not every profile's activity", () => {
+    // projectsFor() keeps the project's all-profile `modified` (5 minutes ago) next to this profile's sessions
+    const projects = [
+      project("C:\\code\\app", NOW - 5 * 60_000, [session("old", NOW - 21 * 24 * HOUR)]),
+      project("C:\\code\\app-two", NOW - 2 * HOUR, [session("new", NOW - 2 * HOUR)]),
+    ];
+    const folders = searchItems("app", data({ projects })).filter((i) => i.kind === "folder");
+    expect(folders.map((f) => f.title)).toEqual(["app-two", "app"]);
+    expect(folders[1]?.right).not.toBe("5m ago");
+  });
+
   it("lists matching sessions newest first, at most 8, without '(no prompt)'", () => {
     const sessions = [
       session("(no prompt)", NOW),

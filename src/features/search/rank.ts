@@ -80,20 +80,22 @@ export function searchItems(query: string, d: SearchData): SearchItem[] {
     }
   }
 
+  // the newest session in view: p.modified counts every profile's sessions
+  const last = (p: Project) => p.sessions.reduce((m, s) => Math.max(m, s.modified), 0);
   const folders = d.projects
-    .map((p) => ({ p, name: lower(p, leaf(p.path)) }))
+    .map((p) => ({ p, name: lower(p, leaf(p.path)), last: last(p) }))
     .filter((x) => x.name.includes(q))
-    .sort((a, b) => rank(a.name, q) - rank(b.name, q) || b.p.modified - a.p.modified)
+    .sort((a, b) => rank(a.name, q) - rank(b.name, q) || b.last - a.last)
     .slice(0, LIMITS.folders);
   if (folders.length) {
     out.push({ kind: "section", title: "FOLDERS" });
-    for (const { p } of folders) {
+    for (const { p, last } of folders) {
       const group = groupOf(p.path, d.groups, d.os)?.name ?? null;
       out.push({
         kind: "folder",
         title: leaf(p.path),
         sub: group ? `in ${group}` : parentLeaf(p.path),
-        right: p.sessions.length ? ago(p.modified, now) : "",
+        right: p.sessions.length ? ago(last, now) : "",
         live: d.liveCwd[pathKey(p.path, d.os)] ?? 0,
         path: p.path,
         group,
