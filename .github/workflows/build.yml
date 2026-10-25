@@ -1,12 +1,15 @@
-# Builds the app on GitHub's machines: a universal macOS .dmg (Apple Silicon + Intel) and a Windows installer.
-# Run it from the Actions tab ("Run workflow") or by pushing a v* tag. Unsigned for now: on a Mac, open it the
-# first time with right-click > Open. Signing and notarizing need an Apple Developer account (see README).
+# Test build on demand (Actions tab > build > Run workflow): the Windows installer and the universal macOS
+# dmg as workflow artifacts, unsigned and without updater files. Nothing is released; releases come from
+# release.yml when a vX.Y.Z tag is pushed.
+# Unsigned on a Mac: after the first attempt to open it, System Settings > Privacy & Security > Open Anyway,
+# or `xattr -dr com.apple.quarantine "/Applications/Claude Manager.app"` (right-click > Open no longer works).
 name: build
 
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -14,41 +17,37 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            args: --target universal-apple-darwin
           - os: windows-latest
             args: ""
+          - os: macos-latest
+            args: --target universal-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from package.json packageManager)
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - name: Install Rust toolchain
+        working-directory: src-tauri
+        run: rustup toolchain install
 
-      - uses: swatinem/rust-cache@v2
+      - name: Add the Apple Silicon and Intel targets
+        if: runner.os == 'macOS'
+        working-directory: src-tauri
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src-tauri -> target
 
       - run: pnpm install --frozen-lockfile
 
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         with:
           args: ${{ matrix.args }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: claude-manager-${{ matrix.os }}
-          path: |
-            src-tauri/target/**/release/bundle/dmg/*.dmg
-            src-tauri/target/**/release/bundle/nsis/*.exe
-            src-tauri/target/**/release/bundle/msi/*.msi
+          uploadWorkflowArtifacts: true
