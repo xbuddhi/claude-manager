@@ -7,7 +7,7 @@ import { call } from "../../core/api";
 
 declare module "../../core/api" {
   interface Commands {
-    /** Runs `git <args>` in the existing folder `dir` (allowed subcommands only). */
+    /** Runs `git <args>` in the repository root `dir` (`rev-parse`: any folder). Allowed subcommands and arguments only; never the home or a profile folder. */
     git_run: { args: { dir: string; args: string[]; stdin?: string | null; poll?: boolean }; result: GitOutput };
     git_status: { args: { repo: string; poll?: boolean }; result: GitStatus };
     /** Repositories at or under a folder (itself, then sub-folders two levels deep); cached 30 s. */

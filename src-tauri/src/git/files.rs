@@ -26,19 +26,51 @@ pub enum NewFile {
     Binary,
 }
 
-/// Reads `path` (relative to `repo`), which must stay inside `repo`, also through links.
+/// Reads `path` of `repo` for the diff view. `repo` must be a repository root git may run in (see
+/// `guard`), and git must report `path` as untracked: anything else has a git diff, and this command
+/// must not become a way to read any file on disk.
 pub fn read(repo: &str, path: &str) -> AppResult<NewFile> {
+    if !plain(path) {
+        return Err(not_inside(path));
+    }
+    let args: Vec<String> = ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--"]
+        .iter()
+        .map(|s| s.to_string())
+        .chain([format!(":(literal){path}")])
+        .collect();
+    let out = super::run::run(repo, &args, None, true)?;
+    if out.code != 0 {
+        return Err(AppError::Internal(out.stderr.trim().to_string()));
+    }
+    let untracked = super::status::parse(&out.stdout)
+        .changes
+        .iter()
+        .any(|c| c.status == "U" && c.path == path);
+    if !untracked {
+        return Ok(NewFile::Missing);
+    }
+    read_in(repo, path)
+}
+
+/// A non-empty relative path of plain names only.
+fn plain(path: &str) -> bool {
+    !path.is_empty() && Path::new(path).components().all(|c| matches!(c, Component::Normal(_)))
+}
+
+fn not_inside(path: &str) -> AppError {
+    AppError::InvalidInput(format!("Not a path inside the repository: {path}"))
+}
+
+/// Reads `path` (relative to `repo`), which must stay inside `repo`, also through links.
+pub fn read_in(repo: &str, path: &str) -> AppResult<NewFile> {
     let repo = Path::new(repo);
     if !repo.is_dir() {
         return Err(AppError::NotFound(format!("Folder not found:\n{}", repo.display())));
     }
-    let rel = Path::new(path);
-    let plain = !path.is_empty() && rel.components().all(|c| matches!(c, Component::Normal(_)));
-    if !plain {
-        return Err(AppError::InvalidInput(format!(
-            "Not a path inside the repository: {path}"
-        )));
+    if !plain(path) {
+        return Err(not_inside(path));
     }
+    let rel = Path::new(path);
     let full = repo.join(rel);
     let Ok(real) = full.canonicalize() else {
         return Ok(NewFile::Missing);
@@ -102,22 +134,22 @@ mod tests {
         fs::create_dir_all(t.path().join("src")).unwrap();
         fs::write(t.path().join("src").join("a.txt"), "one\ntwo\n").unwrap();
         assert_eq!(
-            read(repo, "src/a.txt").unwrap(),
+            read_in(repo, "src/a.txt").unwrap(),
             NewFile::Text {
                 text: "one\ntwo\n".into()
             }
         );
-        assert_eq!(read(repo, "src/gone.txt").unwrap(), NewFile::Missing);
-        assert_eq!(read(repo, "src").unwrap(), NewFile::Missing);
+        assert_eq!(read_in(repo, "src/gone.txt").unwrap(), NewFile::Missing);
+        assert_eq!(read_in(repo, "src").unwrap(), NewFile::Missing);
         fs::write(t.path().join("big.bin"), vec![b'a'; 2 * 1024 * 1024 + 1]).unwrap();
         assert_eq!(
-            read(repo, "big.bin").unwrap(),
+            read_in(repo, "big.bin").unwrap(),
             NewFile::Large {
                 size: 2 * 1024 * 1024 + 1
             }
         );
         fs::write(t.path().join("img.png"), b"\x89PNG\0\0").unwrap();
-        assert_eq!(read(repo, "img.png").unwrap(), NewFile::Binary);
+        assert_eq!(read_in(repo, "img.png").unwrap(), NewFile::Binary);
     }
 
     #[test]
@@ -129,10 +161,10 @@ mod tests {
         let repo = repo.to_str().unwrap();
         let outside = t.path().join("secret.txt");
         for bad in ["../secret.txt", "a/../../secret.txt", "", outside.to_str().unwrap()] {
-            assert!(matches!(read(repo, bad), Err(AppError::InvalidInput(_))), "{bad}");
+            assert!(matches!(read_in(repo, bad), Err(AppError::InvalidInput(_))), "{bad}");
         }
         assert!(matches!(
-            read(&t.path().join("gone").to_string_lossy(), "a"),
+            read_in(&t.path().join("gone").to_string_lossy(), "a"),
             Err(AppError::NotFound(_))
         ));
     }
@@ -146,9 +178,38 @@ mod tests {
         fs::write(t.path().join("secret.txt"), "x").unwrap();
         std::os::unix::fs::symlink(t.path().join("secret.txt"), repo.join("link")).unwrap();
         assert!(matches!(
-            read(repo.to_str().unwrap(), "link"),
+            read_in(repo.to_str().unwrap(), "link"),
             Err(AppError::InvalidInput(_))
         ));
+    }
+
+    /// Runs real git when it is installed: only files git reports as untracked are read.
+    #[test]
+    fn reads_only_untracked_files_of_a_repository() {
+        let Some(git) = crate::core::env::wait_env().git.clone() else {
+            return;
+        };
+        let t = tempfile::tempdir().unwrap();
+        let repo = t.path().to_str().unwrap();
+        // a folder that is not a repository is refused
+        fs::write(t.path().join("secret.txt"), "x").unwrap();
+        assert!(matches!(read(repo, "secret.txt"), Err(AppError::InvalidInput(_))));
+        let out = std::process::Command::new(&git)
+            .args(["init", "-q"])
+            .current_dir(t.path())
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        fs::write(t.path().join(".gitignore"), "ignored.txt\n").unwrap();
+        fs::write(t.path().join("ignored.txt"), "x").unwrap();
+        fs::write(t.path().join("new [1].txt"), "hi\n").unwrap();
+        assert_eq!(
+            read(repo, "new [1].txt").unwrap(),
+            NewFile::Text { text: "hi\n".into() }
+        );
+        assert_eq!(read(repo, "ignored.txt").unwrap(), NewFile::Missing);
+        assert_eq!(read(repo, ".git/config").unwrap(), NewFile::Missing);
+        assert!(matches!(read(repo, "../x"), Err(AppError::InvalidInput(_))));
     }
 
     #[test]

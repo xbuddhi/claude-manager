@@ -1,13 +1,17 @@
 //! The git runner: one git process per call, no console window, no prompts, English UTF-8 output.
 //!
 //! The webview passes the arguments as a list (never a command string) and only the subcommands the
-//! source control view needs. Options that make git start another program or write a file are refused.
+//! source control view needs. Options that make git start another program, write a file or read a file
+//! outside the repository are refused, paths must stay inside the repository, push/pull/fetch may name
+//! only a configured remote, and git runs only in a repository root outside the home and profile folders
+//! (see `guard`).
 
+use super::guard;
 use crate::core::error::{AppError, AppResult};
 use crate::core::{env, procs, spawn};
 use serde::Serialize;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use ts_rs::TS;
@@ -50,7 +54,20 @@ const DENIED: &[&str] = &[
     "--output",
     "--ext-diff",
     "--open-files-in-pager",
+    // read a file from anywhere
+    "--no-index",
+    "--file",
+    "--template",
+    "--pathspec-from-file",
+    "--orderfile",
+    // point git at another repository or remote
+    "--repo",
+    "--git-dir",
+    "--work-tree",
 ];
+
+/// `rev-parse` arguments the view uses (it only finds the repository root).
+const REV_PARSE: &[&str] = &["--show-toplevel", "--is-inside-work-tree", "--abbrev-ref", "HEAD"];
 
 /// Subcommands that talk to a remote and may wait on the network.
 const NETWORK: &[&str] = &["push", "pull", "fetch"];
@@ -59,7 +76,29 @@ const NETWORK_LIMIT: Duration = Duration::from_secs(300);
 /// More output than this is dropped (a `git show` of a huge commit); the diff view shows far less.
 const MAX_OUTPUT: u64 = 64 * 1024 * 1024;
 
-/// Checks the argument list: an allowed subcommand first, then no denied option before `--`.
+/// True for an argument that names a place outside the repository: an absolute path, a drive or UNC
+/// path, or one with a `..` part. (git diff compares any two files when a path lies outside the work
+/// tree, as if `--no-index` were given.) Pathspec magic (`:(literal)x`, `:/x`) is looked through.
+pub fn outside_path(arg: &str) -> bool {
+    let plain = |p: &str| {
+        let b = p.as_bytes();
+        p.starts_with(['/', '\\'])
+            || (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':')
+            || p.split(['/', '\\']).any(|part| part == "..")
+    };
+    let body = if let Some(rest) = arg.strip_prefix(":(") {
+        rest.split_once(')').map_or("", |(_, b)| b)
+    } else if let Some(rest) = arg.strip_prefix(':') {
+        let rest = rest.trim_start_matches(['/', '!', '^']);
+        rest.strip_prefix(':').unwrap_or(rest)
+    } else {
+        arg
+    };
+    plain(arg) || plain(body)
+}
+
+/// Checks the argument list: an allowed subcommand first, then no denied option before `--`, and no
+/// argument (option value, revision or path) that points outside the repository.
 pub fn check_args(args: &[String]) -> AppResult<()> {
     let Some(sub) = args.first() else {
         return Err(AppError::InvalidInput("No git command was given.".into()));
@@ -67,27 +106,75 @@ pub fn check_args(args: &[String]) -> AppResult<()> {
     if !ALLOWED.contains(&sub.as_str()) {
         return Err(AppError::InvalidInput(format!("git {sub} is not allowed here.")));
     }
-    for arg in &args[1..] {
-        if arg == "--" {
-            break; // the rest are paths
-        }
+    let refuse = |arg: &str| {
+        Err(AppError::InvalidInput(format!(
+            "The git argument {arg} is not allowed here."
+        )))
+    };
+    if sub == "rev-parse" && args[1..].iter().any(|a| !REV_PARSE.contains(&a.as_str())) {
+        return refuse(&args[1..].join(" "));
+    }
+    let mut options = true;
+    for (i, arg) in args.iter().enumerate().skip(1) {
         if arg.contains('\0') {
             return Err(AppError::InvalidInput(
                 "A git argument contains a NUL character.".into(),
             ));
         }
+        if outside_path(arg) {
+            return refuse(arg);
+        }
+        if !options {
+            continue; // paths, already checked
+        }
+        if arg == "--" {
+            options = false; // the rest are paths
+            continue;
+        }
         if let Some(name) = arg
             .strip_prefix("--")
             .map(|rest| rest.split('=').next().unwrap_or(rest))
-            && !name.is_empty()
-            && DENIED.iter().any(|d| d[2..].starts_with(name))
         {
-            return Err(AppError::InvalidInput(format!(
-                "The git option {arg} is not allowed here."
-            )));
+            if !name.is_empty() && DENIED.iter().any(|d| d[2..].starts_with(name)) {
+                return Err(AppError::InvalidInput(format!(
+                    "The git option {arg} is not allowed here."
+                )));
+            }
+        } else if let Some(flags) = arg.strip_prefix('-').filter(|f| !f.is_empty()) {
+            // short options: commit -F <file> / -t <template> read a file (only -F - , stdin, is fine);
+            // -O<file> reads an order file
+            let stdin_message = arg == "-F" && args.get(i + 1).is_some_and(|n| n == "-");
+            let reads_file = match sub.as_str() {
+                "commit" => !stdin_message && flags.contains(['F', 't']),
+                "diff" | "show" | "log" => flags.starts_with('O'),
+                _ => false,
+            };
+            if reads_file {
+                return refuse(arg);
+            }
         }
     }
     Ok(())
+}
+
+/// The remote a push, pull or fetch names (its first argument that is not an option), if any.
+fn named_remote(args: &[String]) -> Option<&str> {
+    if !NETWORK.contains(&args.first()?.as_str()) {
+        return None;
+    }
+    args[1..]
+        .iter()
+        .take_while(|a| *a != "--")
+        .find(|a| !a.starts_with('-'))
+        .map(String::as_str)
+}
+
+/// Whether `name` is one of the remotes configured in the repository (`git remote`).
+fn is_remote(git: &Path, dir: &Path, name: &str) -> bool {
+    let mut cmd = command(git, dir, true);
+    cmd.arg("remote");
+    spawn::output_with_timeout(&mut cmd, LOCAL_LIMIT)
+        .is_ok_and(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == name))
 }
 
 /// Why git cannot run on this machine, or None when it can.
@@ -143,10 +230,8 @@ fn command(git: &Path, dir: &Path, poll: bool) -> Command {
 /// Runs git in `dir`. Blocking: call it off the UI thread.
 pub fn run(dir: &str, args: &[String], stdin: Option<&str>, poll: bool) -> AppResult<GitOutput> {
     check_args(args)?;
-    let dir = PathBuf::from(dir);
-    if !dir.is_dir() {
-        return Err(AppError::NotFound(format!("Folder not found:\n{}", dir.display())));
-    }
+    // rev-parse finds the repository of a sidebar folder; everything else runs in a repository root
+    let dir = guard::folder(dir, args[0] != "rev-parse")?;
     let git = env::wait_env().git.as_deref();
     if let Some(why) = git_missing(git) {
         return Ok(GitOutput {
@@ -156,6 +241,14 @@ pub fn run(dir: &str, args: &[String], stdin: Option<&str>, poll: bool) -> AppRe
         });
     }
     let git = git.unwrap_or(Path::new("git"));
+    if let Some(remote) = named_remote(args)
+        && !is_remote(git, &dir, remote)
+    {
+        return Err(AppError::InvalidInput(format!(
+            "git {} {remote}: only a remote configured in this repository can be named.",
+            args[0]
+        )));
+    }
     let limit = if NETWORK.contains(&args[0].as_str()) {
         NETWORK_LIMIT
     } else {
@@ -288,6 +381,60 @@ mod tests {
     }
 
     #[test]
+    fn refuses_reading_files_outside_the_repository() {
+        for bad in [
+            &["diff", "--no-index", "--", "a", "b"][..],
+            &["diff", "--no-i", "a", "b"],
+            &["diff", "--", "C:/Users/u/.claude/.credentials.json", "NUL"],
+            &["diff", "--", "/home/u/.claude/.credentials.json", "/dev/null"],
+            &["diff", "--", "..\\..\\secret", "x"],
+            &["diff", "\\\\server\\share\\x", "y"],
+            &["diff", "--", ":(literal)C:/x", "NUL"],
+            &["diff", "--", ":(top)../x"],
+            &["diff", "--", ":/../x"],
+            &["commit", "-F", "notes.txt"],
+            &["commit", "-aF", "-"],
+            &["commit", "--file=-"],
+            &["commit", "-t", "tpl"],
+            &["commit", "--template=tpl"],
+            &["add", "--pathspec-from-file=list"],
+            &["diff", "-Oorder"],
+            &["log", "--orderfile=x"],
+            &["push", "--repo=https://example.test/x"],
+            &["rev-parse", "--git-path", "x"],
+            &["rev-parse", "--resolve-git-dir", "x"],
+        ] {
+            assert!(
+                matches!(check_args(&args(bad)), Err(AppError::InvalidInput(_))),
+                "{bad:?}"
+            );
+        }
+        for ok in [
+            &["commit", "-F", "-"][..],
+            &["commit", "--amend", "--no-edit"],
+            &["restore", "--", ":/"],
+            &["reset", "--soft", "HEAD~1"],
+            &["log", "HEAD~3..HEAD"],
+            &["stash", "push", "-u", "-m", "2026-10-25 12:00 from Claude Manager"],
+            &["switch", "-c", "feature/x"],
+        ] {
+            assert!(check_args(&args(ok)).is_ok(), "{ok:?}");
+        }
+    }
+
+    #[test]
+    fn finds_the_remote_a_network_command_names() {
+        assert_eq!(named_remote(&args(&["push"])), None);
+        assert_eq!(named_remote(&args(&["fetch", "--prune"])), None);
+        assert_eq!(named_remote(&args(&["push", "-u", "origin", "HEAD"])), Some("origin"));
+        assert_eq!(
+            named_remote(&args(&["fetch", "https://example.test/x"])),
+            Some("https://example.test/x")
+        );
+        assert_eq!(named_remote(&args(&["log", "HEAD"])), None);
+    }
+
+    #[test]
     fn rejects_a_missing_folder() {
         let dir = tempfile::tempdir().unwrap();
         let gone = dir.path().join("gone");
@@ -337,5 +484,26 @@ mod tests {
         let bad = run(repo, &args(&["switch", "no-such-branch"]), None, false).unwrap();
         assert_ne!(bad.code, 0);
         assert!(!bad.stderr.is_empty());
+        // only configured remotes; nothing goes to a URL the caller names
+        assert!(matches!(
+            run(repo, &args(&["push", "https://example.test/x", "HEAD"]), None, false),
+            Err(AppError::InvalidInput(_))
+        ));
+        setup(&["remote", "add", "origin", "https://example.test/repo.git"]);
+        assert!(named_remote(&args(&["push", "origin"])).is_some_and(|r| is_remote(&git, dir.path(), r)));
+        // a sub-folder: rev-parse finds the root, other commands need the root itself
+        let sub = dir.path().join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        let sub = sub.to_str().unwrap();
+        assert_eq!(
+            run(sub, &args(&["rev-parse", "--show-toplevel"]), None, false)
+                .unwrap()
+                .code,
+            0
+        );
+        assert!(matches!(
+            run(sub, &args(&["status"]), None, false),
+            Err(AppError::InvalidInput(_))
+        ));
     }
 }

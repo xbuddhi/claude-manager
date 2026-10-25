@@ -2,6 +2,7 @@
 //! folder, parses status and reads new files for the diff view.
 
 pub mod files;
+pub mod guard;
 pub mod repos;
 pub mod run;
 pub mod status;
