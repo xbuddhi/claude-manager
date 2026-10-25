@@ -100,21 +100,39 @@ const CLAUDE_NAMES: &[&str] = if cfg!(windows) {
     &["claude"]
 };
 
-/// Checks the shape of a claude path from Settings: absolute, and named like claude. Existence is checked
-/// at launch, so a path can be saved before claude is installed there.
+/// Checks the shape of a claude path from Settings: absolute, on a local drive (Windows: no UNC or device
+/// path, so terminals never run a program from a network share), and named like claude. Existence is
+/// checked at launch and when the webview saves the path.
 pub fn check_claude_override(path: &str) -> AppResult<PathBuf> {
     let p = Path::new(path.trim());
     let named_claude = p
         .file_name()
         .and_then(OsStr::to_str)
         .is_some_and(|n| CLAUDE_NAMES.iter().any(|c| n.eq_ignore_ascii_case(c)));
-    if !p.is_absolute() || !named_claude {
+    if !p.is_absolute() || !named_claude || !on_local_drive(p) {
         return Err(AppError::InvalidInput(format!(
             "The Claude path must be the full path to {}:\n{path}",
             CLAUDE_NAMES.join(" or ")
         )));
     }
     Ok(p.to_path_buf())
+}
+
+/// Windows: the path starts with a drive letter (`C:` or `\\?\C:`), not a UNC share or a device.
+fn on_local_drive(p: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        use std::path::{Component, Prefix};
+        matches!(
+            p.components().next(),
+            Some(Component::Prefix(pre)) if matches!(pre.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+        )
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = p;
+        true
+    }
 }
 
 /// The claude executable to run: the Settings override when it is set, else the discovered one.
@@ -538,6 +556,24 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn override_must_not_be_on_a_network_share() {
+        for bad in [
+            r"\\attacker\s\claude.cmd",
+            r"\\?\UNC\attacker\s\claude.exe",
+            r"\\.\C:\claude.exe",
+            "//attacker/s/claude.cmd",
+        ] {
+            assert!(
+                matches!(check_claude_override(bad), Err(AppError::InvalidInput(_))),
+                "{bad}"
+            );
+        }
+        assert!(check_claude_override(r"C:\Tools\claude.exe").is_ok());
+        assert!(check_claude_override(r"\\?\C:\Tools\claude.exe").is_ok());
     }
 
     #[test]

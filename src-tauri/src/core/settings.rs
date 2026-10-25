@@ -89,15 +89,20 @@ impl SettingsStore {
         let Value::Object(patch) = patch else {
             return Err(AppError::InvalidInput("settings update must be an object".into()));
         };
+        let sets_claude_path = patch.contains_key("claudePath");
         let mut current = lock(&self.inner.current);
         let mut merged = to_map(&current);
         merged.extend(patch);
         let next: Settings = serde_json::from_value(Value::Object(merged))
             .map_err(|e| AppError::InvalidInput(format!("invalid settings: {e}")))?;
         let next = sanitize(next);
-        // the webview can set this path and terminals then run it: it must name claude itself
-        if let Some(p) = &next.claude_path {
-            env::check_claude_override(p)?;
+        // the webview can set this path and terminals then run it: it must name claude itself and exist.
+        // Checked only when this update sets it, so a bad saved path never blocks other changes.
+        if sets_claude_path
+            && let Some(p) = &next.claude_path
+            && !env::check_claude_override(p)?.is_file()
+        {
+            return Err(AppError::NotFound(format!("There is no file at\n{p}")));
         }
         *current = next;
         let snapshot = current.clone();
@@ -177,7 +182,14 @@ pub fn from_value_lenient(value: Value) -> Settings {
             log::warn!("settings: ignoring invalid value for '{key}'");
         }
     }
-    sanitize(serde_json::from_value(Value::Object(accepted)).unwrap_or_default())
+    let mut settings = sanitize(serde_json::from_value(Value::Object(accepted)).unwrap_or_default());
+    if let Some(p) = &settings.claude_path
+        && let Err(e) = env::check_claude_override(p)
+    {
+        log::warn!("settings: ignoring the Claude path: {e}");
+        settings.claude_path = None;
+    }
+    settings
 }
 
 fn to_map(settings: &Settings) -> Map<String, Value> {
@@ -324,6 +336,13 @@ mod tests {
         let store = SettingsStore::open(dir.path().join(FILE_NAME), None);
         let exe = if cfg!(windows) { "claude.exe" } else { "claude" };
         let good = dir.path().join("bin").join(exe).to_string_lossy().into_owned();
+        // it must exist when the webview saves it
+        assert!(matches!(
+            store.update(json!({ "claudePath": good })),
+            Err(AppError::NotFound(_))
+        ));
+        fs::create_dir_all(dir.path().join("bin")).unwrap();
+        fs::write(&good, b"").unwrap();
         assert_eq!(
             store
                 .update(json!({ "claudePath": good }))
@@ -344,6 +363,19 @@ mod tests {
         }
         assert_eq!(store.get().claude_path.as_deref(), Some(good.as_str()));
         assert_eq!(store.update(json!({ "claudePath": "  " })).unwrap().claude_path, None);
+    }
+
+    #[test]
+    fn a_bad_saved_claude_path_is_dropped_and_never_blocks_other_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(FILE_NAME);
+        fs::write(&path, r#"{"claudePath":"bin/not-claude","sidebarWidth":250}"#).unwrap();
+        let store = SettingsStore::open(path, None);
+        assert_eq!(store.get().claude_path, None);
+        assert_eq!(store.get().sidebar_width, 250);
+        // a bad value set from Rust code does not block updates of other keys either
+        store.modify(|s| s.claude_path = Some("relative/claude".into()));
+        assert_eq!(store.update(json!({ "sidebarWidth": 300 })).unwrap().sidebar_width, 300);
     }
 
     #[test]
