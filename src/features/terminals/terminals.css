@@ -28,13 +28,47 @@
   border: 1px solid var(--border);
   border-bottom: 0;
   border-radius: 10px 10px 0 0;
-  background: var(--side);
+  --pill-bg: var(--side);
+  background: var(--pill-bg);
   pointer-events: none;
   will-change: transform, width;
   transition: background-color 0.2s var(--ease);
 }
 html.mode-terminal .term-pill {
-  background: var(--term-bg);
+  --pill-bg: var(--term-bg);
+}
+/* the tab flares into the panel with curved feet, like a folder tab (no sharp notch where they meet) */
+.term-pill::before,
+.term-pill::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+}
+.term-pill::before {
+  left: -10px;
+  background: radial-gradient(
+    circle at 0 0,
+    transparent 9px,
+    var(--border) 9px,
+    var(--border) 10px,
+    var(--pill-bg) 10.5px
+  );
+}
+.term-pill::after {
+  right: -10px;
+  background: radial-gradient(
+    circle at 100% 0,
+    transparent 9px,
+    var(--border) 9px,
+    var(--border) 10px,
+    var(--pill-bg) 10.5px
+  );
+}
+/* Home sits on the panel's left edge: no foot outside the panel there */
+.term-pill.at-start::before {
+  display: none;
 }
 /* the corner under an active tab is square, so the tab and the panel read as one shape */
 html.has-tabs:not(.mode-terminal) #sidebar-slot {

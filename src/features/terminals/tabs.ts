@@ -151,6 +151,7 @@ export class Strip {
     if (!cur) return;
     const x = cur.offsetLeft;
     const w = cur.offsetWidth;
+    this.pill.classList.toggle("at-start", x < 1);
     const draw = () => {
       this.pill.style.transform = `translateX(${this.pillX.value}px)`;
       this.pill.style.width = `${this.pillW.value}px`;
