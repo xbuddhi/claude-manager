@@ -84,7 +84,8 @@ function rebuild() {
   syncSelection();
   placePill();
   renderStatus(s);
-  if (s.index.loaded !== "loading") {
+  // the picker owns the subtitle while it shows ("Choose a profile"); the 60 s rebuild must not overwrite it
+  if (s.index.loaded !== "loading" && s.screen !== "picker") {
     const c = counts(folderList(input));
     setSubtitle(S.subtitle(profileLabel(s.currentProfile), c.sessions, c.folders, s.settings.groups.length));
   }

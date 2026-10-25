@@ -223,4 +223,13 @@ describe("sidebar view", () => {
     });
     expect(calls).toContainEqual({ cmd: "path_kinds", args: { paths: ["C:\\elsewhere"] } });
   });
+
+  it("leaves the subtitle to the profile picker while it shows", () => {
+    const sub = document.getElementById("tb-subtitle") as HTMLElement;
+    store.set({ screen: "picker" });
+    sub.textContent = "Choose a profile";
+    setData([], [project("C:\\src\\site", 300)]); // a rebuild, like the 60 s timer's
+    expect(sub.textContent).toBe("Choose a profile");
+    store.set({ screen: "main" });
+  });
 });
