@@ -10,7 +10,7 @@ Short version:
 
 ## 1. OAuth credentials
 
-**Windows and Linux** (local evidence: `C:\Users\BUDDHI\.claude\.credentials.json`, `.claude-work` and `.claude-personal`)
+**Windows and Linux** (local evidence: `C:\Users\<you>\.claude\.credentials.json`, `.claude-work` and `.claude-personal`)
 - File: `<configDir>/.credentials.json`. `configDir` is `CLAUDE_CONFIG_DIR`, or `~/.claude` when it is not set.
 - On Linux the file has mode 0600.
 - Layout: `{"claudeAiOauth":{accessToken, refreshToken, expiresAt(ms epoch, number), refreshTokenExpiresAt(ms), scopes[], subscriptionType, subscriptionTypeSource, rateLimitTier}}`
@@ -48,7 +48,7 @@ Never pass the secret on a command line.
 
 ## 2. Plan usage endpoint
 
-Taken from `C:\Users\BUDDHI\Tools\ClaudeManager\MacUI.cs`, `Plan.FetchNow`, lines 1910–1966.
+Taken from `MacUI.cs (the Windows app)`, `Plan.FetchNow`, lines 1910–1966.
 - Request: `GET https://api.anthropic.com/api/oauth/usage` with headers:
   - `Authorization: Bearer <claudeAiOauth.accessToken>`
   - `anthropic-beta: oauth-2025-04-20`
@@ -69,7 +69,7 @@ Taken from `C:\Users\BUDDHI\Tools\ClaudeManager\MacUI.cs`, `Plan.FetchNow`, line
 
 ## 3. Live-session markers
 
-**Local evidence** (`C:\Users\BUDDHI\.claude-work\sessions\`, Claude Code v2.1.310)
+**Local evidence** (`C:\Users\<you>\.claude-work\sessions\`, Claude Code v2.1.310)
 - Files: `<pid>.json` plus `<pid>.<64-hex>.key`. `.claude-personal\sessions` holds only a `.key` file.
 - `<pid>.json` fields: `pid`, `sessionId`, `cwd`, `startedAt`(ms), `procStart`, `version`, `peerProtocol`, `peerFeatures[]`, `kind`("interactive"), `entrypoint`("cli"), `pidDomain`("win32:<host>"), `messagingSocketPath` (`\\.\pipe\LOCAL\cc-msg-…`), `name`, `nameSource`, `nameSince`, `updatedAt`, `status`("busy"…), `statusUpdatedAt`.
 
@@ -94,7 +94,7 @@ Taken from `C:\Users\BUDDHI\Tools\ClaudeManager\MacUI.cs`, `Plan.FetchNow`, line
 
 **Slug rule**
 - Every character that is not `[A-Za-z0-9]` becomes `-`, and case is kept.
-  - Windows: `C:\Users\BUDDHI` → `C--Users-BUDDHI`
+  - Windows: `C:\Users\me` → `C--Users-me`
   - macOS: `/Users/x/my_proj.v2` → `-Users-x-my-proj-v2`
 - The rule is lossy: different paths can give the same slug, and non-ASCII characters each become `-`. Sources:
   - https://claudeissues.com/issue/9221-bug-lossy-project-directory-path-encoding-makes-decoding-impossible
