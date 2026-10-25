@@ -124,11 +124,20 @@ html.prof-picker-open #tb-profile-slot {
   background: var(--ctrl);
   color: var(--text);
   font: inherit;
-  transition: background-color 0.16s var(--ease);
+  transition:
+    background-color 0.16s var(--ease),
+    filter 0.22s var(--ease);
 }
 .prof-avatar-btn:hover,
 .prof-avatar-btn[aria-expanded="true"] {
   background: var(--ctrl-hover);
+}
+/* press: darkens at once and eases back, like every button (a class too: the title bar's drag handler can
+   stop :active) */
+.prof-avatar-btn:active,
+.prof-avatar-btn.pressed {
+  filter: brightness(0.86);
+  transition-duration: 0.04s;
 }
 .prof-chip-pic {
   display: grid;

@@ -24,6 +24,11 @@ export function mountAvatarButton(slot: HTMLElement): void {
   const chev = h("span", { class: "prof-chip-chev" });
   chev.innerHTML = icons.chevronDown;
   btn.append(pic, name, chev);
+  const release = () => btn.classList.remove("pressed");
+  btn.addEventListener("pointerdown", (e) => {
+    if (e.button === 0) btn.classList.add("pressed");
+  });
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) btn.addEventListener(ev, release);
   // detail 0 = Enter or Space, so the popover takes the keyboard
   btn.addEventListener("click", (e) => void toggleProfilePopover(btn, e.detail === 0));
   slot.append(btn);
