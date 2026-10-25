@@ -169,6 +169,7 @@ export async function toggleProfilePopover(anchor: HTMLElement, byKeyboard: bool
   const pop = openPopover({
     anchor,
     content,
+    align: "start",
     label: "Profile",
     onClose: () => {
       if (open === pop) open = null;
