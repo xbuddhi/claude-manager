@@ -15,6 +15,10 @@ pub const MENU: &str = "menu";
 // ---- sessions (WP1) ----
 // ---- pty + launch (WP2) ----
 // ---- live + notify (WP3) ----
+/// Payload: `LiveChanged` (every running session; sent only when an id or level changed).
+pub const LIVE_CHANGED: &str = "live-changed";
+/// Payload: `NotifyClicked`: a finish notification was clicked; the window is already shown.
+pub const NOTIFY_CLICKED: &str = "notify:clicked";
 // ---- usage (WP7) ----
 // ---- git (WP8) ----
 // ---- os (WP9) ----
