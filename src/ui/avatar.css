@@ -7,9 +7,7 @@
   font-weight: 600;
   line-height: 1;
   box-shadow: 0 0 0 0 transparent;
-  transition:
-    box-shadow 0.18s var(--ease),
-    transform 0.12s var(--ease);
+  transition: box-shadow 0.18s var(--ease);
 }
 .avatar.ring,
 :hover > .avatar,
@@ -17,7 +15,4 @@
   box-shadow:
     0 0 0 2px var(--card),
     0 0 0 4px var(--accent);
-}
-:active > .avatar {
-  transform: scale(0.94);
 }

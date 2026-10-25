@@ -163,7 +163,7 @@ html.has-tabs:not(.mode-terminal) #sidebar-slot {
   opacity: 0;
   transition:
     background-color 0.16s var(--ease),
-    transform 0.14s var(--ease),
+    filter 0.22s var(--ease),
     opacity 0.18s var(--ease);
 }
 .term-tab .term-btn svg {
@@ -178,7 +178,8 @@ html.has-tabs:not(.mode-terminal) #sidebar-slot {
   color: var(--text);
 }
 .term-btn:active {
-  transform: scale(0.88);
+  filter: brightness(0.86);
+  transition-duration: 0.04s;
 }
 .term-btn:disabled {
   visibility: hidden;

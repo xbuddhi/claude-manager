@@ -14,14 +14,16 @@
     background-color 0.18s var(--ease),
     border-color 0.18s var(--ease),
     color 0.18s var(--ease),
-    transform 0.14s var(--ease);
+    filter 0.22s var(--ease);
 }
 .btn-icon {
   width: 30px;
   padding: 0;
 }
+/* press: the button darkens at once and eases back on release (no size change) */
 .btn:active:not(:disabled) {
-  transform: scale(0.96);
+  filter: brightness(0.86);
+  transition-duration: 0.04s;
 }
 .btn:disabled {
   opacity: 0.45;
