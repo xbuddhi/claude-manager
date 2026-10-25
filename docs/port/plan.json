@@ -1,0 +1,527 @@
+{
+ "feature_list": [
+  {
+   "name": "Clean child environment",
+   "area": "launching",
+   "priority": "v1",
+   "spec": "Every child we start (PTY, external terminal, git, VS Code) gets the parent env minus ^(NO_COLOR|CLAUDECODE|CLAUDE_PID|CLAUDE_CODE_.+|GIT_TERMINAL_PROMPT|CLAUDE_CONFIG_DIR)$ and minus ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, ANTHROPIC_MODEL (audit). CLAUDE_CONFIG_DIR is then set per profile (unset for ~/.claude). Built in Rust env.rs::clean_env(), never by string concatenation.",
+   "source_refs": "ps1:9-13; audit security 'API credentials leak'"
+  },
+  {
+   "name": "Resolve claude / shell / git / code executables",
+   "area": "launching",
+   "priority": "v1",
+   "spec": "Resolved once at startup on a background thread and cached. Windows: walk PATH for claude.exe, then claude.cmd (never bare 'claude'; .cmd => args must match ^[A-Za-z0-9=_.:/-]+$). Shell: pwsh, else powershell.exe. macOS: run login+interactive shell from getpwuid pw_shell (fallback /bin/zsh) with 5 s timeout: `<shell> -ilc 'printf \"__CM__%s__CM__%s__CM__\" \"$(command -v claude)\" \"$PATH\"'`; cache PATH and claude path; fallback probe ~/.local/bin/claude, /opt/homebrew/bin/claude, /usr/local/bin/claude, ~/.claude/local/claude, ~/.npm-global/bin/claude, ~/.volta/bin/claude, ~/.bun/bin/claude. Optional user override settings.claudePath. Not found => in-app banner 'Claude Code was not found. Install it or set its path in Settings.' with link to https://code.claude.com/docs/en/setup; app keeps working.",
+   "source_refs": "ps1:36-38; audit macos blocker 'login shell skips zshrc'; research §5"
+  },
+  {
+   "name": "Settings persistence",
+   "area": "settings",
+   "priority": "v1",
+   "spec": "Rust-owned JSON at app_config_dir()/settings.json (Windows %APPDATA%\\com.ceylabs.claudemanager, macOS ~/Library/Application Support/com.ceylabs.claudemanager). First run imports legacy %APPDATA%\\ClaudeManager\\settings.json if present. Schema (all serde default, bad JSON -> defaults, unknown keys kept via flatten): pinned:string[], account:string|null, openIn:'external'|'embed' (default 'external'), showPicker:true, lastProfile:string|null ('all' or dir), groups:[{name,folders:string[],collapsed:bool}], ungroupedCollapsed:false, showUsage:true, notify:true, bgTerms:[] (kept, unused v1), plus new: sidebarWidth:340, gitSplit:null, claudePath:null, macOptionIsMeta:true, scrollback:5000, keepRunningOnClose:null. Atomic write (temp+rename), debounced 200 ms, emits 'settings-changed'.",
+   "source_refs": "ps1:14-16,97-120; audit release blocker 'No settings persistence'"
+  },
+  {
+   "name": "Theme palette, light/dark live",
+   "area": "window chrome",
+   "priority": "v1",
+   "spec": "CSS tokens on :root, switched by prefers-color-scheme live. Dark: Bg #1C1C1E Side #232325 Card #262628 Alt #2A2A2C Ctrl #3A3A3C CtrlHover #48484A Track #323234 SegSel #636366 Text #F2F2F7 Muted #98989F Border #3A3A3C Accent #D97757 AccentHover #E58A6B Danger #FF453A Menu #2C2C2E. Light: Bg #ECECEE Side #F4F4F6 Card #FFFFFF Alt #F7F7F8 Ctrl #FFFFFF CtrlHover #F0F0F2 Track #E1E1E6 SegSel #FFFFFF Text #1D1D1F Muted #6E6E73 (darkened for contrast) Border #D6D6DA Accent #D97757 AccentHover #C4643F Danger #FF3B30 Menu #F8F8F8. Add --accent-strong #B8532F for white-on-accent fills. Fixed: traffic #FF5F57/#FEBC2E/#28C840, live green rgb(48,209,88), warn #FF9F0A, git lanes #FFB000 #DC267F #40B0A6 #B66DFF #994F00, status M #E2C08D A/U #73C991 D #F14C4C R/C #4FC1FF ! #E4676B. Fonts system-ui/-apple-system/'Segoe UI Variable'; icons are bundled inline SVG (no Segoe MDL2).",
+   "source_refs": "ps1:64-93; MacUI.cs:125-130; audit quality contrast"
+  },
+  {
+   "name": "Window chrome and title bar",
+   "area": "window chrome",
+   "priority": "v1",
+   "spec": "Title 'Claude Sessions', 1320x820, min 940x560, centered, visible:false until first paint then show (no white flash, backgroundColor set). Windows: decorations:false, shadow, HTML title bar with data-tauri-drag-region, custom traffic lights (12px, 8px gap, x/-/+ on hover, gray when window unfocused) calling close/minimize/toggleMaximize; double-click drag region toggles maximize. macOS: native decorations, titleBarStyle Overlay, hiddenTitle, trafficLightPosition {x:14,y:18}, 80px left inset (removed in fullscreen). Title bar grid: left title+subtitle, center search (clamp 200..380px, >=24px gaps), right usage ring (22px) and avatar (34px). Window size/position remembered (window-state plugin).",
+   "source_refs": "ps1:329-393,464-471; MacUI.cs:445-480,1247-1282; audit macos title bar"
+  },
+  {
+   "name": "Shared UI kit",
+   "area": "window chrome",
+   "priority": "v1",
+   "spec": "Buttons (primary/secondary/danger/plain, 30px, optional icon), segmented control with spring pill (0.34/0.8, arrow keys), toggle switch (0.32/0.72), split button (main + 30px arrow), text tabs with gliding underline, avatar (initial 42%/30% font, ring on hover), round panel/input with accent focus ring, themed tooltip (450 ms delay, 12 s hide), ContextMenu (icon col, checkmark, right-aligned shortcut per OS, submenu, separator, danger red, disabled section label, avatar icons, width 160-520, keyboard arrows/Enter/Esc/Right/Left, clamp to window), Popover (anchored, Esc/outside click/blur closes, fade+slide), Dialog (ask/message/input returning Promise; first line bold title; confirm button named after caption, danger for warnings; Enter=primary, Esc=cancel; Cancel left of confirm), keyed virtual list with selection model (click, Ctrl/Cmd toggle, Shift range, Ctrl/Cmd+A, arrows/Home/End/PgUp/PgDn skipping non-selectable rows, Enter/double-click activate, right-click selection rules, selection kept by key across refresh, aria roles). Spring tunings from MacUI kept; prefers-reduced-motion snaps.",
+   "source_refs": "MacUI.cs:132-443,600-807,1284-1402,2656-2675,2732-2910"
+  },
+  {
+   "name": "Global keyboard shortcuts and native menu",
+   "area": "window chrome",
+   "priority": "v1",
+   "spec": "Shortcut registry with CmdOrCtrl mapping. Find: Ctrl+F / Cmd+F. Refresh full: F5 (both) and Cmd+R on mac. Esc clears search. New session Ctrl/Cmd+T, close tab Ctrl/Cmd+W (closes terminal tab, never the window), next/prev tab Ctrl+Tab/Ctrl+Shift+Tab and Cmd+Shift+]/[, Ctrl/Cmd+1..9 select tab. Commit Ctrl+Enter / Cmd+Enter. Delete key and Cmd+Backspace delete. macOS app menu: App (About, Settings Cmd+,, Services, Hide, Hide Others, Show All, Quit), Edit predefined (undo/redo/cut/copy/paste/select all), Session (New, Close Tab, Next/Prev, Find, Refresh), Window, Help (Show logs). Menu ids emitted to frontend as 'menu' event. Default WebView context menu suppressed except in inputs.",
+   "source_refs": "ps1:1936-1940; audit macos blocker Cmd+W/Cmd+Q, WKWebView reload"
+  },
+  {
+   "name": "Profile discovery, names, colors, email",
+   "area": "profiles",
+   "priority": "v1",
+   "spec": "Profiles = ~/.claude, $CLAUDE_CONFIG_DIR (from launch env) if set, every ~/.claude-* dir containing projects/ or .credentials.json or settings.json or .claude.json; normalized, sorted, unique (case-insensitive on Windows and macOS); symlinks not followed. Name: '.claude' -> 'default', else strip leading '.claude-'/'claude-'; null -> 'All profiles'. Initial: first char upper ('All' for all). Color: sum of UTF-16 codes of name mod 8 into ['#0A84FF','#BF5AF2','#FF375F','#FF9F0A','#30D158','#5E5CE6','#64D2FF','#FF453A'] (white ink); All uses Ctrl/Text. Email from oauthAccount.emailAddress in ~/.claude.json (default) or <dir>/.claude.json, regex fallback; 'Not signed in' if none; cached, invalidated on full refresh and profile creation.",
+   "source_refs": "ps1:122-152; audit macos keychain (markers)"
+  },
+  {
+   "name": "Profile picker screen",
+   "area": "profiles",
+   "priority": "v1",
+   "spec": "'Who's using Claude Code?' with subtitle 'Pick a profile to see its projects and sessions. Switch any time from the picture at the top right.' Cards 176x206 radius 14, 84px avatar, name, email, 'N session(s)' (index count, All = sum). 'All profiles' card and 'Add profile' card ('Sign in to another account'). Hover: CtrlHover fill + 70% accent stroke. Keyboard arrows/Tab/Enter. Toggle 'Show this screen when the app starts' -> showPicker. While shown: toolbar, tabs, body, search, avatar, ring hidden; subtitle 'Choose a profile'. Counts update live. Crossfade (opacity spring 0.3) between picker and main.",
+   "source_refs": "ps1:497-582"
+  },
+  {
+   "name": "Enter profile and startup sequence",
+   "area": "profiles",
+   "priority": "v1",
+   "spec": "Startup: show picker if showPicker, or lastProfile empty, or lastProfile is a dir that no longer exists; else enter 'all' or lastProfile. Enter: current profile set; account = dir if specific; lastProfile = dir or 'all'; save; usage refresh; lists refilled; search cleared; avatar tooltip '<name>  -  <email>'; focus sidebar. Start profile for new sessions = current profile ?? settings.account ?? first profile.",
+   "source_refs": "ps1:158-159,583-604,1949-1970"
+  },
+  {
+   "name": "Profile popover (avatar menu)",
+   "area": "profiles",
+   "priority": "v1",
+   "spec": "300px popover right-aligned under avatar: header (64px avatar, name, email), 'Switch to' list (other profiles + All profiles when a specific one is open), Add profile, Manage profiles (picker), Open profile folder ('Show in Finder' on mac; only for specific profile), toggle 'Finish notifications' (notify; mac requests permission on enable), Windows: 'Add/Remove Explorer right-click menu' (label by registry state), 'Refresh everything (F5 / Cmd+R)', 'Close background sessions'. Closes on Esc/outside/blur; toggles flip in place.",
+   "source_refs": "ps1:606-648; MacUI.cs:1117-1246"
+  },
+  {
+   "name": "New profile",
+   "area": "profiles",
+   "priority": "v1",
+   "spec": "Input dialog 'New Claude profile' / 'Name for the new profile (letters, numbers, - or _).\\nIt will be stored in <HOME>/.claude-<name>'. Validate ^[\\w-]+$ else \"That name can't be used\\nUse letters, numbers, - or _ only.\" Create dir in Rust (create_profile), invalidate profile/email cache, open an in-app terminal running claude in HOME with that profile (first run logs in), enter that profile.",
+   "source_refs": "ps1:1231-1241"
+  },
+  {
+   "name": "Session transcript parsing",
+   "area": "sessions list",
+   "priority": "v1",
+   "spec": "Sessions = <profile>/projects/<slug>/<id>.jsonl (depth 1 only; ignore <id>/subagents). Skip files whose stem is not a UUID. Per line (strip BOM, trailing \\r): user line = contains '\"type\":\"user\"' and not '\"tool_result\"' -> count++. cwd = first line containing '\"cwd\":\"' (JSON top-level cwd). Prompt = first user line without '\"isMeta\":true': message.content string, or first array part type=='text'; skip empty or starting with '<'. customTitle: lines starting '{\"type\":\"custom-title\"', last wins; summary: first '{\"type\":\"summary\"'; aiTitle ('ai-title') as fallback after summary. full = title ?? summary ?? aiTitle ?? prompt ?? '(no prompt)'; whitespace collapsed; label 140 chars + '...', full 600 chars + '...'. count==0 sessions excluded. Fields: id, file, cwd, label, full, count, modified ms, sizeKb=ceil(len/1024), profile, slug. Lines > 8 MB only get cheap contains checks.",
+   "source_refs": "MacUI.cs:1405-1533; ps1:162-188; research §4"
+  },
+  {
+   "name": "Session index: cache, warm-up, watcher",
+   "area": "sessions list",
+   "priority": "v1",
+   "spec": "Incremental per-file ParseState (offset after last \\n, partial last line parsed into copy only), shrink -> reset; unchanged (len,mtime) -> no open. Persisted to app_cache_dir/sessions-cache.json (versioned). Cold scan: header pass (first 64 KB) then full count pass in background, largest files first with work-stealing. notify watcher per <profile>/projects (debounce 300 ms) re-parses only changed paths; emits 'index-changed' {gen}. No polling. Full rescan on F5 drops caches. Index changes bump a generation; frontend fetches only when gen changes.",
+   "source_refs": "MacUI.cs:1415-1443; ps1:153-197,844-910; audit perf/reliability"
+  },
+  {
+   "name": "Folder grouping with pinned/missing",
+   "area": "sidebar",
+   "priority": "v1",
+   "spec": "Group sessions by cwd (trailing / and \\ trimmed; key lowercase on Windows+macOS) else slug (sessions without cwd under 'Unknown folder'). Pinned folders appear even with no sessions, flagged pinned (star). Missing = !is_dir (dimmed, warning icon). Sessions newest first; folders pinned first then last-active desc. Profile filter (empty = all). countFor(profile).",
+   "source_refs": "MacUI.cs:1536-1576"
+  },
+  {
+   "name": "Relative time and formatting",
+   "area": "sessions list",
+   "priority": "v1",
+   "spec": "ago: none -> 'no sessions'; <1 min 'just now'; <60 min '{round m}m ago'; <24 h '{floor h}h ago'; <2 d 'Yesterday'; <7 d '{floor d}d ago'; same year 'MMM d'; else 'MMM d, yyyy' (Intl en-US). Labels refresh each minute. Size: >=1024 KB '{N.N} MB' else 'N KB'. Truncate helper with U+2026.",
+   "source_refs": "ps1:198-208; MacUI.cs:1577-1586"
+  },
+  {
+   "name": "Sidebar tree (projects groups + folders)",
+   "area": "sidebar",
+   "priority": "v1",
+   "spec": "Rows: section 's:projects' 'PROJECTS' (30px); group 'g:<lower name>' (34px, chevron, group icon, bold name, badge = total sessions, accepts drop); folder 'f:<lower path>' (32px, indent 1 in group, folder/star/missing icon, detail = ago(last) only if it has sessions, draggable); 'Show N more' 'm:<name>' when >6 folders (show 5) and 'Show less'; hints 'Drag folders here', 'No projects yet. Click + to create one.', 'No matching projects'. Section 's:folders' 'FOLDERS  ·  N' (accepts drop = ungroup, collapsible -> ungroupedCollapsed). A folder in a group is excluded from FOLDERS. Indent 22px, nesting guide line. Live dot (level max over folders). Gliding selection pill (0.3/0.82 top, 0.3/0.9 height), dimmed when unfocused. Hover fade.",
+   "source_refs": "MacUI.cs:823-871,1608-1686; ps1:762-782"
+  },
+  {
+   "name": "Project groups management",
+   "area": "sidebar",
+   "priority": "v1",
+   "spec": "'+' menu: 'New project...', 'Add folder...'. New: input 'Name for the new project. Folders are only referenced here, never moved.'; duplicate -> \"A project named '<name>' already exists.\". Rename ('New name:' prefilled; no-op if empty/unchanged; dup check). Delete: warning \"Delete the project '<name>'?\\n\\nIts N folder(s) go back to Ungrouped. No folders or sessions are deleted.\" Move to project (one project per folder; path trimmed) / Remove from project. Collapse saved; Show more session-only. Drag folder rows (pointer events, 6 px threshold, accent pill follows cursor, target tint, auto-scroll 12 px within 28 px of edges) onto a group or FOLDERS heading.",
+   "source_refs": "ps1:1152-1192,1836-1842; MacUI.cs:708-769"
+  },
+  {
+   "name": "Pin/unpin and add folder",
+   "area": "sidebar",
+   "priority": "v1",
+   "spec": "Add folder via native folder dialog 'Pick a project folder' -> pinned. Toggle pin. Folder 'Delete all sessions...' confirm \"Move all N sessions of '<leaf>' to the Recycle Bin|Trash?\" + up to 5 names, then trash them and unpin (no sessions -> just unpin). Drop folders from Explorer/Finder onto window -> pin + start session in each (default open mode, start profile); files ignored; drop overlay.",
+   "source_refs": "ps1:1144-1151,1194-1198,1220-1230,1941-1946"
+  },
+  {
+   "name": "Sidebar and project context menus",
+   "area": "sidebar",
+   "priority": "v1",
+   "spec": "Folder: New session; New session in new window; New session inside app; New session with profile > (avatars); — Continue last session; — Open Terminal/PowerShell here; Show in Finder/Open in Explorer; Open in VS Code; Copy path; — Move to project > (checked current, —, New project...); Remove from project (if grouped); — Pin/Unpin; Delete all sessions... (danger). Group: New session in... (folder picker 'Start in which folder of <name>?' or disabled '(no folders yet - drag some in)'); Continue last session; — Open in VS Code (multi-root); — Rename project...; Delete project (danger); — New project.... Empty/section: New project.... Row activation: group/section toggles; folder starts new session. Delete key: group -> delete project; folder -> delete-all flow.",
+   "source_refs": "ps1:1348-1416,1832-1843"
+  },
+  {
+   "name": "Header subtitle counts",
+   "area": "window chrome",
+   "priority": "v1",
+   "spec": "'<Profile name> · N session(s) · N folder(s)' + ' · N project(s)' if any groups; singular/plural.",
+   "source_refs": "ps1:778-781"
+  },
+  {
+   "name": "Sessions table and details pane",
+   "area": "sessions list",
+   "priority": "v1",
+   "spec": "Folder view columns: Session (flex, min 120), Messages 90, Last active 105, Profile 85, Size 75. Group view: Session, Folder 150 (cwd leaf), Messages, Last active, Profile. Last active shows 'Working...' (live 2) / 'Open now' (live 1). Count label 'N   in   <name>'. Zebra, 36px rows, sticky header, merged rounded multi-selection, virtualized. Details pane 92px: selected -> full text (prefixed 'Claude is working in this session.' or 'This session is open.' + ' Double-click to switch to it.'), meta 'ddd, MMM d yyyy  HH:mm     N messages     profile: X     <id>'; folder w/o sessions, group and default hints with exact texts from inventory. Buttons: Resume/'Switch to' (1 selected), Fork (1), Delete or 'Delete N'.",
+   "source_refs": "ps1:783-843,1326-1334; MacUI.cs:873-957"
+  },
+  {
+   "name": "New session / continue / resume / fork",
+   "area": "sessions list",
+   "priority": "v1",
+   "spec": "New Session split button: main = openIn mode in selected folder (group -> selected session cwd or folder picker); menu: in new window, inside app, with profile >, radio default mode. Continue: newest session; if live -> switch; else if live but not found ask 'This session is running elsewhere\\nIt's active but its window couldn't be found. Resume anyway? This starts a second copy of the session.' Resume: in session's profile and cwd (fallback folder); switch if live. Fork: --resume <id> --fork-session, title 'Fork of <label>'. Tab title = label, sub '<folder leaf>  ·  <profile name>'.",
+   "source_refs": "ps1:1088-1130"
+  },
+  {
+   "name": "Session context menu and delete",
+   "area": "sessions list",
+   "priority": "v1",
+   "spec": "Resume (Enter/Return) | Resume in new window | Resume inside app | Fork as a new session | Copy session ID | Open folder in VS Code | Show file in Explorer / Reveal in Finder | Delete (Del / Cmd+Backspace, danger). Delete confirm 'Move <this session|these N sessions> to the Recycle Bin|Trash?' + up to 5 '  - <label>' + '  ... and N more' + 'If one is open in a terminal, close it first.' Trash <id>.jsonl, <dir>/<id>/, <profile>/file-history/<id>, <profile>/session-env/<id> (OS trash). Validate every path is inside a known profile dir.",
+   "source_refs": "ps1:1199-1219,1417-1428"
+  },
+  {
+   "name": "Open menu",
+   "area": "sessions list",
+   "priority": "v1",
+   "spec": "'Open ▾': VS Code; Explorer/Finder; PowerShell here/Terminal here; — Copy path. Hidden in Source Control view.",
+   "source_refs": "ps1:1271-1278"
+  },
+  {
+   "name": "Search dropdown",
+   "area": "search",
+   "priority": "v1",
+   "spec": "Placeholder 'Search projects and sessions   (Ctrl+F|⌘F)'. Debounce 120 ms, case-insensitive substring, prefix matches rank first. PROJECTS max 4 (sub 'N folder(s)'), FOLDERS max 6 (leaf match; rank then last desc; sub 'in <group>' or parent leaf; right age; live dot), SESSIONS max 8 (full text, excluding '(no prompt)'; newest first; sub '<cwd leaf>  ·  <profile>'; right 'working'/'open'/age). Empty \"No results for '<q>'\". Width max(field,460). Footer '↑↓ move   ↵ open   esc close'. Up/Down wrap skipping headers; Enter picks; Esc closes+clears and focuses sidebar. Pick: leave terminal view; group -> select; folder -> expand its group (save) + select; session -> select folder + row + resume. Closes on blur/outside/window blur.",
+   "source_refs": "ps1:1844-1933; MacUI.cs:3031-3119"
+  },
+  {
+   "name": "Live session detection",
+   "area": "sessions list",
+   "priority": "v1",
+   "spec": "Every 2 s in Rust: (A) <profile>/sessions/<pid>.json {pid, sessionId, status, cwd, startedAt, procStart}: pid alive (sysinfo) and start time matches startedAt/procStart within 5 s (preferred over name allow-list; fallback names claude, node, pwsh, powershell, cmd, bash, zsh, sh, fish, or version-like names on mac); dead -> ignore (do not delete). level 2 if status=='busy' else 1. (B) <pid>.<hash>.key: pid alive, sorted by start time; session id from cmdline (--resume|-r|--session-id [ =]<uuid>) else newest jsonl modified since start-5 s not yet claimed; cwd = last '\"cwd\":\"...\"' in final 256 KB; level 2 if jsonl mtime < 8 s. Dedupe by sessionId preferring reachable (pid descends from our PTY child, or has a terminal ancestor), else higher level. Emit 'live-changed' only when signature 'id=level;...' changes. liveCwd map (key normalized).",
+   "source_refs": "MacUI.cs:2912-3028; ps1:912-948; research §3"
+  },
+  {
+   "name": "Live dots",
+   "area": "sidebar",
+   "priority": "v1",
+   "spec": "8px dot: green = open, accent with breathing halo (1.4 s CSS keyframes) = working; white on selected rows; replaces icon in table and search rows.",
+   "source_refs": "MacUI.cs:560-590"
+  },
+  {
+   "name": "Switch to running session (focus live)",
+   "area": "sessions list",
+   "priority": "v1",
+   "spec": "1) in-app tab whose shell/claude pid is the session pid or an ancestor -> select tab, show/unminimize/focus window. 2) Windows: walk up to 7 ancestors for a console/top-level window -> ShowWindow(SW_RESTORE)+SetForegroundWindow. macOS: find ancestor GUI app (Terminal, iTerm2, etc.) -> activate via `open -b`/NSRunningApplication. 3) fallback Windows Terminal / Terminal.app activate. Returns false if nothing.",
+   "source_refs": "ps1:993-1027; MacUI.cs:33-36"
+  },
+  {
+   "name": "Finish notifications and tray / menu bar icon",
+   "area": "notifications",
+   "priority": "v1",
+   "spec": "On live tick: when a session goes level 2 -> not 2 fire 'Claude finished'; if it disappears while working 'Claude session ended'. Body '<label or cwd leaf or \"Claude session\">\\n<cwd leaf>'. Disabled when notify=false. Suppressed if window focused and active tab owns that pid. Click -> show window + focus live session. Tray (Windows) / menu bar (mac) icon 'Claude Sessions': click/double-click shows window; menu Show, New session, Quit.",
+   "source_refs": "ps1:949-985"
+  },
+  {
+   "name": "Close orphaned background sessions",
+   "area": "sessions list",
+   "priority": "v1",
+   "spec": "Scan sessions/*.json of current (or all) profiles; skip dead and in-app pids; orphan if not reachable. None -> 'No background sessions to close\\nEvery running session can be reached from a window.' Else warning 'Close N background session(s)?' listing up to 6 '  - <cwd leaf>  (pid N)'. Yes: kill pid (tree), kill parent if shell/node, refresh live.",
+   "source_refs": "ps1:1028-1056"
+  },
+  {
+   "name": "Terminal tabs (xterm over PTY)",
+   "area": "terminals",
+   "priority": "v1",
+   "spec": "Tab strip: pinned Home tab, then terminal tabs (icon, bold title, muted sub), gliding pill (0.3/0.86, 0.3/0.9), width 150-250 (min 110), overflow 'more' button with count and menu ('N open terminal(s)'), active tab always visible, pop-out and close buttons on hover/active, middle-click closes, right-click menu (VS Code; Explorer/Finder; Copy folder path; — Pop out; Close terminal danger). Hidden when no terminals or on picker. One xterm per tab kept alive; fit on show and debounced resize; WebGL addon only on active tab; scrollback from settings; unicode11; fonts Win 'Cascadia Mono','Cascadia Code',Consolas,'Segoe UI Emoji','Nirmala UI' / mac ui-monospace,'SF Mono',Menlo,'Apple Color Emoji'. Focus on window focus. Title from OSC via onTitleChange: strip leading non-letter/digit, trim, ignore ^(claude( code)?|pwsh|powershell|windows powershell|administrator\\b.*|.*[\\\\/][^\\\\/]+\\.exe|-?zsh|-?bash|fish|login)$ i; in-place DOM update, throttled 4/s.",
+   "source_refs": "ps1:649-718; MacUI.cs:2498-2654"
+  },
+  {
+   "name": "Close terminal",
+   "area": "terminals",
+   "priority": "v1",
+   "spec": "Confirm 'Close terminal': 'Close this terminal?\\n\\n<chat>\\n<project>\\n\\nThe Claude session is saved and can be resumed later.' (button 'Close'). Kill whole tree. Exited tabs close without confirm. On process exit tab shows '[session ended]' and is removed from backend; list refreshes.",
+   "source_refs": "ps1:692-703"
+  },
+  {
+   "name": "Terminal input on macOS and Windows",
+   "area": "terminals",
+   "priority": "v1",
+   "spec": "Copy/paste modifier: Windows Ctrl (Ctrl+C copies only with selection, else interrupt; Ctrl+V paste), mac Cmd only (Ctrl+C/Ctrl+V always to PTY). macOptionIsMeta (setting, default on mac). Shift+Enter -> '\\x1b\\r'. Mac Cmd+Left \\x01, Cmd+Right \\x05, Cmd+Backspace \\x15, Cmd+K clear, Cmd+A select all. Clipboard via clipboard-manager plugin. Links: WebLinks + OSC 8 open https only with Ctrl/Cmd+click. File drop onto active terminal pastes shell-quoted paths. Terminal context menu Copy/Paste/Select All/Clear.",
+   "source_refs": "audit macos blockers Ctrl+C/V, Option meta, links, drops"
+  },
+  {
+   "name": "Pop out terminal",
+   "area": "terminals",
+   "priority": "v1",
+   "spec": "Opens a new WebviewWindow 'term-<id>' (1100x680 at main+60,+60) attached to the same PTY; backend keeps a 256 KB output ring buffer replayed on attach; tab removed from main strip; closing popout window asks like close tab; 'Move back to main window' in its menu.",
+   "source_refs": "ps1:704-708"
+  },
+  {
+   "name": "Quit with open terminals / keep running in background",
+   "area": "terminals",
+   "priority": "v1",
+   "spec": "Window close or Cmd+Q/Quit with live PTYs: dialog '<n> terminal(s) is/are still open inside the app' + 'Keep running in the background? Claude can keep working, and they come back as tabs the next time you open the app. Closing them ends them; the sessions stay saved and can be resumed.' Buttons Cancel | Close terminals (danger) | Keep running (primary). Keep running = hide window, process stays (tray/menu bar/Dock reopen restores with tabs). Close = kill all then exit. No terminals: Windows exits; macOS window close hides (Dock reopen shows), Cmd+Q exits.",
+   "source_refs": "ps1:719-760; audit macos close/reopen"
+  },
+  {
+   "name": "Cross-restart background terminals (bgTerms)",
+   "area": "terminals",
+   "priority": "later",
+   "spec": "True detach across app restarts needs a sidecar PTY daemon; v1 keeps the process alive hidden instead.",
+   "source_refs": "ps1:735-760"
+  },
+  {
+   "name": "External terminal launch",
+   "area": "launching",
+   "priority": "v1",
+   "spec": "'New window' mode. Windows: wt.exe -d <dir> <shell> ... if Windows Terminal exists, else pwsh/powershell with CREATE_NEW_CONSOLE; -NoExit -NoLogo -NoProfile -EncodedCommand base64(UTF-16) of `try { claude <args> } finally { . profiles }` with CLAUDE_CONFIG_DIR set via env, not string. macOS: AppleScript to Terminal (or iTerm if installed) `do script \"cd <posix-quoted dir> && CLAUDE_CONFIG_DIR=<quoted> <claude path> <args>\"` (args are validated UUID/flags only). 'Terminal/PowerShell here' = same without claude. Folder missing -> 'Folder not found\\n<dir>'.",
+   "source_refs": "ps1:215-252"
+  },
+  {
+   "name": "Open in VS Code / reveal / copy path",
+   "area": "OS integration",
+   "priority": "v1",
+   "spec": "VS Code lookup: Windows %LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe, %ProgramFiles%\\Microsoft VS Code\\Code.exe, then code on PATH (CREATE_NO_WINDOW); macOS /Applications/Visual Studio Code.app via `open -a`, then `code` on login PATH. Multi-root: pass all existing dirs. Missing -> 'VS Code was not found.' Reveal file/folder via opener reveal_item_in_dir (Rust side). Clipboard via plugin.",
+   "source_refs": "ps1:1131-1143"
+  },
+  {
+   "name": "Explorer right-click menu (Windows)",
+   "area": "OS integration",
+   "priority": "v1",
+   "spec": "HKCU\\Software\\Classes\\Directory\\shell\\ClaudeCode and ...\\Directory\\Background\\shell\\ClaudeCode: MUIVerb 'Open Claude Code here', SubCommands '', Icon <app exe>; sub keys shell\\00.. 'Profile: <name>' with command `\"<app exe>\" --open \"%V\" --profile \"<dir>\"` (handled by single-instance). Rewritten when profiles change if installed. Messages 'Explorer menu added\\nRight-click any folder and pick 'Open Claude Code here', with one entry per profile. On Windows 11 it is under 'Show more options'.' / 'Explorer menu removed'. Same key names so old installs are detected/removed. Uninstaller removes keys.",
+   "source_refs": "ps1:254-278"
+  },
+  {
+   "name": "Finder Quick Action (macOS)",
+   "area": "OS integration",
+   "priority": "later",
+   "spec": "Services workflow in ~/Library/Services calling claudemanager://open?dir=&profile= via deep-link plugin. Hidden on macOS in v1.",
+   "source_refs": "ps1:254-278"
+  },
+  {
+   "name": "Single instance and CLI args",
+   "area": "OS integration",
+   "priority": "v1",
+   "spec": "Second launch focuses existing window; args --open <dir> [--profile <dir>] start a session there (validated).",
+   "source_refs": "audit release single-instance"
+  },
+  {
+   "name": "Usage ring",
+   "area": "usage",
+   "priority": "v1",
+   "spec": "SVG ring 22px: state loading = spinning 70° arc; ok = arc 360*fraction (spring 0.6) colored <70 accent, 70-89 #FF9F0A, >=90 danger; failed (plans present, none with limits) = muted ring + 40° red arc. fraction = max 'Current session' % / 100 across profiles in scope, else local block fraction. Hover opens popover immediately; closes when pointer leaves ring+popover (150 ms grace); click toggles. Hidden when showUsage=false.",
+   "source_refs": "MacUI.cs:1787-1844"
+  },
+  {
+   "name": "Usage popover",
+   "area": "usage",
+   "priority": "v1",
+   "spec": "330px: 'USAGE' + scope ('<profile>' or 'All profiles', '  ·  <Plan> plan' when one plan), spinner while busy. Status: 'Loading your plan limits...' / 'Plan limits not loaded yet' / 'Numbers from {ago}  ·  usage service busy, will check again shortly' / 'Checking...' / 'No plan limits available' / 'Updated {ago}' (+ '  ·  refreshing...'). Per profile (bold name if >1): error line or limit rows (label, '{round}% used' level-colored, 6px bar, reset text). Skeleton rows when empty. Footer 'This PC  ·  today {fmt}  ·  week {fmt}' + 7-bar chart (today accent). Repaint 1 s while open; ago: <5 s 'just now', <60 s 'Ns ago', <60 m 'Nm ago', else time.",
+   "source_refs": "MacUI.cs:1977-2143"
+  },
+  {
+   "name": "Plan limits fetch",
+   "area": "usage",
+   "priority": "v1",
+   "spec": "Credentials: Windows/Linux <dir>/.credentials.json; macOS `/usr/bin/security find-generic-password -s 'Claude Code-credentials[-<sha256(dir)[0..8]>]' -a $USER -w` (hashed first for non-default, then plain, then file; exit 44 = missing). claudeAiOauth.accessToken/expiresAt/subscriptionType. Token stays in Rust. GET https://api.anthropic.com/api/oauth/usage, headers Authorization Bearer, anthropic-beta: oauth-2025-04-20, User-Agent claude-manager, 15 s timeout. Errors: no token 'Not signed in'; expired/401 'Sign-in expired — use this profile once to refresh'; 429 global backoff clamp(Retry-After or 120, 600, 3600) 'Usage service busy'; other 'Usage service unavailable (code)'; network 'Could not reach Anthropic (offline?)'; else 'Could not read usage'. Parse limits[] {group,kind,scope.model.display_name,percent,resets_at}: session -> 'Current session', weekly -> 'Weekly · <model|all models>', else kind '_'->' '; fallback five_hour/seven_day {utilization,resets_at}. 5 min per-credential memo; transient errors keep old numbers marked stale.",
+   "source_refs": "MacUI.cs:1846-2055; research §1-2"
+  },
+  {
+   "name": "Plan cache and refresh cadence",
+   "area": "usage",
+   "priority": "v1",
+   "spec": "app_data_dir/usage-cache.json: [{profile, plan, fetched ISO, limits:[{label,percent,resets}]}], never tokens; shown immediately on start/profile change. Local usage every 60 s, plans every 10 min, on popover open if >5 min old, on window focus if needs retry (no plans or any non-'Not signed' error).",
+   "source_refs": "MacUI.cs:1851-1887,1997-2055; ps1:1057-1079"
+  },
+  {
+   "name": "Local token usage",
+   "area": "usage",
+   "priority": "v1",
+   "spec": "Recursive *.jsonl under <profile>/projects modified in last 8 days; lines with 'usage' and 'assistant'; type assistant with message.usage, model != '<synthetic>'; tokens = input + output + cache_creation_input (no cache reads); dedupe by message.id; 5 h blocks (start floored to local hour; new block when t >= start+5h or gap >=5h); peak block; days[7] (6 = today); today/week; current block active if now < start+5h; fraction = block/peak. Cache per (path, mtime). Fmt: >=1M 'N.NM' (no decimal >=10M), >=1000 'N.NK' (none >=100K). Until/ResetText per inventory.",
+   "source_refs": "MacUI.cs:1688-1784,1967-1974"
+  },
+  {
+   "name": "Source control view switch and header",
+   "area": "source control",
+   "priority": "v1",
+   "spec": "Segmented 'Sessions | Source Control' in right card header; title switches; New/Open hidden in git mode; git header shows repo picker (if >1 repo), branch pill, sync label ('not published' / '↑N ↓M' / 'up to date'), Fetch/Pull/Push/Refresh icon buttons with counts and tooltips ('Publish branch'/'Push N commit(s)'/'Pull N commit(s)'/'Fetch from remote'). Not persisted.",
+   "source_refs": "ps1:1435-1473,1594-1605"
+  },
+  {
+   "name": "Git runner",
+   "area": "source control",
+   "priority": "v1",
+   "spec": "Rust async git(dir, args Vec, stdin) -> {code, stdout, stderr}; env GIT_TERMINAL_PROMPT=0, LANG=LC_ALL=en_US.UTF-8, GIT_OPTIONAL_LOCKS=0 for polls; CREATE_NO_WINDOW on Windows; login PATH on mac; missing git -> code -1. dir must be existing dir. Frontend request ids drop stale results. One op at a time (busy disables Fetch/Pull/Push/Commit).",
+   "source_refs": "MacUI.cs:2146-2176"
+  },
+  {
+   "name": "Repo discovery",
+   "area": "source control",
+   "priority": "v1",
+   "spec": "Candidates: path itself if .git (file or dir); sub-folders 1 and 2 levels deep with .git, skip node_modules and dot-names, stop >40; cached 30 s. Group: union across folders, else folder paths. Picker menu labels leaf or 'parent/leaf' on duplicates, check current; pick not persisted. Empty states: 'Select a folder in the sidebar'; not a repo: '<leaf> is not a git repository, and no repositories were found in its sub-folders.\\n\\nRight-click it in the sidebar to open it in VS Code, or run 'git init' there.' status 'Not a git repository'.",
+   "source_refs": "ps1:1536-1632"
+  },
+  {
+   "name": "Changes list, stage/unstage/discard",
+   "area": "source control",
+   "priority": "v1",
+   "spec": "git status --porcelain=v1 -b -z --untracked-files=all parsed in Rust: '## ' header -> branch (before '...', strip 'No commits yet on '), upstream, ahead/behind; R/C skip next entry; '??' -> changes 'U'; U*/*U/AA/DD -> changes '!'; X!=' ' staged; Y!=' ' changes. STAGED CHANGES (omitted if empty) / CHANGES (always) with counts; rows name + muted dir + status letter colored; hover actions: Changes file Open/Discard/Stage, Staged file Open/Unstage, headers Unstage all / Discard all + Stage all. Commands: add -- p; restore --staged -- p; add -A; reset -q; discard untracked confirm 'Delete the new file '<p>'?\\n\\nIt goes to the Recycle Bin|Trash.' -> trash; tracked 'Discard your changes to '<p>'?\\n\\nThis cannot be undone.' -> restore -- p; all 'Discard ALL changes to tracked files?\\n\\nNew (untracked) files are kept. This cannot be undone.' -> restore -- :/. Count label 'N changes'/'clean'. Poll 4 s while visible+focused+idle.",
+   "source_refs": "ps1:1633-1727,1826-1829; MacUI.cs:2178-2327"
+  },
+  {
+   "name": "Commit box and commit menu",
+   "area": "source control",
+   "priority": "v1",
+   "spec": "Textarea 1-6 lines, placeholder 'Message (Ctrl+Enter to commit)' / '(⌘↵ to commit)'. Commit button 'Commit' / 'Commit N staged'. Empty msg -> red 'Type a commit message first.'; nothing -> 'There is nothing to commit.'; no staged -> confirm 'There are no staged changes. Stage all changes and commit them?' (button 'Stage all & commit') -> add -A. commit -F - (stdin). Menu: Commit & Push; Amend (--amend -F - or --no-edit); Undo last commit (confirm -> reset --soft HEAD~1); Stash all (stash push -u -m 'yyyy-MM-dd HH:mm from Claude Manager'); Pop latest stash; Open folder in VS Code. Push: upstream ? push : push -u origin HEAD. Busy texts 'Committing...','Pushing...','Publishing branch...' etc. Status line: errors red (first 2 non-empty lines or 'git failed (exit N)'), success last line or 'Done' auto-hides 4 s.",
+   "source_refs": "ps1:1484-1534,1738-1774"
+  },
+  {
+   "name": "Branch menu",
+   "area": "source control",
+   "priority": "v1",
+   "spec": "git branch --format=%(HEAD)%09%(refname:short); check current; click -> switch <name>; 'Create new branch...' input 'New branch' / 'Name for the new branch (created from the current one):' whitespace -> '-' -> switch -c.",
+   "source_refs": "ps1:1775-1792"
+  },
+  {
+   "name": "Diff viewer",
+   "area": "source control",
+   "priority": "v1",
+   "spec": "Unified diff: gutter old/new numbers (from @@ -a,b +c,d), add/remove tints per theme, hunk headers blue, file header bars, noise headers hidden, tabs=4 spaces, caps 40k lines (20k new file). Untracked: read in Rust: missing 'File not found', >2 MB '<name> is a large new file (X.X MB)', NUL 'is a new binary file'. staged diff --cached --no-color -- p; else diff --no-color -- p; empty 'No text changes'; 'Binary file not shown'. Virtualized, sticky gutter, horizontal scroll, Ctrl/Cmd+C copies all when no selection. Font 'Cascadia Mono',Consolas / ui-monospace,Menlo.",
+   "source_refs": "ps1:1680-1702; MacUI.cs:2329-2440"
+  },
+  {
+   "name": "History with commit graph",
+   "area": "source control",
+   "priority": "v1",
+   "spec": "Tabs 'Changes  N' | 'History'. git log --branches --remotes --tags HEAD --date-order -n 400 --pretty=format:%H%x1f%P%x1f%s%x1f%an%x1f%at%x1f%D%x1e. Ref pills: drop 'HEAD', '*/HEAD'; 'HEAD -> x' -> '*x' (accent); strip 'tag: '; max 120px, dropped if <70px text left. Age short from %at ('5m','2h','3d','1w','2mo','1y'). GitGraph.Layout port 1:1 (lanes, colors, segments, merges hollow, HEAD ring r5.5), max 8 lanes, x=16+lane*14+6, SVG per row, row 34px. Select -> git show --no-color --stat --patch --format=fuller <hash> ('Empty commit').",
+   "source_refs": "ps1:1793-1825; MacUI.cs:2443-2496"
+  },
+  {
+   "name": "Git split layout",
+   "area": "source control",
+   "priority": "v1",
+   "spec": "Left column min 260, initial clamp(290, 34%, 380), draggable 1px divider, saved in settings.gitSplit.",
+   "source_refs": "ps1:1452-1453,1508-1511"
+  },
+  {
+   "name": "Logging and crash capture",
+   "area": "settings",
+   "priority": "v1",
+   "spec": "tauri-plugin-log to app_log_dir (5 MB rotate), panic hook logs, frontend onerror/unhandledrejection forwarded; 'Show logs' menu item.",
+   "source_refs": "audit release logging"
+  },
+  {
+   "name": "Auto-update",
+   "area": "settings",
+   "priority": "v1",
+   "spec": "tauri-plugin-updater against GitHub releases latest.json, signed; check at startup + daily; banner 'Update available — Restart to update'.",
+   "source_refs": "audit release updater"
+  },
+  {
+   "name": "Smooth scrolling and overlay scrollbars",
+   "area": "sessions list",
+   "priority": "v1",
+   "spec": "Windows: spring wheel smoothing (36*2.4 px/notch, 0.36/1.0) + thin auto-hiding scrollbar (6px, fades 1 s). macOS: native scrolling (no wheel hijack, trackpad momentum and rubber band native).",
+   "source_refs": "MacUI.cs:635-707; audit macos spring wheel"
+  },
+  {
+   "name": "Legacy cleanup of old app files",
+   "area": "launching",
+   "priority": "later",
+   "spec": "Optionally delete %APPDATA%\\ClaudeManager\\MacUI-*.dll and OpenConsole-*.exe after import.",
+   "source_refs": "ps1:18-62"
+  },
+  {
+   "name": "WinForms/Win32 internals (MacUI DLL build, OpenConsole host, console reparenting, FindChild, dark-mode Win32 hooks, timeBeginPeriod/GDI, screenshot crossfade, flat Rows view)",
+   "area": "window chrome",
+   "priority": "drop",
+   "spec": "Replaced by xterm.js+portable-pty, CSS theming, requestAnimationFrame springs and CSS crossfade. No user-facing behavior lost.",
+   "source_refs": "ps1:18-62,679-691; MacUI.cs:13-121,1026-1108,1587-1604; MacUI.cs:15-47"
+  }
+ ],
+ "architecture": "PRINCIPLE: every feature lives in its own Rust module folder and its own frontend feature folder. Shared files are touched only by one-line registrations in marked blocks. Cross-feature communication goes through typed contracts (Rust types exported with ts-rs, a typed frontend event bus, a typed store) and never by importing another feature's internals.\n\nRUST (src-tauri/src/), single crate, edition 2024, panic=unwind:\n- lib.rs: Builder only. Plugins (single-instance first, log, window-state, dialog, clipboard-manager, notification, opener [no webview permissions], updater, process). `.setup(|app| { core::init(app)?; <feature>::init(app)?; ... })` with one line per feature in a block `// ---- feature init (one line each) ----`. Uses `.build(ctx)?.run(lifecycle::on_run_event)`.\n- commands.rs: the single `tauri::generate_handler![...]` macro, grouped by `// ---- <feature> ----` blocks. A package adds only lines in its own block.\n- core/ (foundation, shared): error.rs (AppError via thiserror, Serialize as {code,message}; `type AppResult<T>`; lock helper that recovers poisoning), paths.rs (home, app_config/cache/data/log dirs, `norm(path)` trims / and \\, `key(path)` lowercases on Windows and macOS, `is_within(child, root)`), env.rs (startup environment resolution: login-shell PATH on mac, claude/shell/git/code path discovery, `clean_env(&mut CommandBuilder|Command)`, `platform_info()` {os, build, arch}), procs.rs (sysinfo wrapper refreshed on demand: alive, name, start_time, cmdline, parent chain, descendants_of, kill_tree(pid) using Job Object/taskkill /T on Windows and killpg SIGHUP->SIGTERM->SIGKILL on Unix), spawn.rs (`hidden_command(program)` std Command with CREATE_NO_WINDOW + cleaned env + cached PATH), profiles.rs (discovery, name, email, `resolve_profile(dir) -> AppResult<PathBuf>` that only accepts a discovered profile), settings.rs (Settings struct, load/import/atomic save, get_settings/update_settings commands, 'settings-changed' event), lifecycle.rs (CloseRequested/ExitRequested/Reopen/Exit handling; emits 'app:close-requested' {terminals:n} to frontend and exposes command `app_quit_decision(decision)`; Exit -> calls registered shutdown hooks), events.rs (event name constants), types.rs (shared ts-rs types: Profile, Session, Project, LiveSession, TermInfo, Settings).\n- Feature modules (each a folder with mod.rs exposing `pub fn init(app:&mut App)->AppResult<()>` that does `app.manage(...)`, spawns its background threads, and #[tauri::command] fns): sessions/ (WP1), pty/ + launch/ (WP2), live/ + notify/ (WP3), sidebar has no Rust except fs helpers in sessions (WP4 uses trash command from WP5), actions/ (WP5: trash, reveal, copy), profiles_ui commands in core/profiles (WP6 adds create_profile in profiles_cmd.rs), usage/ (WP7), git/ (WP8), os/ (WP9: tray, menu, explorer_menu, vscode, focus_window), updater handled in frontend + plugin line (WP10).\n- Types: every IPC struct derives Serialize + ts_rs::TS with #[ts(export, export_to = \"../../src/bindings/\")]; `cargo test` exports; CI fails if src/bindings changes after tests. Commands are async (or spawn_blocking) unless trivial; nothing blocking runs on the main thread.\n- Security rules: webview never passes executable args, env, or arbitrary paths to run. Commands take ids (session id UUID, profile dir validated by resolve_profile, project dir validated is_dir). Paths for delete/trash must be inside a profile dir. Token never leaves Rust.\n\nFRONTEND (src/), vanilla TS, no framework; lit-html allowed for keyed rendering (`repeat`):\n- main.ts (~40 lines): imports styles/tokens.css + base.css, core bootstrap, then `src/features/index.ts` which has one `mount()` call per feature (one line each in a marked block).\n- core/: store.ts (`createStore<AppState>`, get/set/select/subscribe; AppState is an interface each feature extends by TS declaration merging in its own file `features/x/state.ts`), bus.ts (typed emit/on; `interface AppEvents` extended by declaration merging per feature), api.ts (`call<T>(cmd,args)` wrapper: logs, toasts errors, returns Result-like; `listen` wrapper), settings.ts (typed settings mirror + `updateSettings(patch)`), platform.ts (isMac/isWindows from platform_info command; mod key labels), keyboard.ts (shortcut registry `registerShortcut({id, keys:'CmdOrCtrl+F', when, run})`, native 'menu' events routed to same ids), commands.ts (named actions registry used by menus, shortcuts, native menu), format.ts (ago, size, fmtTokens, until, resetText, truncate), dom.ts (esc, html tag, keyed list helpers), motion.ts (Spring/animate/smoothScroll from spring.ts; reduced motion; no wheel hijack on mac), icons.ts (inline SVG set incl. folder, star, warning, group, chevrons, plus, close, home, terminal, branch, fetch, pull, push, refresh, check, trash, vscode, popout, search), i18n per feature (`features/x/strings.ts`).\n- ui/ (foundation, shared kit): button.ts, segmented.ts, toggle.ts, splitbutton.ts, texttabs.ts, avatar.ts, tooltip.ts, menu.ts (ContextMenu), popover.ts, dialog.ts (ask/message/input), list.ts (virtual keyed list + selection model + keyboard + aria), splitter.ts, toast.ts, each with its css in ui/*.css.\n- Layout shell (index.html, foundation-owned) with fixed slots: #titlebar [#tb-lights (Windows only), #tb-title, #tb-search-slot, #tb-right-slot], #picker-root, #main [#tabstrip-slot, #workspace [#sidebar-slot | splitter | #card [#card-head (segmented view switch + #card-actions-slot) , #card-body]] , #terminal-root], #overlay-root (menus, popovers, dialogs, toasts). Views registry (core/views.ts): `registerView({id:'sessions'|'git', title, mount(body), headerActions(el), onShow, onHide})`; foundation renders the segmented switch from the registered views.\n- Core AppState (foundation defines): profiles: Profile[]; currentProfile: string|null ('all'=null); screen: 'picker'|'main'; settings: Settings; index: {gen, projects: Project[], loaded:'loading'|'ok'|'empty'|'error'}; live: Record<sessionId, LiveSession> + liveCwd: Record<key, 1|2>; sidebarSelection: {kind:'folder'|'group', key, path?, name?, folders?}|null; terminals: TermInfo[] {id, ptyId, pid, title, sub, dir, profile, sessionId?}; activeTerminal: id|null; view: 'sessions'|'git'.\n- Core bus events (foundation defines contract; implementers listed): 'launch' {dir, profile?, mode?:'embed'|'external', resume?:{sessionId, fork?}, label?} -> WP2; 'terminal:show' {id|null} -> WP2; 'session:resume' {sessionId, mode?, fork?} -> WP5 (does focus-live check then 'launch'); 'live:focus' {sessionId} -> WP3 returns via promise helper `focusLive(id): Promise<boolean>` exported from features/live/api.ts (allowed import: features may import another feature's public `api.ts` only); 'refresh:full' -> WP1 frontend adapter; 'sidebar:select' {key}; 'search:focus'; 'profile:enter' {dir|null} -> WP6; 'profile:new' -> WP6; 'picker:show' -> WP6.\n- Styling: styles/tokens.css holds all palette tokens (light/dark + fixed colors), styles/base.css resets (user-select with -webkit- prefix, focus-visible ring, appearance:none on controls, scrollbar styles). Each feature imports its own css; class names prefixed by feature (`sb-`, `ses-`, `term-`, `git-`, `use-`, `prof-`).\n- Tests: Rust #[cfg(test)] + src-tauri/tests/fixtures; frontend vitest + happy-dom, `*.test.ts` next to code. Lint: biome; rustfmt (max_width 120); clippy -D warnings.",
+ "foundation_tasks": "Done by one engineer, in order, before any work package starts. Each step leaves the app building and running on Windows and macOS.\n\nF1. Repo hygiene and tooling: add biome.json, src-tauri/rustfmt.toml (max_width=120), rust-toolchain.toml (pin e.g. 1.90), package.json packageManager pnpm pinned, scripts test (vitest run), typecheck (tsc --noEmit), lint (biome ci .), @types/node (remove ts-expect-error in vite.config.ts), tsconfig noUncheckedIndexedAccess. Cargo: remove panic=\"abort\"; add [profile.dev.package.\"*\"] opt-level=2; deps: thiserror, ts-rs, sysinfo, notify + notify-debouncer-full, memchr, rayon, trash, chrono, sha2, which, reqwest (rustls, json), tokio (rt), log; cfg(windows): windows-sys (Job Objects, console/window APIs), winreg; cfg(unix): libc; dev: tempfile. Set authors/license/repository. Add .github/workflows/ci.yml (pull_request + push main; matrix windows-latest, macos-latest): pnpm install --frozen-lockfile, biome ci, typecheck, vitest, cargo fmt --check, cargo clippy --all-targets -D warnings, cargo test, then `git diff --exit-code src/bindings`. Actions pinned by SHA, permissions: contents: read.\n\nF2. Identity and security config (tauri.conf.json + capabilities): identifier com.ceylabs.claudemanager (confirm with owner; frozen afterwards); remove version from tauri.conf.json (falls back to Cargo.toml) ; window label main, title 'Claude Sessions', 1320x820, min 940x560, center, visible:false, backgroundColor #1C1C1E; Windows: decorations:false, shadow:true (in tauri.windows.conf.json); macOS (tauri.macos.conf.json): titleBarStyle Overlay, hiddenTitle, trafficLightPosition {x:14,y:18}. CSP: \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'\" plus devCsp allowing ws://localhost:1420. Capabilities: minimal — core:window allow-start-dragging/close/minimize/toggle-maximize/show/set-focus/unminimize/is-fullscreen, core:event default, dialog:allow-open, clipboard-manager:allow-write-text + allow-read-text, notification:default, log:default, window-state:default, updater:default, process:allow-restart; capability windows: [\"main\",\"term-*\"]. No opener permissions (Rust-side use only). In lib.rs add on_navigation guard (only tauri:// / http://tauri.localhost / devUrl) and deny new windows.\n\nF3. Rust restructure: create core/ modules exactly as in architecture (error, paths, env, procs, spawn, profiles, settings, lifecycle, events, types), commands.rs, and move current sessions.rs into sessions/ (keep behavior; add Session.full, slug, UUID-stem filter) and pty.rs into pty/ unchanged except it now takes validated inputs from a temporary pty_new/pty_resume pair (WP2 hardens). Plugins registered: single-instance (focus main window; forward args to 'app:open-args' event), log (LogDir+Stdout+Webview, 5 MB, KeepOne, Info), window-state, dialog, clipboard-manager, notification, opener, process. Panic hook -> log::error. env.rs resolves environment on a background thread at startup with OnceLock + a `wait_env()` that blocks max 5 s; exposes `env_status` command {claudePath|null, shellPath, gitPath|null, codePath|null}. On Windows create one Job Object (KILL_ON_JOB_CLOSE) at startup in procs.rs with `assign_to_job(pid)` for WP2. settings.rs implements full schema (see feature 'Settings persistence') with legacy import and commands get_settings/update_settings(patch: serde_json::Value merge, validated by deserializing into Settings). profiles.rs implements discovery/name/email with commands list_profiles {dir,name,email,signedIn?:null} and refresh_profiles. lifecycle.rs: on CloseRequested of main: if terminals live (count from a `ShutdownRegistry` trait object registered by WP2) -> prevent_close and emit 'app:close-requested'; else Windows exit, macOS hide. RunEvent::ExitRequested same check; RunEvent::Reopen -> show+focus main; RunEvent::Exit -> run shutdown hooks (WP2 registers kill_all). Command app_quit_decision('cancel'|'close'|'keep'): keep = hide window; close = run hooks then app.exit(0).\n\nF4. Types/bindings: ts-rs derives on all core types; export test writes src/bindings/*.ts; commit generated files.\n\nF5. Frontend restructure: replace main.ts monolith with architecture layout (core/, ui/, features/, styles/). Port existing behavior into features temporarily: features/sidebar (current list), features/sessions (current home table), features/terminals (current tabs+xterm). These ports are the starting point the packages own and rewrite. Implement all of core/ and ui/ (button, segmented, toggle, splitbutton, texttabs, avatar, tooltip, menu, popover, dialog, list with selection model, splitter, toast) with vitest tests for format.ts (ago/size/fmt/until/resetText with fixed now), list selection model, dialog button naming rules (caption 'Delete'->'Delete', 'Commit'->'Stage all & commit', 'Close terminal'->'Close', ''/'Claude Manager'->'OK'), menu keyboard nav. Implement tokens.css/base.css per theme feature (incl. -webkit-user-select, :focus-visible ring, appearance resets, scrollbar styles, reduced motion). Global contextmenu suppression except inputs/textarea. Title bar: Windows custom traffic lights + drag region + focus dimming; mac padding + fullscreen check; title/subtitle text API `setSubtitle(text)`. View registry + segmented switch in card head. Window shown after first render (getCurrentWindow().show()) with CSS fade-in. Error banner component for env_status (claude missing).\n\nF6. Keyboard + native menu infrastructure: core/keyboard.ts registry and os/menu.rs skeleton (macOS app/Edit/Window/Help menus with predefined items + custom ids, Windows: no menubar) emitting 'menu' events into the same registry; WP9 fills remaining items. Register core shortcuts: CmdOrCtrl+F -> 'search:focus', F5 / Cmd+R -> 'refresh:full'.\n\nF7. Verify: pnpm tauri dev on Windows and macOS shows the restructured app with same behavior as today; ci.yml green; settings round-trip test (bad JSON -> defaults, unknown keys preserved, legacy import); profiles discovery test with tempfile home.",
+ "work_packages": [
+  {
+   "id": "WP1",
+   "title": "Session index engine (Rust) + data adapter",
+   "scope": "Make session data fast, correct and event-driven. Rust in src-tauri/src/sessions/: parse.rs, scan.rs, cache.rs, watch.rs, group.rs, mod.rs.\n1) Parsing parity (see feature 'Session transcript parsing'): files <profile>/projects/<slug>/<id>.jsonl depth 1 only; skip non-UUID stems (^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$); skip symlinks; strip BOM and \\r; user line = contains '\"type\":\"user\"' and not '\"tool_result\"' (check only first 4 KB of line for type/tool_result); cwd first '\"cwd\":\"' (top-level JSON); prompt first non-isMeta user line, message.content string or first {type:'text'} part, skip empty or leading '<'; customTitle last wins; summary first; ai-title (aiTitle) fallback after summary; full = title??summary??aiTitle??prompt??'(no prompt)', whitespace collapsed, label 140+'...', full 600+'...'. Store truncated prompt/title (<=600 chars) in state. count==0 excluded. Session fields: id, file, cwd, label, full, count, modified(ms), sizeKb=ceil(len/1024), profile, slug.\n2) Scanner struct (no globals): `Scanner::new(cache_path)`; `scan(profiles:&[PathBuf])`; ParseState per path {len, mtimeMs, offset, cwd, prompt, title, summary, aiTitle, count}; unchanged len+mtime -> no open; len<offset -> reset; read from offset with memchr newline search, thread_local 256 KB buffer, memmem finders; partial trailing line parsed into a copy only; lines >8 MB skipped except cheap checks. Prune states for unseen paths. Persist to app_cache_dir/sessions-cache.json {version:1, entries} after scans that changed something (atomic write).\n3) Two-phase cold scan: phase A reads first 64 KB of uncached files (cwd, prompt, title) and returns with count=null... simpler: count from partial bytes flagged `partial:true`; phase B full read with rayon par_iter sorted largest first; emit 'index-changed' {gen} when done.\n4) Index state managed: HashMap<path, Session>, gen counter (bumps on change). Watcher (notify-debouncer-full, 300 ms) on every profile's projects dir (re-subscribe on 'profiles-changed'); only changed .jsonl paths re-parsed; deleted removed. Commands: get_index(since_gen:Option<u64>) -> {gen, projects:Option<Vec<Project>>, profiles counts} (projects None if unchanged); rescan_full() (drops caches); count_for(profile). Group (group.rs, pure, unit-tested): key = paths::key(norm(cwd)) else slug; sessions without cwd -> project 'Unknown folder' keyed by slug; pinned (from settings, re-group on 'settings-changed') adds empty entries with pinned=true; missing = !is_dir; sessions newest first; projects pinned first then modified desc. Project {path, name(leaf or full path), modified, pinned, missing, sessions}. Payload slim: drop file? keep file (needed for reveal) but omit per-session cwd when equal to project path.\n5) Frontend adapter features/index-data/: on start and on 'index-changed' call get_index(since gen) with in-flight guard (one in flight, rerun once if another event came) and sequence check; writes store.index {gen, projects, loaded}; 'loaded' = 'empty' when no profiles/sessions with message 'No Claude Code sessions found in ~/.claude*', 'error' with Retry. Handles 'refresh:full' -> rescan_full. Removes the 15 s polling and focus refresh. Expose helpers in features/index-data/api.ts: projectsFor(profile|null), findSession(id), countFor(profile).\nAudit items: first-scan persisted cache, two-phase scan, memchr, work stealing, no-open when unchanged, STATES pruning/unbounded growth, unbounded line + symlinks, overlapping refresh, polling, payload size, scanner testability, resume id as flag (UUID filter), APFS case key, silent load errors (state), grouping of cwd-less sessions.",
+   "owns_files": "src-tauri/src/sessions/** ; src-tauri/tests/fixtures/sessions/** ; src/features/index-data/**",
+   "touches_shared": "commands.rs (sessions block: get_index, rescan_full, count_for); lib.rs (one init line); src/features/index.ts (one mount line); core/types.rs only if Session/Project fields must change (coordinate: add fields, never rename)",
+   "acceptance": "cargo test: fixtures for user prompt, tool_result, isMeta, '<' prompt, custom-title last-wins over summary, ai-title fallback, CRLF+BOM, line split across buffer, append-then-reread offset, shrink reset, non-UUID stem skipped, symlink skipped, grouping (case keys, pinned empty, missing, unknown folder). Bench test: second scan of unchanged 300 MB set <50 ms (stat-only). Manual: start app with warm cache -> sidebar in <300 ms; write a line to a transcript -> list updates <1 s without polling; F5 rescans; delete a transcript -> disappears.",
+   "depends_on": "Foundation"
+  },
+  {
+   "id": "WP2",
+   "title": "Terminals: PTY backend hardening, launcher, tab strip, pop-out, quit flow",
+   "scope": "Rust src-tauri/src/pty/ (manager.rs, reader.rs, writer.rs, ring.rs) and src-tauri/src/launch/ (embed.rs, external.rs). Frontend src/features/terminals/.\nBackend:\n- Replace generic spawn with narrow commands: pty_new{dir, profile, cols, rows, on_data:Channel<InvokeResponseBody>, on_exit:Channel<ExitEvent>} and pty_resume{sessionId, profile, fork:bool, dir?, ...}; profile via core::profiles::resolve_profile; dir must be is_dir (error 'Folder not found\\n<dir>'); sessionId must be UUID and its file must exist under <profile>/projects/*/; args built in Rust only: [] or ['--resume=<id>'] (+ '--fork-session'). Plus pty_shell{dir} for 'Terminal here' inside app if needed. Executable from core::env (absolute path; Windows .cmd -> arg whitelist ^[A-Za-z0-9=_.:/-]+$; mac spawn claude directly with cached login PATH, no shell string, no shell_quote). Env: core::env::clean_env, CLAUDE_CONFIG_DIR only for non-default profile (compare paths::key), TERM=xterm-256color, COLORTERM=truecolor, TERM_PROGRAM=ClaudeManager, mac LANG=en_US.UTF-8 if unset. Windows: assign child pid to the Job Object. Before spawn check claude resolved; on post-spawn failure kill+wait child.\n- Manager: HashMap<u32, Arc<Term>> with per-term writer thread fed by mpsc (pty_write only sends, never blocks); master behind its own Mutex; map lock never held during I/O. Waiter thread: child.wait() -> remove entry (drops master -> ConPTY closes -> reader EOF) -> on_exit {code}. Reader: never breaks on send error (drain until EOF); coalesce up to ~8 ms / 64 KB; send raw bytes (InvokeResponseBody::Raw); 256 KB ring buffer per term for pop-out replay; pause/resume via pty_pause/pty_resume_output with Condvar (frontend watermark 1 MB/256 KB). Kill: remove entry, then off-thread: drop writer+master, kill_tree (Windows TerminateJob-per-child via taskkill /T /F or nested job; Unix killpg SIGHUP, 2 s, SIGTERM, then SIGKILL), wait. kill_all registered as lifecycle shutdown hook and ShutdownRegistry count. All commands async. Commands: pty_new, pty_resume, pty_write{id, data:string|bytes}, pty_resize, pty_kill, pty_attach{id, channels} (pop-out), pty_list -> TermInfo with child pid. Remove pty_kill_all-on-reload: instead on page load call pty_list and re-attach existing terminals (no killing).\n- External launch (launch/external.rs, command launch_external{dir, profile, sessionId?, fork?, shellOnly?}): Windows wt.exe -d <dir> if present else pwsh (fallback powershell.exe) with CREATE_NEW_CONSOLE, args -NoExit -NoLogo -NoProfile -EncodedCommand <base64 UTF-16LE of: try { & '<claude>' <validated args> } finally { foreach ($p in $PROFILE.AllUsersAllHosts,$PROFILE.AllUsersCurrentHost,$PROFILE.CurrentUserAllHosts,$PROFILE.CurrentUserCurrentHost) { if (Test-Path $p) { . $p } } }>, env set on the Command (CLAUDE_CONFIG_DIR). macOS: osascript with argv (`on run argv`) so dir/claude/profile are passed as arguments, Terminal 'do script' (iTerm if /Applications/iTerm.app) running `cd <q> && CLAUDE_CONFIG_DIR=<q> <q claude> <args>`; quoting POSIX single-quote of validated values.\nFrontend:\n- Implements bus 'launch' (mode from settings.openIn unless given; embed -> new tab, external -> launch_external), 'terminal:show'. Tab record in store.terminals {id, ptyId, pid, title, sub, dir, profile, sessionId}. Dedupe resume by sessionId (open tab -> show it). Default titles: new 'New session', resume label (40 chars), fork 'Fork of <label>'; sub '<folder leaf>  ·  <profile name>'.\n- xterm options: fonts per platform (see feature), fontSize 13 (12 mac), scrollback from settings, smoothScrollDuration mac 0 / reduced-motion 0 else 110, cursorBlink !reduced, macOptionIsMeta/macOptionClickForcesSelection on mac (setting), windowsPty {backend:'conpty', buildNumber: platform_info.build}, theme from tokens and live switch, unicode11, fit; WebGL only on active tab (dispose on hide, onContextLoss fallback); WebLinks + linkHandler allowing only https with Ctrl/Cmd click (open via Rust command open_url_https in WP9 api, or core). Key handler per feature 'Terminal input'. Writes use term.write(Uint8Array, cb) with watermark flow control. Debounce pty_resize 80 ms. Title via onTitleChange with cleanup regex, in-place DOM update, throttled 4/s. Exit -> tab marked exited, message '[session ended — close this tab, or resume it from the sidebar]', exit 127 -> 'claude not found on PATH'. Close-before-spawn race: if tab.closing after await -> pty_kill. Close confirm dialog (feature 'Close terminal'); exited tabs close directly; always call pty_kill when ptyId set.\n- Tab strip per feature 'Terminal tabs' (Home tab, gliding pill, overflow menu, pop-out/close buttons, middle-click, right-click menu using WP9 api for VS Code/reveal/copy). Shortcuts: CmdOrCtrl+W close active tab, Ctrl+Tab/Ctrl+Shift+Tab and Cmd+Shift+]/[, CmdOrCtrl+1..9, CmdOrCtrl+T new session in selected folder (emit 'launch'). Window focus -> focus active terminal. File drop on terminal area while a tab is active -> write shell-quoted paths (Windows: double-quote; mac: single-quote) followed by space.\n- Pop-out: new WebviewWindow 'term-<id>' (route ?term=<id> handled by features/terminals/popout.ts entry), 1100x680 at main+60,+60, attaches via pty_attach (ring replay), main tab removed; menu 'Move back to main window'.\n- Quit flow: listen 'app:close-requested' -> dialog per feature 'Quit with open terminals' -> app_quit_decision.\nAudit items: all pty/terminal security, reliability, perf and macOS items (pty_spawn primitive, shell interpolation, BatBadBut, API env leak, resume flag injection, OSC8, Windows exit detection, leaks/zombies, kill tree, main-thread sync commands, close-before-spawn, Cmd+Q kill, reader drain, flow control, title rebuild, unordered writes, spawn errors, LANG, ConPTY build number, UTF-8 carry (removed via raw bytes), WebGL per tab, resize debounce, login shell per tab, Ctrl+C/V, Option meta, SF Mono, clipboard, Finder drops, links, SIGKILL/exit code, tab identity, lock poisoning).",
+   "owns_files": "src-tauri/src/pty/** ; src-tauri/src/launch/** ; src/features/terminals/** ; src/popout.html (pop-out entry) ",
+   "touches_shared": "commands.rs (pty + launch block); lib.rs (init line); src/features/index.ts (mount line); vite.config.ts (add popout.html as rollup input, one line); capabilities default.json windows list already includes term-* (foundation)",
+   "acceptance": "cargo test: arg builder (UUID ok, '--x' rejected, .cmd whitelist), env builder (removes CLAUDECODE, CLAUDE_CODE_X, ANTHROPIC_API_KEY; sets/unsets CLAUDE_CONFIG_DIR), PTY integration with a fake program (echo / cmd /c echo) asserting data + exit code + entry removed. Manual Windows+mac: type /exit -> tab shows ended within 1 s and backend pty_list empty; close running tab -> no claude/node/MCP processes remain (Task Manager / ps -g); paste 5 MB -> UI stays responsive; 10 tabs then Cmd+Q -> dialog; Keep running -> window hides and reopen restores tabs; mac Ctrl+C interrupts while text selected, Cmd+C copies, Option+Enter newline, Shift+Enter newline; Finder-launched mac app starts claude from ~/.local/bin; external window mode opens Terminal.app / Windows Terminal in the right folder and profile; pop-out works and replays recent output.",
+   "depends_on": "Foundation"
+  },
+  {
+   "id": "WP3",
+   "title": "Live sessions, focus-live, orphans, notifications",
+   "scope": "Rust src-tauri/src/live/ (scan.rs, reach.rs, focus.rs, orphans.rs) and src-tauri/src/notify/; frontend src/features/live/.\n- Live scan per feature 'Live session detection' on a 2 s background thread over all profiles (core::profiles). Session id from .key processes uses core::procs cmdline; claimed-file logic in start-time order. Process validation: prefer start-time match against json startedAt/procStart (ms) within 5 s; fallback allowed names (lowercase, .exe stripped): claude, node, pwsh, powershell, cmd, bash, zsh, sh, fish, login, wt, windowsterminal, conhost, openconsole, or a version-like name ^\\d+\\.\\d+\\.\\d+ (mac native binary). Do NOT delete stale json files. Reachability: pid is a descendant of one of our PTY children (pty_list pids via a `TermPids` trait registered by WP2 — if absent, use core::procs to match against store-provided pids passed in command) or has an ancestor that is a terminal host (Windows: console window via GetConsoleWindow after AttachConsole is not allowed — use EnumWindows by ancestor pid; mac: ancestor app name in Terminal, iTerm2, Warp, WezTerm, Alacritty, kitty, Ghostty, Code). Dedupe by sessionId (reachable first, then higher level). Output LiveSession {sessionId, pid, level 1|2, cwd, profile, reachable}. Emit 'live-changed' {sessions, liveCwd} only when signature 'id=level;...' sorted changes. Command get_live().\n- Notifications in Rust notify/ on each tick (also while picker shown): prev level 2 -> now not 2 => 'Claude finished'; disappeared while 2 => 'Claude session ended'. Body: label (index lookup by id via WP1 public fn sessions::label_for(id) — WP1 exposes it) else cwd leaf else 'Claude session', newline, cwd leaf. Skipped when settings.notify false (reset prev). Suppressed when main window focused and the active terminal pid (frontend reports via command set_active_terminal_pid) equals the session pid or its ancestor. Use tauri-plugin-notification; mac requests permission when notify toggled on. Click: on Windows use notification action/activation to emit 'notify:clicked' {sessionId}; if plugin lacks click callbacks on a platform, fall back to focusing the window when the app is activated within 10 s of a notification. Click -> show main window, unminimize, set_focus, focus-live.\n- Focus live (command focus_live{sessionId} -> bool) per feature 'Switch to running session': step 1 handled in frontend (match store.terminals pid/ancestor list returned by command ancestors(pid)); step 2 Windows EnumWindows for ancestors' top-level/console windows, ShowWindow SW_RESTORE + SetForegroundWindow (AllowSetForegroundWindow); mac: `open -b <bundle id>` or NSRunningApplication activate for the ancestor app; step 3 activate Windows Terminal / Terminal.app. Frontend api.ts exports focusLive(sessionId): Promise<boolean> (tries in-app tab first, emits 'terminal:show').\n- Orphans: command find_orphans{profile|null} and close_orphans{pids} (pids re-validated as non-reachable claude processes) per feature 'Close orphaned background sessions', kill tree + parent if shell/node. Frontend flow with dialogs (texts in feature list); exposed as command id 'live.closeOrphans' for the profile popover (WP6).\n- Frontend: store.live and store.liveCwd from events; live-dot CSS component in features/live/dot.ts (+css) exported for sidebar/table/search to use: `liveDot(level)` returns element/HTML.",
+   "owns_files": "src-tauri/src/live/** ; src-tauri/src/notify/** ; src/features/live/**",
+   "touches_shared": "commands.rs (live block); lib.rs (init line); src/features/index.ts (mount line); src-tauri/src/sessions/mod.rs: none — uses WP1's public label_for (WP1 provides; if not merged yet, stub returns None)",
+   "acceptance": "cargo test: scan fixtures (tempdir with sessions/<pid>.json of current test process pid -> live; dead pid -> absent; busy -> level 2; .key with --resume=<uuid> in a spawned child cmdline); signature change detection. Manual: start claude in a tab -> sidebar folder shows green dot, working shows pulsing accent; finish while app unfocused -> toast 'Claude finished' with label; click toast -> app focused on that tab; claude in external terminal -> Resume switches to that window (Windows Terminal, Terminal.app); kill a terminal window leaving claude -> 'Close background sessions' finds and ends it.",
+   "depends_on": "Foundation; soft on WP1 (label_for) and WP2 (TermPids), both via stubs"
+  },
+  {
+   "id": "WP4",
+   "title": "Sidebar: projects/groups tree, pins, drag & drop, folder/group menus",
+   "scope": "Frontend src/features/sidebar/ (tree.ts pure builder + tree.test.ts, view.ts, drag.ts, menus.ts, groups.ts, state.ts, strings.ts, sidebar.css). Mounts into #sidebar-slot inside the 'Workspace' card (header 42px 'Workspace' + muted count + '+' button), width settings.sidebarWidth (draggable splitter, min 240, saved).\n- tree.ts: port Tree.Build exactly (feature 'Sidebar tree'): inputs projects (from store.index via index-data api for current profile), settings.groups, ungroupedCollapsed, session-only showAll set, query '' (search lives in WP5's dropdown). Row keys 'g:<lower name>', 'f:<lower path>', 'm:<lower name>', 's:projects', 's:folders'; heights 30/34/32/28; Show more >6 -> 5 + 'Show N more' / 'Show less'; hints texts; group badge total sessions, detail ago(last) for folders with sessions; group live = max of folders (store.liveCwd with paths::key-equivalent TS key: lowercase on win+mac, trimmed separators).\n- view.ts: render with ui/list.ts (keyed, selection preserved across refresh, keyboard nav, aria tree). Icons folder/star(pinned)/warning(missing, dimmed)/group/chevrons. Gliding selection pill springs 0.3/0.82 & 0.3/0.9, dimmed (accent 35% mixed) when list unfocused. Live dots via features/live dot. Chevron area x<24 toggles; section heading click toggles (chevron on hover). Selection -> store.sidebarSelection {kind, key, path|name, folders}. Activate: group/section toggle (collapsed saved); folder -> bus 'launch' {dir, profile: start profile}. Delete key: group -> delete project flow; folder -> delete-all-sessions flow.\n- groups.ts: new/rename/delete/move/remove per feature 'Project groups management' with exact dialog texts; update via updateSettings({groups}) ; one project per folder (remove from others), paths trimmed.\n- drag.ts: pointer-events drag of folder rows (6 px threshold, setPointerCapture, accent pill with folder name following cursor hidden if <30px wide, target highlight on group rows and FOLDERS heading, no drop on itself, auto-scroll 12 px within 28 px of edges); drop on group -> move; on FOLDERS -> ungroup.\n- '+' menu: New project..., Add folder... (dialog plugin open({directory:true, title:'Pick a project folder'}) -> pin). Pin/unpin toggles settings.pinned (trailing separators trimmed, compare by key).\n- Window-level OS folder drop (getCurrentWebview().onDragDropEvent) when no terminal tab is active: overlay on 'over'; on drop each path that is a dir (command is_dir from core or check via index-data api fs helper — use core command path_kind{path}->'dir'|'file'|'missing' added by foundation? If missing, WP4 adds command `path_kinds(paths)` in src-tauri/src/fsutil.rs owned by WP4) -> pin + 'launch'.\n- Context menus per feature 'Sidebar and project context menus' using ui/menu.ts; VS Code/reveal/copy/terminal-here via WP9 features/os/api.ts (openInCode(paths), reveal(path), copyText, terminalHere(dir)); New session with profile submenu with avatars (ui/avatar); Continue last session -> session:resume newest (or launch if none); Delete all sessions -> WP5 api deleteSessions(sessions, {unpinFolder}).\n- Header subtitle: setSubtitle('<Profile> · N session(s) · N folder(s)[ · N project(s)]').\n- Empty/error states from store.index.loaded (Loading..., 'No Claude Code sessions found', error + Retry).",
+   "owns_files": "src/features/sidebar/** ; src-tauri/src/fsutil.rs (path_kinds)",
+   "touches_shared": "src/features/index.ts (mount line); commands.rs (fsutil block, one line); lib.rs none",
+   "acceptance": "vitest: tree.ts cases (empty groups hint, >6 folders show more/less, folder excluded from FOLDERS when grouped, missing/pinned flags, badge sums, row keys stable, case-insensitive matching on mac/win). Manual: create/rename/delete project with exact messages; drag folder into project and back to FOLDERS; collapse persists after restart; drop a folder from Explorer/Finder -> pinned and session starts; keyboard-only navigation of tree with arrows/Enter/Delete; context menu items work on both OSes with Finder/Explorer labels.",
+   "depends_on": "Foundation; consumes WP1 index-data api, WP3 live dot, WP5 deleteSessions, WP9 os api (stub-able)"
+  },
+  {
+   "id": "WP5",
+   "title": "Sessions view: table, details, actions (new/continue/resume/fork/delete), search",
+   "scope": "Frontend src/features/sessions/ (table.ts, details.ts, actions.ts, api.ts, menus.ts, header.ts, strings.ts, sessions.css) and src/features/search/ (search.ts, rank.ts + rank.test.ts, search.css). Rust src-tauri/src/actions/ (trash.rs).\n- Registers view 'sessions' in the card (title 'Sessions', muted count 'N   in   <name>'). Header actions: 'New Session' split button (tooltip 'Start a Claude session in the selected folder'; menu: New session in new window; New session inside app; New session with profile > avatars (folder only); separator; radio 'New Session opens in a new window' / 'New Session opens inside the app' -> settings.openIn) and 'Open ▾' menu (VS Code; Explorer/Finder; PowerShell/Terminal here (folder only); — Copy path) via WP9 os api.\n- Table per feature 'Sessions table and details pane' using ui/list.ts in table mode (virtualized, sticky header, zebra, merged selection, multi-select Ctrl/Cmd+Shift, Ctrl/Cmd+A). Folder vs group columns. Last active text uses live levels ('Working...','Open now'). Live dot replaces chat icon. Refresh ago labels every minute.\n- Details pane 92px with all exact hint texts and meta format 'ddd, MMM d yyyy  HH:mm     N messages     profile: X     <id>'; buttons Resume/'Switch to' (tooltip 'Resume this session  (Enter)'), Fork ('Continue in a new copy of this session'), Delete (icon for 1, 'Delete N'; 'Delete this session  (Del)').\n- actions.ts: doNew(mode), group folder picker menu ('Start in which folder of <name>?'), doContinue (dialog when live but not found), doResume(fork?, mode?) -> if live and not fork: await focusLive (WP3 api) else bus 'launch' {dir: s.cwd ?? folder path, profile: s.profile, resume:{sessionId, fork}, label}. Enter/double-click = resume; Delete/Cmd+Backspace = delete.\n- Session context menu per feature (Resume / in new window / inside app / Fork / Copy session ID / Open folder in VS Code / Show file in Explorer|Reveal in Finder / Delete).\n- Delete: api.ts exports deleteSessions(sessions, opts) with confirm text from feature 'Session context menu and delete' (Recycle Bin vs Trash wording by platform) -> Rust command trash_sessions{items:[{profile, sessionId}]}: resolves file under <profile>/projects/*/<id>.jsonl (validated UUID + profile), trashes jsonl, <dir>/<id>/, <profile>/file-history/<id>, <profile>/session-env/<id> with trash crate; per-item errors returned; watcher (WP1) updates list. Also trash_path{path, root} for WP8 untracked discard (path must be inside an existing repo root dir given) — export from actions/trash.rs.\n- Search (features/search): mounts in #tb-search-slot; pill input with search icon, placeholder per platform, clear button, accent focus ring; hidden on picker and while a terminal tab is active; rank.ts implements feature 'Search dropdown' ranking/limits (pure, tested); dropdown under field (width max(field,460)) rendered in #overlay-root with section headings, rows (group 34, folder 34, session 44), footer hint, keyboard Up/Down wrap, Enter pick, Esc clear+focus sidebar; pick behaviors (emit 'terminal:show' null, 'sidebar:select', expand group via updateSettings, resume). Handles 'search:focus'. Search is cleared on 'profile:enter'.",
+   "owns_files": "src/features/sessions/** ; src/features/search/** ; src-tauri/src/actions/**",
+   "touches_shared": "commands.rs (actions block); lib.rs (init line if state needed); src/features/index.ts (two mount lines)",
+   "acceptance": "vitest: rank.ts (prefix first, limits 4/6/8, '(no prompt)' excluded, sort orders), details text builders, delete confirm text (1, 3, 7 sessions, mac vs win). cargo test: trash_sessions rejects non-UUID and paths outside profile (tempdir). Manual: select folder -> table; multi-select delete 3 sessions -> in Recycle Bin/Trash with side folders; Enter resumes; running session -> 'Switch to' focuses its tab; fork opens 'Fork of ...'; Ctrl/Cmd+F search -> pick session resumes; Open menu items work on both OSes.",
+   "depends_on": "Foundation; consumes WP1, WP2 ('launch'), WP3 (focusLive, dot), WP9 (os api) via stubs"
+  },
+  {
+   "id": "WP6",
+   "title": "Profiles UI, picker, popover, startup, settings screen",
+   "scope": "Frontend src/features/profiles/ (picker.ts, popover.ts, avatar-button.ts, startup.ts, newprofile.ts, strings.ts, profiles.css) and src/features/settings/ (settings.ts, settings.css). Rust: src-tauri/src/core/profiles.rs is foundation; WP6 adds src-tauri/src/profiles_cmd.rs with create_profile{name} (validate ^[\\w-]+$, create ~/.claude-<name>, emit 'profiles-changed') and open_profile_folder{dir} (validated, reveal).\n- startup.ts: after foundation bootstrap, apply picker rule (feature 'Enter profile and startup sequence'), implement bus 'profile:enter' (store.currentProfile, updateSettings account/lastProfile, clear search, show main, focus sidebar, avatar tooltip '<name>  -  <email>'), 'picker:show', 'profile:new'.\n- Picker per feature 'Profile picker screen' (exact texts, card sizes, hover, keyboard grid nav, live counts from index-data api countFor, wrap rules: max width = window-60, min 420, vertically centered 20px above center, min top 20). Hides title-bar search/ring/avatar via store.screen. Crossfade between screens: opacity spring 0.3 on #picker-root / #main, reduced-motion snaps.\n- Avatar button (34px) in #tb-right-slot and popover per feature 'Profile popover (avatar menu)' (exact items; 'Close background sessions' runs command id 'live.closeOrphans'; Explorer menu toggle calls WP9 os api explorerMenuState/install/remove, Windows only; Refresh everything emits 'refresh:full' + refresh_profiles; notify toggle updates settings.notify and on mac calls notification requestPermission).\n- New profile per feature (dialog texts) -> create_profile -> bus 'launch' {dir: HOME, profile: newDir, mode:'embed'} -> 'profile:enter'.\n- Profile colors/initials TS helper (exact hash) exported from features/profiles/api.ts: profileColor(name), profileInitial(name), profileLabel(dir), startProfile(); used by others.\n- Settings screen (Cmd+, / menu 'Settings...' / popover item): toggles showPicker, notify, showUsage; openIn segmented; terminal: scrollback (1000-50000), macOptionIsMeta (mac), claudePath override with 'Browse...' + env_status display ('Claude Code: <path> (found)' / not found); 'Open logs folder'; version + 'Check for updates' (WP10 api, stub-able). Modal sheet in overlay root.",
+   "owns_files": "src/features/profiles/** ; src/features/settings/** ; src-tauri/src/profiles_cmd.rs",
+   "touches_shared": "commands.rs (profiles_cmd block); src/features/index.ts (mount lines)",
+   "acceptance": "vitest: color/initial hash matches values for 'default'→ computed index, 'work', 'personal' (assert against same algorithm as ps1: sum char codes mod 8); picker rule matrix (showPicker, lastProfile empty/'all'/missing dir/valid). Manual: first run shows picker; pick profile -> restart lands there; 'Show this screen' toggle respected; new profile 'test' creates ~/.claude-test and opens login terminal; popover switch/manage/open folder/toggles work; settings persist across restart.",
+   "depends_on": "Foundation; consumes WP1 counts, WP3 orphans command, WP9 explorer menu api, WP10 updater api (stubs)"
+  },
+  {
+   "id": "WP7",
+   "title": "Usage & plan limits",
+   "scope": "Rust src-tauri/src/usage/ (creds.rs, plan.rs, local.rs, cache.rs, mod.rs); frontend src/features/usage/ (ring.ts, popover.ts, format via core/format, usage.css).\n- creds.rs: read_credentials(profile_dir) -> Option<OAuth{access_token, expires_at_ms, subscription_type}>; Windows/Linux <dir>/.credentials.json; macOS: /usr/bin/security find-generic-password -s <service> -a <$USER from getpwuid> -w with service 'Claude Code-credentials-' + first 8 hex of sha256(utf8 absolute dir path without trailing slash) for non-default profiles, then 'Claude Code-credentials' (default profile, or fallback), then the file; exit 44 = missing; 5 s timeout; never logs or returns the token to JS; never writes. signed_in(profile) used by profile popover (expose command profiles_signed_in -> {dir: bool}).\n- plan.rs: fetch per feature 'Plan limits fetch' with reqwest (rustls), exact headers, 15 s timeout, error strings, 429 global backoff clamp(RetryAfter or 120, 600, 3600), 5 min memo per profile, parse new limits[] and legacy five_hour/seven_day, plan name capitalized. Orchestration per 'Plan cache and refresh cadence': reload_plans(profiles) skips network if refresh running or same profiles && fetched <300 s && all have limits or 'Not signed in'; sequential fetch; merge keeps old numbers with stale=error on transient errors; save cache; emit 'usage-plans' {plans, busy, needsRetry}. Command usage_plans{profiles, force?} and usage_cached{profiles}.\n- cache.rs: app_data_dir/usage-cache.json [{profile, plan, fetched (RFC3339), limits:[{label, percent, resets|null}]}], never tokens.\n- local.rs per feature 'Local token usage' (recursive walk of <profile>/projects, 8 days, dedupe by message.id, 5 h blocks local hour floor, peak, days[7], today, week, current block, fraction, resetsAt), cache by (path,mtime), single-flight; command usage_local{profiles} -> UsageReport; emit 'usage-local'.\n- Frontend: scope = current profile, or all profiles signed in when All. Timers: local 60 s, plans 10 min, on popover open if >5 min, on window focus if needsRetry, on 'profile:enter'. Cached numbers shown immediately. Ring per feature 'Usage ring' in #tb-right-slot left of avatar (hidden when showUsage false or picker). Popover per feature 'Usage popover' (exact strings, 1 s repaint while open, skeleton shimmer, 7-bar chart). Format helpers fmtTokens/until/resetText/levelColor in core/format.ts already (foundation) — WP7 adds tests if missing.",
+   "owns_files": "src-tauri/src/usage/** ; src/features/usage/**",
+   "touches_shared": "commands.rs (usage block); lib.rs (init line); src/features/index.ts (mount line)",
+   "acceptance": "cargo test: limits parsing (new + legacy fixtures), error mapping (401, 429 with/without Retry-After clamps, 500), merge/stale rule, local accounting fixture (dedupe, synthetic skip, cache reads excluded, block split on 5 h gap, days index), keychain service name for '/Users/x/.claude-work' = sha256 prefix computed in test; mock HTTP via a local test server (no network). Manual Windows: ring shows % for signed-in profile matching Claude /usage; mac: same via Keychain without prompts; offline shows 'Could not reach Anthropic (offline?)' with cached numbers stale.",
+   "depends_on": "Foundation"
+  },
+  {
+   "id": "WP8",
+   "title": "Source control view",
+   "scope": "Rust src-tauri/src/git/ (run.rs, repos.rs, status.rs, files.rs); frontend src/features/git/ (view.ts, header.ts, changes.ts, diff.ts + diffparse.ts, history.ts + graph.ts, commit.ts, branch.ts, strings.ts, git.css).\n- run.rs: git_run{dir, args:Vec<String>, stdin?:String, poll?:bool} async -> {code, stdout, stderr}; dir must be an existing directory; git from core::env (mac login PATH; if /usr/bin/git and Xcode CLT missing (xcode-select -p fails) return code -1 'Git is not installed. Install the Xcode Command Line Tools.'); env per feature 'Git runner' via core::spawn::hidden_command. Args are a vector (no quoting). Allowed first args whitelist: status, diff, show, log, add, restore, reset, commit, push, pull, fetch, stash, switch, branch, rev-parse (reject others).\n- repos.rs: find_repos{path} per feature 'Repo discovery' (30 s cache keyed by paths::key); status.rs: git_status{repo} parses porcelain v1 -z into {branch, upstream, ahead, behind, staged[], changes[]} items {path, name, dir (platform separator), status}; files.rs: read_new_file{repo, path} (path must stay inside repo after canonicalize; 2 MB / NUL / missing rules, lossy UTF-8, 20k line cap).\n- Frontend registers view 'git' ('Source Control'). Header controls per feature (repo picker, branch pill, sync label, fetch/pull/push/refresh with counts/tooltips). Repo target from store.sidebarSelection (folder or group union). Changes list with hover action buttons (also visible on keyboard focus), sections, double-click opens file in VS Code (WP9 api openInCode), Up/Down nav, selection kept by section|path. Stage/unstage/discard per feature with exact confirm texts; untracked discard -> WP5 actions trash_path{path, root: repo}. Commit box (auto-grow 1-6, Ctrl/Cmd+Enter), commit split button + menu, branch menu, status message line (error red persists, success hides after 4 s unless busy). Single busy op pipeline (no queue). Diff viewer (diffparse.ts pure port incl. header noise filtering, line numbers, caps; virtualized rows, sticky 96px gutter, Shift+wheel horizontal, Ctrl/Cmd+C copy-all when no selection). Changes|History text tabs. History (git log format with %at, ref pill rules, short ages, graph.ts exact port of GitGraph.Layout, SVG per row, 8-lane cap, git show on select). Split layout with ui/splitter (min 260, initial clamp(290,34%,380), saved settings.gitSplit). Stale-response guards via request ids/keys ('section|path|status', 'commit|<hash>'). Poll status every 4 s only when view visible, document focused, not busy, repo set (poll:true sets GIT_OPTIONAL_LOCKS=0). Refresh on selection change while visible.",
+   "owns_files": "src-tauri/src/git/** ; src/features/git/**",
+   "touches_shared": "commands.rs (git block); src/features/index.ts (mount line)",
+   "acceptance": "cargo test: porcelain parsing fixtures (rename with -z, untracked, conflict AA/UU, both staged+changed, 'No commits yet on main', ahead/behind), find_repos on temp tree (depth 2, node_modules/.hidden skipped, >40 stop), git_run rejects disallowed subcommand and missing dir, read_new_file path escape rejected. vitest: graph.ts (linear, branch+merge, octopus) row lanes/segments snapshot vs C# algorithm, diffparse line numbering, ref pill and age formatting. Manual on both OSes: stage/unstage/discard/commit/amend/undo/stash/pop/branch switch/create/push publish/pull/fetch against a temp repo with remote; no console windows flash on Windows; Homebrew git used on mac.",
+   "depends_on": "Foundation; consumes WP5 trash_path and WP9 openInCode (stubs)"
+  },
+  {
+   "id": "WP9",
+   "title": "OS integration: tray/menu bar, native menu, Explorer menu, VS Code/reveal/terminal-here, open URLs",
+   "scope": "Rust src-tauri/src/os/ (tray.rs, menu.rs [foundation skeleton, WP9 completes], explorer_menu.rs cfg(windows), vscode.rs, reveal.rs, url.rs, args.rs); frontend src/features/os/ (api.ts, wiring.ts).\n- Tray / menu bar: TrayIconBuilder with app icon (template image on mac), tooltip 'Claude Sessions'; left click (Windows) / double-click shows+unminimizes+focuses main; menu: Show Claude Sessions, New session (emits 'menu' id 'session.new'), separator, Quit (goes through lifecycle quit check). Always present while app runs (needed for 'Keep running' on Windows).\n- Native macOS menu completed per feature 'Global keyboard shortcuts and native menu' (Session menu items emit ids handled by core/keyboard registry: session.new, tab.close, tab.next, tab.prev, find, refresh, settings, logs). Windows: no menu bar; same ids reachable by shortcuts.\n- explorer_menu.rs (Windows): commands explorer_menu_state -> bool (first key exists), explorer_menu_install, explorer_menu_remove per feature 'Explorer right-click menu' (keys HKCU\\Software\\Classes\\Directory\\shell\\ClaudeCode and Directory\\Background\\shell\\ClaudeCode, MUIVerb 'Open Claude Code here', SubCommands '', Icon '<exe>,0', sub keys shell\\00.. MUIVerb 'Profile: <name>', command `\"<exe>\" --open \"%V\" --profile \"<dir>\"`). Re-write on 'profiles-changed' if installed. Remove legacy pwsh-based entries with same key names. On mac the commands return unsupported and UI hides the item. NSIS uninstall hook removes keys (coordinate with WP10: provide script snippet file src-tauri/windows/uninstall-hooks.nsh owned by WP9).\n- args.rs: parse CLI/single-instance args --open <dir> [--profile <dir>]; validate dir is_dir and profile via resolve_profile (default: settings.account/start profile); emit 'app:open-request' -> frontend wiring.ts emits bus 'launch' {dir, profile, mode:'embed'} and pins folder.\n- vscode.rs: open_in_code{paths} per feature 'Open in VS Code' (existing paths only; error 'VS Code was not found.' shown via dialog by caller api). reveal.rs: reveal_path{path} via tauri-plugin-opener Rust API (reveal_item_in_dir), open_path{dir}. Terminal here: delegates to WP2 launch_external{shellOnly:true} or provides own if WP2 not ready (frontend api calls 'launch' bus with mode external shellOnly). url.rs: open_url_https{url} accepts only https:// and opens with default browser.\n- Clipboard: api.copyText via @tauri-apps/plugin-clipboard-manager writeText with error toast.\n- WebView2 memory: on Windows, on main window blur/minimize set MemoryUsageTargetLevel LOW, on focus NORMAL (webview2-com, cfg(windows)).\n- Labels per platform exported from api.ts: revealLabel ('Show in Explorer' / 'Reveal in Finder'), folderLabel ('Open in Explorer' / 'Show in Finder'), terminalHereLabel ('Open PowerShell here' / 'Open Terminal here'), trashName ('Recycle Bin' / 'Trash').",
+   "owns_files": "src-tauri/src/os/** (except menu.rs skeleton created by foundation, which WP9 then owns) ; src/features/os/** ; src-tauri/windows/uninstall-hooks.nsh",
+   "touches_shared": "commands.rs (os block); lib.rs (init line); src/features/index.ts (mount line)",
+   "acceptance": "Windows: install Explorer menu -> right-click folder shows 'Open Claude Code here' > 'Profile: default', clicking opens/focuses the app and starts a tab there; remove clears keys (reg query); tray click restores hidden window. macOS: menu bar icon shows/quits; Cmd+W closes tab not window; Cmd+Q asks when terminals running; Dock click reopens hidden window; Reveal in Finder selects file. Both: VS Code opens multi-root for a project; open_url_https rejects file://. cargo test: args parsing/validation, registry command string building (unit, no registry writes).",
+   "depends_on": "Foundation"
+  },
+  {
+   "id": "WP10",
+   "title": "Release engineering: icons, bundle, signing, updater, CI release, docs",
+   "scope": "- Icons: 1024x1024 transparent source app-icon.png (Claude-orange mark, not Tauri logo, not Anthropic logo copy) committed; `pnpm tauri icon app-icon.png`; mac tray template icon (src-tauri/icons/tray-template.png).\n- tauri.conf.json bundle section only (foundation owns app/security/windows): targets ['nsis','dmg','app'], publisher 'CeyLabs', copyright, category 'DeveloperTool', shortDescription/longDescription/homepage, license file; windows.nsis {installMode:'currentUser', displayLanguageSelector:false, installerIcon, installerHooks: 'windows/uninstall-hooks.nsh' (from WP9)}, webviewInstallMode downloadBootstrapper silent; macOS {minimumSystemVersion:'12.0', hardenedRuntime:true, signingIdentity '-' default for local}; createUpdaterArtifacts:true; plugins.updater {pubkey, endpoints:['https://github.com/CeyLabs/<repo>/releases/latest/download/latest.json']}. src-tauri/Info.plist with NSDocumentsFolderUsageDescription, NSDesktopFolderUsageDescription, NSDownloadsFolderUsageDescription, NSRemovableVolumesUsageDescription, NSNetworkVolumesUsageDescription ('Claude Code sessions you start run in your project folders.'), NSAppleEventsUsageDescription ('Claude Manager opens sessions in Terminal or iTerm.'). No App Sandbox, no entitlements file (documented).\n- Updater: register tauri-plugin-updater + process (lib.rs lines), features/updater/ (check at startup and every 24 h, banner 'Update available: vX — Restart to update', download progress, relaunch; api.ts checkNow() for settings screen). Generate signing key (stored offline + secrets TAURI_SIGNING_PRIVATE_KEY/_PASSWORD).\n- Versioning: single source Cargo.toml version (tauri.conf.json has none; package.json version synced by scripts/bump-version.mjs); release workflow fails if tag vX.Y.Z != Cargo version; numeric versions only.\n- .github/workflows/release.yml (tag v*): permissions contents: write; matrix windows-latest + macos-latest (universal-apple-darwin); actions pinned by SHA; pnpm from packageManager; tauri-action with tagName, releaseName 'Claude Manager ${tag}', releaseDraft true, GITHUB_TOKEN, TAURI_SIGNING_*, APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID; Windows signing via Azure Trusted Signing signCommand (AZURE_CLIENT_ID/SECRET/TENANT_ID) — if secrets missing, build unsigned and mark release notes. Remove old build.yml (or keep as workflow_dispatch artifacts-only).\n- Docs: README rewrite (install, requirements: Claude Code CLI, WebView2 on Win10, macOS 12+; data locations: settings/cache/logs per OS; unsigned-build note: 'System Settings > Privacy & Security > Open Anyway' or `xattr -dr com.apple.quarantine`; release process; CI secrets list; sandbox must stay off), LICENSE, THIRD_PARTY_NOTICES (cargo about + pnpm licenses), CHANGELOG.md.",
+   "owns_files": "src-tauri/icons/** ; app-icon.png ; src-tauri/Info.plist ; .github/workflows/release.yml ; .github/workflows/build.yml ; scripts/** ; README.md ; LICENSE ; THIRD_PARTY_NOTICES ; CHANGELOG.md ; src/features/updater/** ; bundle + plugins.updater sections of src-tauri/tauri.conf.json",
+   "touches_shared": "lib.rs (updater + process plugin lines); Cargo.toml (tauri-plugin-updater, tauri-plugin-process deps); package.json (plugin npm deps, version script); src/features/index.ts (mount line)",
+   "acceptance": "Tag v0.9.0-rc on a fork -> draft release with signed .exe (NSIS), notarized universal .dmg, latest.json and .sig files; install on clean Windows 10/11 and macOS 14/15 without Gatekeeper/SmartScreen blocks (when certs present); app icon correct in taskbar/Dock/installer; installing v0.9.1 via in-app updater works; uninstall removes Explorer menu keys; README steps verified by someone new.",
+   "depends_on": "Foundation; WP9 (uninstall hooks file) for final packaging"
+  }
+ ],
+ "release_checklist": "Before tagging v1.0.0:\n1. Identifier frozen (com.ceylabs.claudemanager or the owner's final choice) and legacy %APPDATA%\\ClaudeManager\\settings.json import tested on a machine that used the PowerShell app.\n2. CI green on windows-latest and macos-latest: biome, tsc, vitest, cargo fmt, clippy -D warnings, cargo test, bindings up to date.\n3. Every audit blocker/high verified closed (map: WP1 cache/scanner; WP2 PTY security, exit detection, kill tree, async commands, Cmd+Q, Ctrl+C/V, Option meta; WP7 keychain; WP9 native menu; WP10 icons, signing, updater, CI release; Foundation CSP, settings, logging, login-shell PATH, title bar, tests, types, restructure, focus/keyboard).\n4. Manual parity pass on Windows 10, Windows 11, macOS 14 and 15 (Apple Silicon + Intel) using the feature list v1 items: picker, profiles (incl. a second signed-in profile on mac via Keychain), sidebar groups/pins/drag, sessions table/details/delete to Trash/Recycle Bin, search, terminals (new/resume/fork/close/pop-out/keep running/quit), external window mode, live dots + notifications + focus live, orphans, usage ring/popover, source control full flow, Explorer menu (Win), VS Code/reveal/copy, F5/Cmd+R, file drops.\n5. Finder-launched mac app finds claude from ~/.local/bin, Homebrew and nvm installs; Windows finds claude.exe and npm claude.cmd.\n6. Process hygiene: after closing tabs, quitting and crashing (kill the app) no claude/node/MCP processes remain (Job Object on Windows; killpg on mac).\n7. Performance: warm start to sidebar < 300 ms with 300 MB of transcripts; idle CPU ~0 (no polling); 10 busy tabs stay responsive; memory flat over a 2-hour session.\n8. Accessibility: keyboard-only navigation of sidebar, table, tabs, menus, dialogs; visible focus rings; contrast AA for text on accent and muted.\n9. Security: CSP active (check devtools for violations), no opener permissions in webview, pty commands accept only validated ids, OSC 8/file:// links blocked, token never in logs or IPC (grep logs).\n10. Signing: Windows Authenticode (or documented unsigned), macOS Developer ID + notarized + stapled; spctl -a -vv passes.\n11. Updater: latest.json published, update from previous version tested on both OSes; signing private key backed up in two places.\n12. Logs written to app_log_dir with rotation; 'Show logs' works; panic produces a log entry.\n13. README, LICENSE, THIRD_PARTY_NOTICES, CHANGELOG updated; version single source matches tag; draft release reviewed then published.",
+ "risks": "1. macOS Keychain naming for non-default profiles (sha256 prefix of CLAUDE_CONFIG_DIR) is unconfirmed and Anthropic may tighten Keychain ACLs; reads could prompt or fail. Mitigation: hashed -> plain -> file fallback, never block UI, show 'Not signed in' with a hint; verify on a real Mac early in WP7.\n2. Undocumented usage endpoint (api/oauth/usage) may change shape or rate-limit persistently. Mitigation: tolerant parsing, legacy fallback, cache, backoff; usage is non-critical.\n3. Claude Code internal files (sessions/<pid>.json, .key files, transcript record types) can change between versions. Mitigation: start-time based validation, ignore unknown fields, fixtures from current versions, logging of parse misses; live detection degrades gracefully to 'not live'.\n4. Notification click handling in tauri-plugin-notification is limited on desktop; click-to-focus-session may need platform code (Windows toast activation / UNUserNotificationCenter delegate). Mitigation: fallback 'focus on activation within 10 s'.\n5. 'Keep running in background' across real app restarts is not provided in v1 (process stays alive hidden instead); a crash or reboot ends sessions (they remain resumable). Documented; sidecar daemon is 'later'.\n6. Pop-out windows re-attaching a PTY channel and ring-buffer replay may render imperfectly for full-screen TUIs; mitigation: send a resize to force Claude to repaint after attach.\n7. Parallel work collisions on shared files (commands.rs, lib.rs, features/index.ts, core types). Mitigation: marked per-feature blocks, append-only rule, types changed only by adding fields, foundation defines all core contracts first; stubs for cross-package APIs.\n8. Bundle identifier change after foundation orphans data; must be confirmed by the owner before F2 lands.\n9. Code-signing certificates (Apple Developer ID, Azure Trusted Signing) are external procurement with lead time; unsigned macOS builds are effectively blocked on macOS 15.\n10. ConPTY differences on Windows 10 (pre-24H2 ClosePseudoConsole hang, reflow) — mitigated by drain-until-EOF and dropping master off-thread, real build number for xterm.\n11. Login-shell environment probe on mac can hang or print noise from rc files (oh-my-zsh, prompts). Mitigation: markers, 5 s timeout, interactive flag only in the probe, fallbacks to known paths and settings.claudePath.\n12. WebView2 HTML5 drag-and-drop conflicts with Tauri dragDropEnabled; internal drags use pointer events only.\n13. Users running the old PowerShell app at the same time: separate settings files after import means changes do not sync back; documented in README."
+}

