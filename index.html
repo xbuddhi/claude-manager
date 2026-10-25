@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Manager</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <aside class="sidebar">
+      <header class="side-head">
+        <span class="side-title">Workspace</span>
+        <select id="profile" title="Profile"></select>
+      </header>
+      <input id="search" type="search" placeholder="Search projects and sessions" spellcheck="false" />
+      <nav id="projects" class="projects">
+        <div id="sel-pill" class="sel-pill"></div>
+        <div id="project-list"></div>
+      </nav>
+    </aside>
+    <main class="main">
+      <div id="tabs" class="tabs">
+        <div id="tab-pill" class="tab-pill"></div>
+        <div id="tab-list" class="tab-list"></div>
+      </div>
+      <div id="panes" class="panes">
+        <section id="home" class="home"></section>
+      </div>
+    </main>
+  </body>
+</html>
