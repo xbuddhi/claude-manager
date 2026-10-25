@@ -7,7 +7,9 @@ import { store } from "../../core/store";
 const callMock = vi.fn();
 vi.mock("../../core/api", () => ({ call: (...args: unknown[]) => callMock(...args) }));
 
-const { countFor, findSession, projectsFor, refreshIndex, resetIndexClient, visibleProjects } = await import("./api");
+const { countFor, fillCwd, findSession, projectsFor, refreshIndex, resetIndexClient, visibleProjects } = await import(
+  "./api"
+);
 
 const session = (id: string, profile: string, label = id): Session => ({
   id,
@@ -144,5 +146,15 @@ describe("index queries", () => {
     );
     await refreshIndex();
     expect([countFor(null), countFor("/home"), countFor("/work")]).toEqual([5, 5, 0]);
+  });
+});
+
+describe("fillCwd", () => {
+  it("puts back the folder the backend left out, but not for an unknown folder", () => {
+    const known = project("app", [session("a", "p"), { ...session("b", "p"), cwd: "/code/app/sub" }]);
+    const unknown: Project = { ...project("x", [session("c", "p")]), path: "s", name: "Unknown folder" };
+    fillCwd([known, unknown]);
+    expect(known.sessions.map((s) => s.cwd)).toEqual(["/code/app", "/code/app/sub"]);
+    expect(unknown.sessions[0]?.cwd).toBeNull();
   });
 });

@@ -46,8 +46,22 @@ async function load(): Promise<void> {
     return;
   }
   heldGen = snap.gen;
+  fillCwd(snap.projects);
   const loaded = snap.projects.length ? "ok" : "empty";
   store.set({ index: { gen: snap.gen, projects: snap.projects, loaded, error: null } });
+}
+
+/**
+ * The backend leaves a session's `cwd` out when it equals its project's path; put it back so every
+ * consumer can read `s.cwd`. Sessions of an "Unknown folder" project (path = transcript slug) keep null.
+ * Changes the freshly received objects in place.
+ */
+export function fillCwd(projects: Project[]): void {
+  for (const p of projects) {
+    for (const s of p.sessions) {
+      if (s.cwd === null && p.path !== s.slug) s.cwd = p.path;
+    }
+  }
 }
 
 /** Fetches the index if it changed. Calls made while one runs are merged into one more after it. */
