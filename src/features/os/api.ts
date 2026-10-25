@@ -1,12 +1,28 @@
 // Public API of the OS integration feature (WP9). Other features may import this file only.
-// The labels, copyText() and openUrlHttps() work now. The rest are stubs provided by WP9, which replaces
-// their bodies only; until then they tell the user the action is not available yet and resolve false.
+// Labels follow the platform; actions report failures themselves and resolve whether they worked.
 
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { call } from "../../core/api";
+import { bus, emit } from "../../core/bus";
 import { describeError, log } from "../../core/log";
-import { isMac } from "../../core/platform";
+import { isMac, isWindows } from "../../core/platform";
+import { message } from "../../ui/dialog";
 import { toast } from "../../ui/toast";
+
+declare module "../../core/api" {
+  interface Commands {
+    /** Existing absolute paths only; several folders open as one multi-root window. */
+    open_in_code: { args: { paths: string[] }; result: null };
+    /** Shows an existing file or folder selected in Explorer / Finder. */
+    reveal_path: { args: { path: string }; result: null };
+    /** Opens an existing folder (never a file) in Explorer / Finder. */
+    open_path: { args: { dir: string }; result: null };
+    /** Windows only; fails elsewhere. */
+    explorer_menu_state: { args: undefined; result: boolean };
+    explorer_menu_install: { args: undefined; result: null };
+    explorer_menu_remove: { args: undefined; result: null };
+  }
+}
 
 /** For a file: "Show in Explorer" / "Reveal in Finder". */
 export function revealLabel(): string {
@@ -43,42 +59,56 @@ export async function openUrlHttps(url: string): Promise<boolean> {
   return (await call("open_url_https", { url })).ok;
 }
 
-function notYet(what: string): false {
-  toast(`${what} is not available yet.`);
+/** Opens files or folders in VS Code (several folders = one multi-root window). Missing ones are skipped. */
+export async function openInCode(paths: readonly string[]): Promise<boolean> {
+  const res = await call("open_in_code", { paths: [...paths] }, { quiet: true });
+  if (res.ok) return true;
+  // "VS Code was not found." gets a dialog, as in the Windows app
+  if (res.error.code === "not_found") await message(res.error.message);
+  else toast(res.error.message, { kind: "error" });
   return false;
 }
 
-/** Opens files or folders in VS Code (several folders = one multi-root window). Stub provided by WP9. */
-export async function openInCode(_paths: readonly string[]): Promise<boolean> {
-  return notYet("Opening VS Code");
+/** Shows a file or folder selected in Explorer / Finder. */
+export async function reveal(path: string): Promise<boolean> {
+  return (await call("reveal_path", { path })).ok;
 }
 
-/** Shows a file or folder selected in Explorer / Finder. Stub provided by WP9. */
-export async function reveal(_path: string): Promise<boolean> {
-  return notYet(revealLabel());
+/** Opens a folder in Explorer / Finder. */
+export async function openFolder(dir: string): Promise<boolean> {
+  return (await call("open_path", { dir })).ok;
 }
 
-/** Opens a folder in Explorer / Finder. Stub provided by WP9. */
-export async function openFolder(_dir: string): Promise<boolean> {
-  return notYet(folderLabel());
+/** Opens PowerShell / Terminal in `dir` (no claude), in its own window. */
+export async function terminalHere(dir: string): Promise<boolean> {
+  if (!bus.handled("launch")) {
+    toast(`${terminalHereLabel()} is not available yet.`);
+    return false;
+  }
+  emit("launch", { dir, mode: "external", shellOnly: true });
+  return true;
 }
 
-/** Opens PowerShell / Terminal in `dir` (no claude). Stub provided by WP9. */
-export async function terminalHere(_dir: string): Promise<boolean> {
-  return notYet(terminalHereLabel());
-}
-
-/** Whether the Explorer right-click menu is installed; null where there is none (macOS). Stub provided by WP9. */
+/** Whether the Explorer right-click menu is installed; null where there is none (macOS). */
 export async function explorerMenuState(): Promise<boolean | null> {
-  return null;
+  if (!isWindows()) return null;
+  const res = await call("explorer_menu_state", undefined, { quiet: true });
+  return res.ok ? res.value : null;
 }
 
-/** Stub provided by WP9. */
 export async function explorerMenuInstall(): Promise<boolean> {
-  return notYet("The Explorer menu");
+  const res = await call("explorer_menu_install");
+  if (res.ok) {
+    await message(
+      "Explorer menu added\nRight-click any folder and pick 'Open Claude Code here', with one entry per profile. On Windows 11 it is under 'Show more options'.",
+    );
+  }
+  return res.ok;
 }
 
-/** Stub provided by WP9. */
 export async function explorerMenuRemove(): Promise<boolean> {
-  return notYet("The Explorer menu");
+  const res = await call("explorer_menu_remove");
+  if (res.ok)
+    await message("Explorer menu removed\n'Open Claude Code here' is no longer in the folder right-click menu.");
+  return res.ok;
 }
