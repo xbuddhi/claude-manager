@@ -366,6 +366,9 @@ function registerCommands() {
   registerCommand({ id: "tab:next", title: "Next Tab", enabled: focused, run: () => cycle(1) });
   registerCommand({ id: "tab:prev", title: "Previous Tab", enabled: focused, run: () => cycle(-1) });
   registerCommand({ id: "session:new", title: "New Session", enabled: focused, run: newSession });
+  // the tray's "New session": the backend raises the window first, but a tray click leaves the focus with
+  // the taskbar, so it must not wait for document.hasFocus()
+  registerCommand({ id: "tray:new-session", title: "New Session", run: newSession });
   // Ctrl+W and Ctrl+T mean something to claude (delete word, task list): on Windows they stay with the
   // terminal while it has focus; the Cmd versions on macOS always reach the app
   registerShortcut({ id: "tab:close", keys: "CmdOrCtrl+W" });

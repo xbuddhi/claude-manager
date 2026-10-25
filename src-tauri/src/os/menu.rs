@@ -13,7 +13,7 @@
 use crate::core::types::MenuEvent;
 use crate::core::{events, lifecycle, open};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Builder, Emitter, Manager, Runtime, Wry};
+use tauri::{AppHandle, Builder, Emitter, Runtime, Wry};
 
 // ---- menu ids (also used as command ids by the frontend shortcut registry) ----
 pub const SETTINGS: &str = "app:settings";
@@ -27,6 +27,9 @@ pub const REFRESH: &str = "refresh:full";
 pub const SHOW_LOGS: &str = "help:logs";
 /// The tray menu's "Show Claude Sessions"; handled here.
 pub const SHOW_WINDOW: &str = "app:show";
+/// The tray menu's "New session". Its own id: the frontend runs it without the window-focus check that
+/// `session:new` has (a tray click leaves focus with the taskbar, so that check would drop it).
+pub const TRAY_NEW_SESSION: &str = "tray:new-session";
 
 /// Installs the menu on macOS, and the menu event handler everywhere. The tray menu uses the same
 /// handler: Tauri sends every menu event to every global handler, so there must be exactly one.
@@ -131,20 +134,11 @@ pub fn on_menu_event(app: &AppHandle, id: &str) {
             }
         }
         _ => {
-            // chosen while the window is hidden (tray, or macOS with the window closed): show it first
-            show_if_hidden(app);
+            // the tray, or macOS with the window closed or behind another app: show and raise it first
+            lifecycle::show_main(app);
             if let Err(e) = app.emit(events::MENU, MenuEvent { id: id.to_string() }) {
                 log::error!("could not send menu event {id}: {e}");
             }
-        }
-    }
-}
-
-fn show_if_hidden(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(lifecycle::MAIN_WINDOW) {
-        let hidden = !w.is_visible().unwrap_or(true) || w.is_minimized().unwrap_or(false);
-        if hidden {
-            lifecycle::show_main(app);
         }
     }
 }
