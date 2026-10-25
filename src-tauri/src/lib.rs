@@ -14,6 +14,8 @@ pub mod sessions;
 pub mod launch;
 pub mod pty;
 // WP3 live + notify
+pub mod live;
+pub mod notify;
 // WP4 fsutil
 // WP5 actions
 pub mod actions;
@@ -57,6 +59,8 @@ pub fn run() {
             // WP2 pty + launch
             pty::init(app)?;
             // WP3 live + notify
+            notify::init(app)?;
+            live::init(app)?;
             // WP4 fsutil
             // WP5 actions
             // WP6 profiles_cmd

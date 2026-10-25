@@ -37,6 +37,12 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::pty::popout::pty_close_window,
         crate::launch::launch_external,
         // ---- live + notify (WP3) ----
+        crate::live::get_live,
+        crate::live::live_ancestors,
+        crate::live::focus_live,
+        crate::live::find_orphans,
+        crate::live::close_orphans,
+        crate::notify::set_active_terminal_pid,
         // ---- fsutil (WP4) ----
         // ---- actions (WP5) ----
         crate::actions::trash::trash_sessions,

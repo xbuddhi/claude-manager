@@ -1,13 +1,13 @@
 // Public API of the live-session feature (WP3). Other features may import this file only.
-// sessionLevel() and folderLevel() read store.live / store.liveCwd and already work (empty until WP3 fills
-// them). focusLive() and liveDot() are stubs provided by WP3, which replaces their bodies only.
+// sessionLevel() and folderLevel() read store.live / store.liveCwd, which the live feature keeps current.
 
-import { h, raw, type SafeHtml } from "../../core/dom";
+import type { SafeHtml } from "../../core/dom";
 import { pathKey } from "../../core/paths";
 import { store } from "../../core/store";
+import { liveDot as dot, liveDotHtml as dotHtml, type LiveLevel } from "./dot";
+import { focusLive as focus } from "./focus";
 
-/** 0 = not running, 1 = open and idle, 2 = working. */
-export type LiveLevel = 0 | 1 | 2;
+export type { LiveLevel };
 
 export function sessionLevel(sessionId: string): LiveLevel {
   return store.get().live[sessionId]?.level ?? 0;
@@ -22,18 +22,17 @@ export function folderLevel(path: string): LiveLevel {
 /**
  * Brings the running session to the front: its tab in the app, or the terminal window it runs in.
  * Resolves false when it could not (the caller then resumes it instead).
- * Stub provided by WP3: always false until then.
  */
-export async function focusLive(_sessionId: string): Promise<boolean> {
-  return false;
+export async function focusLive(sessionId: string): Promise<boolean> {
+  return focus(sessionId);
 }
 
-/** The live dot for `level` (nothing visible for 0). Stub provided by WP3: an unstyled marker until then. */
+/** The live dot for `level` (nothing visible for 0): green when open, a breathing accent dot when working. */
 export function liveDot(level: LiveLevel): HTMLElement {
-  return h("span", { class: "live-dot", dataset: { level: String(level) }, attrs: { "aria-hidden": "true" } });
+  return dot(level);
 }
 
-/** The same dot as markup, for html`` templates. Stub provided by WP3. */
+/** The same dot as markup, for html`` templates. */
 export function liveDotHtml(level: LiveLevel): SafeHtml {
-  return raw(`<span class="live-dot" data-level="${level}" aria-hidden="true"></span>`);
+  return dotHtml(level);
 }

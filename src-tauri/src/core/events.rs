@@ -20,6 +20,10 @@ pub const INDEX_CHANGED: &str = "index-changed";
 /// over with `pty_attach`.
 pub const PTY_RETURNED: &str = "pty-returned";
 // ---- live + notify (WP3) ----
+/// Payload: `LiveChanged` (every running session; sent only when an id or level changed).
+pub const LIVE_CHANGED: &str = "live-changed";
+/// Payload: `NotifyClicked`: a finish notification was clicked; the window is already shown.
+pub const NOTIFY_CLICKED: &str = "notify:clicked";
 // ---- usage (WP7) ----
 // ---- git (WP8) ----
 // ---- os (WP9) ----

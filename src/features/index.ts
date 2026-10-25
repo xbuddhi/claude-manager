@@ -10,6 +10,7 @@ import { mount as mountIndexData } from "./index-data";
 import { mount as mountTerminals } from "./terminals";
 
 // WP3 live
+import { mount as mountLive } from "./live";
 
 // WP4 sidebar
 import { mount as mountSidebar } from "./sidebar";
@@ -37,6 +38,7 @@ export function mountFeatures(): void {
   // WP2 terminals
   mountTerminals();
   // WP3 live
+  mountLive();
   // WP4 sidebar
   mountSidebar();
   // WP5 sessions + search
