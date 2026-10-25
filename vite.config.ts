@@ -1,10 +1,10 @@
-import { defineConfig } from "vite";
 import process from "node:process";
+import { defineConfig } from "vite";
+
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors
@@ -25,5 +25,11 @@ export default defineConfig(() => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
+  },
+  // WebView2 is evergreen Chromium; macOS 12 ships WebKit from Safari 15, older than Vite's default target.
+  build: {
+    target: ["es2021", "chrome105", "safari15"],
+    // the bundle loads from disk, not a network; xterm alone is most of its size
+    chunkSizeWarningLimit: 1500,
   },
 }));

@@ -1,0 +1,32 @@
+.splitter {
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+}
+/* a thin line shows where the divider is while hovering, dragging or focused */
+.splitter::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.2s var(--ease);
+}
+.splitter:hover::after,
+.splitter:focus-visible::after,
+html.resizing .splitter::after {
+  opacity: 0.6;
+}
+.splitter:focus-visible {
+  outline: none;
+}
+html.resizing,
+html.resizing * {
+  /* biome-ignore lint/complexity/noImportantStyles: during a drag the pointer passes over elements with their own cursor */
+  cursor: col-resize !important;
+}

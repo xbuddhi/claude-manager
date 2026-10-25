@@ -1,0 +1,71 @@
+// A draggable divider that resizes the panel before it (vertical divider, horizontal drag).
+// Pointer drag, or Left/Right arrows when focused (Shift for bigger steps). The size is reported live
+// through onResize and once more through onCommit when the drag ends (save it then).
+
+import "./splitter.css";
+
+export interface SplitterOptions {
+  /** The divider element (already in the layout). */
+  el: HTMLElement;
+  /** Current size of the panel in px. */
+  get(): number;
+  min: number;
+  /** Largest allowed size, evaluated on each move (it usually depends on the window width). */
+  max(): number;
+  onResize(px: number): void;
+  onCommit?(px: number): void;
+  label?: string;
+}
+
+export function splitter(opts: SplitterOptions): void {
+  const { el } = opts;
+  el.classList.add("splitter");
+  el.tabIndex = 0;
+  el.setAttribute("role", "separator");
+  el.setAttribute("aria-orientation", "vertical");
+  el.setAttribute("aria-label", opts.label ?? "Resize");
+  const clamp = (px: number) => Math.round(Math.max(opts.min, Math.min(opts.max(), px)));
+  const aria = (px: number) => {
+    el.setAttribute("aria-valuenow", String(px));
+    el.setAttribute("aria-valuemin", String(opts.min));
+    el.setAttribute("aria-valuemax", String(Math.round(opts.max())));
+  };
+  aria(opts.get());
+
+  let startX = 0;
+  let startSize = 0;
+  let size = 0;
+
+  el.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    startX = e.clientX;
+    startSize = size = opts.get();
+    document.documentElement.classList.add("resizing");
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!el.hasPointerCapture(e.pointerId)) return;
+    size = clamp(startSize + e.clientX - startX);
+    aria(size);
+    opts.onResize(size);
+  });
+  const end = (e: PointerEvent) => {
+    if (!el.hasPointerCapture(e.pointerId)) return;
+    el.releasePointerCapture(e.pointerId);
+    document.documentElement.classList.remove("resizing");
+    opts.onCommit?.(size);
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+
+  el.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const step = (e.shiftKey ? 64 : 16) * (e.key === "ArrowLeft" ? -1 : 1);
+    const next = clamp(opts.get() + step);
+    aria(next);
+    opts.onResize(next);
+    opts.onCommit?.(next);
+  });
+}

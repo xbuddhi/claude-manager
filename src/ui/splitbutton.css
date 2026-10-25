@@ -1,0 +1,61 @@
+.sbtn {
+  display: inline-flex;
+  height: 30px;
+  border-radius: var(--radius-ctrl);
+  overflow: hidden;
+  flex: none;
+}
+.sbtn-main,
+.sbtn-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 500;
+  transition: background-color 0.18s var(--ease);
+}
+.sbtn-main {
+  padding: 0 12px 0 13px;
+}
+.sbtn-arrow {
+  width: 30px;
+}
+.sbtn-arrow svg {
+  width: 12px;
+  height: 12px;
+}
+.sbtn-primary {
+  color: var(--on-accent);
+}
+.sbtn-primary .sbtn-main,
+.sbtn-primary .sbtn-arrow {
+  background: var(--accent-strong);
+}
+.sbtn-primary .sbtn-arrow {
+  border-left: 1px solid rgb(255 255 255 / 0.25);
+}
+.sbtn-primary .sbtn-main:hover,
+.sbtn-primary .sbtn-arrow:hover {
+  background: var(--accent-strong-hover);
+}
+.sbtn-secondary {
+  border: 1px solid var(--border);
+}
+.sbtn-secondary .sbtn-main,
+.sbtn-secondary .sbtn-arrow {
+  background: var(--ctrl);
+}
+.sbtn-secondary .sbtn-arrow {
+  border-left: 1px solid var(--border);
+}
+.sbtn-secondary .sbtn-main:hover,
+.sbtn-secondary .sbtn-arrow:hover {
+  background: var(--ctrl-hover);
+}
+.sbtn.disabled {
+  opacity: 0.45;
+}
+.sbtn-main:focus-visible,
+.sbtn-arrow:focus-visible {
+  outline-offset: -2px;
+}

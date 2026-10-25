@@ -1,0 +1,25 @@
+.ttabs {
+  position: relative;
+  display: flex;
+  gap: 18px;
+}
+.ttab {
+  height: 28px;
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color 0.2s var(--ease);
+}
+.ttab.on {
+  color: var(--text);
+}
+.ttabs-line {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  will-change: transform, width;
+}

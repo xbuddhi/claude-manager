@@ -6,8 +6,11 @@
   "packageManager": "pnpm@10.29.2",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "typecheck": "tsc --noEmit",
+    "build": "pnpm typecheck && vite build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "lint": "biome ci .",
+    "format": "biome check --write .",
+    "test": "vitest run",
     "preview": "vite preview",
     "tauri": "tauri"
   },
@@ -26,9 +29,12 @@
     "@xterm/xterm": "^6.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.6.3",
     "@tauri-apps/cli": "^2",
     "@types/node": "^22.20.5",
+    "happy-dom": "^21.0.4",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^5.0.5"
   }
 }

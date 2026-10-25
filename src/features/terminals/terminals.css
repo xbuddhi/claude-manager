@@ -1,0 +1,120 @@
+/* TEMPORARY terminals port (see index.ts). */
+.term-tabs {
+  position: relative;
+  padding: 0 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.term-tabs::-webkit-scrollbar {
+  display: none;
+}
+.term-tablist {
+  position: relative;
+  display: flex;
+}
+/* gliding background behind the active tab (moved by springs in index.ts) */
+.term-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  pointer-events: none;
+  will-change: transform, width;
+}
+.term-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 8px 0 10px;
+  margin-right: 4px;
+  border-radius: 8px;
+  color: var(--muted);
+  max-width: 280px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    background-color 0.18s var(--ease),
+    color 0.2s var(--ease);
+}
+.term-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.term-tab:not(.active):hover {
+  background: var(--hover);
+}
+.term-tab.active {
+  color: var(--text);
+}
+.term-tab.closing {
+  pointer-events: none;
+}
+.term-tab.active svg:first-child {
+  color: var(--accent);
+}
+.term-tab.exited .term-title {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+.term-sub {
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.term-home {
+  padding-right: 12px;
+}
+.term-close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  opacity: 0;
+  transition:
+    background-color 0.16s var(--ease),
+    transform 0.14s var(--ease),
+    opacity 0.18s var(--ease);
+}
+.term-close:hover {
+  background: rgb(127 127 127 / 0.22);
+}
+.term-close:active {
+  transform: scale(0.88);
+}
+.term-tab:hover .term-close,
+.term-tab.active .term-close,
+.term-close:focus-visible {
+  opacity: 1;
+}
+.term-close.armed {
+  background: var(--danger);
+  color: #fff;
+  opacity: 1;
+}
+
+/* ---------- panes ---------- */
+#terminal-root {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background: var(--term-bg);
+  overflow: hidden;
+}
+.term-pane {
+  position: absolute;
+  inset: 0;
+  padding: 8px 4px 4px 10px;
+  background: var(--term-bg);
+}

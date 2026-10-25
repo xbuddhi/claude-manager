@@ -1,0 +1,208 @@
+/* The fixed layout shell from index.html: title bar, picker, main (tab strip, workspace, terminals), overlays. */
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- title bar ---------- */
+#titlebar {
+  position: relative;
+  flex: none;
+  height: var(--titlebar-h);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 380px) minmax(0, 1fr);
+  column-gap: 24px;
+  align-items: center;
+  /* room for the traffic lights: ours on Windows, the native ones on macOS */
+  padding: 0 14px 0 80px;
+}
+html.fullscreen #titlebar {
+  padding-left: 14px;
+}
+
+#tb-lights {
+  position: absolute;
+  top: 18px;
+  left: 14px;
+  display: flex;
+  gap: 8px;
+}
+html.os-macos #tb-lights {
+  display: none;
+}
+.tb-light {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.2);
+  display: grid;
+  place-items: center;
+  color: rgb(0 0 0 / 0.6);
+  transition: background-color 0.15s var(--ease);
+}
+.tb-light svg {
+  width: 8px;
+  height: 8px;
+  stroke-width: 1.6;
+  opacity: 0;
+  transition: opacity 0.12s var(--ease);
+}
+.tb-light[data-action="close"] {
+  background: var(--traffic-close);
+}
+.tb-light[data-action="minimize"] {
+  background: var(--traffic-min);
+}
+.tb-light[data-action="maximize"] {
+  background: var(--traffic-max);
+}
+.tb-light:focus-visible svg {
+  opacity: 1;
+}
+#tb-lights:hover .tb-light svg {
+  opacity: 1;
+}
+/* inactive window: grey until hovered, like macOS */
+html.window-inactive #tb-lights:not(:hover) .tb-light {
+  background: var(--light-off);
+}
+
+#tb-title {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.25;
+  pointer-events: none; /* clicks fall through to the drag region */
+}
+.tb-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.tb-sub {
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#tb-search-slot {
+  min-width: 0;
+}
+#tb-right-slot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* ---------- screens ---------- */
+#picker-root {
+  flex: 1;
+  min-height: 0;
+}
+#main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 14px 14px;
+}
+
+/* ---------- workspace: sidebar | splitter | card ---------- */
+#workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+#sidebar-slot {
+  flex: none;
+  width: var(--sidebar-w, 340px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--side);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+#workspace-splitter {
+  flex: none;
+  width: 10px;
+}
+#card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+#card-head {
+  flex: none;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px 0 16px;
+}
+#card-switch {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.card-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+#card-actions-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#card-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+.view-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* a terminal tab in front replaces the workspace */
+html.mode-terminal #workspace {
+  display: none;
+}
+#terminal-root {
+  display: none;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+html.mode-terminal #terminal-root {
+  display: block;
+}
+
+/* ---------- overlays: menus, popovers, dialogs, toasts ---------- */
+#overlay-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+}
+#overlay-root > * {
+  pointer-events: auto;
+}

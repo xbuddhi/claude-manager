@@ -1,0 +1,56 @@
+#overlay-root > .toast-stack {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 8px 8px 8px 14px;
+  border-radius: 10px;
+  background: var(--menu);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  will-change: transform, opacity;
+}
+.toast-error {
+  border-left: 3px solid var(--danger);
+}
+.toast-success {
+  border-left: 3px solid var(--live);
+}
+.toast-text {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.toast-action {
+  color: var(--accent);
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+.toast-close {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+.toast-action:hover,
+.toast-close:hover {
+  background: var(--hover);
+}

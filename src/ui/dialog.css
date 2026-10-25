@@ -1,0 +1,60 @@
+#overlay-root > .dlg-backdrop {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--backdrop);
+}
+.dlg {
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  padding: 22px;
+  border-radius: 12px;
+  background: var(--menu);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+}
+.dlg-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.dlg-body {
+  margin: 8px 0 0;
+  color: var(--muted);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.dlg-input {
+  display: block;
+  width: 100%;
+  height: 32px;
+  margin-top: 14px;
+  padding: 0 10px;
+  border-radius: var(--radius-ctrl);
+  border: 1px solid var(--border);
+  background: var(--ctrl);
+  transition:
+    border-color 0.2s var(--ease),
+    box-shadow 0.2s var(--ease);
+}
+.dlg-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(217 119 87 / 0.25);
+}
+.dlg-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+.dlg-buttons .btn {
+  min-width: 96px;
+  height: 32px;
+}
+.dlg-buttons .dlg-primary {
+  font-weight: 600;
+}

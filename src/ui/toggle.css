@@ -1,0 +1,35 @@
+.tg {
+  --tg: 0; /* 0 = off, 1 = on; driven by the spring */
+  --knob: 18px;
+  --stretch: 0px;
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--track);
+  transition: background-color 0.2s var(--ease);
+}
+.tg.on {
+  background: var(--accent-strong);
+}
+.tg:active {
+  --stretch: 5px;
+}
+.tg-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  height: var(--knob);
+  width: calc(var(--knob) + var(--stretch));
+  border-radius: calc(var(--knob) / 2);
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  transform: translateX(calc(var(--tg) * (36px - 4px - var(--knob) - var(--stretch))));
+  transition: width 0.15s var(--ease);
+}
+.tg-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

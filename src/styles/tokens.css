@@ -1,0 +1,84 @@
+/* Every colour the app uses. Light is the default; dark follows the OS live (prefers-color-scheme).
+   Palette from the Windows app (MacUI Theme); fixed colours are the same in both themes. */
+:root {
+  color-scheme: light dark;
+
+  --bg: #ececee;
+  --side: #f4f4f6;
+  --card: #ffffff;
+  --alt: #f7f7f8;
+  --ctrl: #ffffff;
+  --ctrl-hover: #f0f0f2;
+  --track: #e1e1e6;
+  --seg-sel: #ffffff;
+  --text: #1d1d1f;
+  --muted: #6e6e73; /* darker than the Windows app's #86868B, for contrast */
+  --border: #d6d6da;
+  --accent: #d97757;
+  --accent-hover: #c4643f;
+  --accent-strong: #b8532f; /* fills behind white text (4.6:1) */
+  --accent-strong-hover: #c45d38;
+  --accent-strong-press: #a64a29;
+  --danger: #ff3b30;
+  --menu: #f8f8f8;
+
+  /* derived surfaces */
+  --hover: #e6e6ea; /* list row hover */
+  --term-bg: #fbfbfc;
+  --term-fg: #1d1d1f;
+  --backdrop: rgb(0 0 0 / 0.18);
+  --shadow-pop: 0 10px 30px rgb(0 0 0 / 0.16), 0 1px 3px rgb(0 0 0 / 0.1);
+  --light-off: #cdcdd1; /* traffic lights while the window is inactive */
+
+  /* fixed */
+  --traffic-close: #ff5f57;
+  --traffic-min: #febc2e;
+  --traffic-max: #28c840;
+  --live: rgb(48 209 88);
+  --warn: #ff9f0a;
+  --lane-1: #ffb000;
+  --lane-2: #dc267f;
+  --lane-3: #40b0a6;
+  --lane-4: #b66dff;
+  --lane-5: #994f00;
+  --git-modified: #e2c08d;
+  --git-added: #73c991;
+  --git-deleted: #f14c4c;
+  --git-renamed: #4fc1ff;
+  --git-conflict: #e4676b;
+  --on-accent: #ffffff;
+
+  /* type and shape */
+  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --radius-card: 12px;
+  --radius-ctrl: 7px;
+  --ease: cubic-bezier(0.25, 0.8, 0.25, 1);
+  --titlebar-h: 48px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1e;
+    --side: #232325;
+    --card: #262628;
+    --alt: #2a2a2c;
+    --ctrl: #3a3a3c;
+    --ctrl-hover: #48484a;
+    --track: #323234;
+    --seg-sel: #636366;
+    --text: #f2f2f7;
+    --muted: #98989f;
+    --border: #3a3a3c;
+    --accent-hover: #e58a6b;
+    --danger: #ff453a;
+    --menu: #2c2c2e;
+
+    --hover: #333336;
+    --term-bg: #141416;
+    --term-fg: #e6e6ea;
+    --backdrop: rgb(0 0 0 / 0.4);
+    --shadow-pop: 0 12px 36px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.06);
+    --light-off: #4d4d50;
+  }
+}

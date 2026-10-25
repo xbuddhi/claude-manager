@@ -13,8 +13,12 @@
         "center": true,
         "visible": false,
         "backgroundColor": "#1C1C1E",
-        "titleBarStyle": "Transparent",
-        "hiddenTitle": true
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 18
+        }
       }
     ]
   }

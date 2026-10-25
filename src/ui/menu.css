@@ -1,0 +1,84 @@
+#overlay-root > .menu {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 160px;
+  max-width: 520px;
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
+  padding: 5px;
+  border-radius: 9px;
+  background: var(--menu);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  animation: menu-in 0.12s var(--ease);
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+  }
+}
+.menu:focus {
+  outline: none;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px 0 6px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.menu-item.active {
+  background: var(--accent-strong);
+  color: var(--on-accent);
+}
+.menu-item.danger {
+  color: var(--danger);
+}
+.menu-item.danger.active {
+  background: var(--danger);
+  color: #fff;
+}
+.menu-item.disabled {
+  opacity: 0.4;
+}
+.mi-icon {
+  width: 18px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.mi-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mi-side {
+  margin-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+}
+.mi-side svg {
+  width: 12px;
+  height: 12px;
+}
+.menu-item.active .mi-side {
+  color: inherit;
+  opacity: 0.85;
+}
+.menu-sep {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--border);
+}
+.menu-section {
+  padding: 6px 10px 3px 32px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}

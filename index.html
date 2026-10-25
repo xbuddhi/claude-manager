@@ -3,30 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Claude Manager</title>
-    <link rel="stylesheet" href="/src/styles.css" />
-    <script type="module" src="/src/main.ts" defer></script>
+    <title>Claude Sessions</title>
+    <link rel="icon" href="data:," />
+    <script type="module" src="/src/main.ts"></script>
   </head>
   <body>
-    <aside class="sidebar">
-      <header class="side-head">
-        <span class="side-title">Workspace</span>
-        <select id="profile" title="Profile"></select>
-      </header>
-      <input id="search" type="search" placeholder="Search projects and sessions" spellcheck="false" />
-      <nav id="projects" class="projects">
-        <div id="sel-pill" class="sel-pill"></div>
-        <div id="project-list"></div>
-      </nav>
-    </aside>
-    <main class="main">
-      <div id="tabs" class="tabs">
-        <div id="tab-pill" class="tab-pill"></div>
-        <div id="tab-list" class="tab-list"></div>
+    <!-- Layout shell (foundation-owned). Features render only into the *-slot / *-root elements. -->
+    <header id="titlebar" data-tauri-drag-region="deep">
+      <div id="tb-lights"></div>
+      <div id="tb-title">
+        <span class="tb-name">Claude Sessions</span>
+        <span class="tb-sub" id="tb-subtitle">Loading...</span>
       </div>
-      <div id="panes" class="panes">
-        <section id="home" class="home"></section>
+      <div id="tb-search-slot"></div>
+      <div id="tb-right-slot"></div>
+    </header>
+    <div id="picker-root" hidden></div>
+    <main id="main">
+      <div id="tabstrip-slot" data-tauri-drag-region="deep"></div>
+      <div id="workspace">
+        <aside id="sidebar-slot"></aside>
+        <div id="workspace-splitter"></div>
+        <section id="card">
+          <header id="card-head">
+            <div id="card-switch"></div>
+            <div id="card-actions-slot"></div>
+          </header>
+          <div id="card-body"></div>
+        </section>
       </div>
+      <div id="terminal-root"></div>
     </main>
+    <div id="overlay-root"></div>
   </body>
 </html>

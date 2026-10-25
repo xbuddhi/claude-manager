@@ -1,0 +1,23 @@
+#overlay-root > .tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: 360px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--menu);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s var(--ease);
+}
+#overlay-root > .tooltip.on {
+  opacity: 1;
+  visibility: visible;
+}

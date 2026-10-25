@@ -45,7 +45,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      # Frontend lint (biome ci) and unit tests (vitest) join here with the frontend restructure (F5).
+      - name: Lint (biome)
+        run: pnpm lint
+
+      - name: Unit tests (vitest)
+        run: pnpm test
 
       - name: Build frontend
         run: pnpm build
