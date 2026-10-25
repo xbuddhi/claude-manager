@@ -32,5 +32,11 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         // ---- usage (WP7) ----
         // ---- git (WP8) ----
         // ---- os (WP9) ----
+        crate::os::explorer_menu::explorer_menu_state,
+        crate::os::explorer_menu::explorer_menu_install,
+        crate::os::explorer_menu::explorer_menu_remove,
+        crate::os::vscode::open_in_code,
+        crate::os::reveal::reveal_path,
+        crate::os::reveal::open_path,
     ]
 }

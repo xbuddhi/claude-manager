@@ -60,6 +60,7 @@ pub fn run() {
             // WP7 usage
             // WP8 git
             // WP9 os
+            os::init(app)?;
             // WP10 updater
             // ---- end feature init ----
             crate::core::webview::create_main_window(app)?;
@@ -68,7 +69,7 @@ pub fn run() {
 
     // ---- builder extensions (`let builder = <feature>::attach(builder);`) ----
     // WP9 os
-    let builder = os::menu::attach(builder);
+    let builder = os::attach(builder);
     // WP10 updater: registers the plugin only when an endpoint and key are configured (docs/port/FOUNDATION.md)
     // ---- end builder extensions ----
 
