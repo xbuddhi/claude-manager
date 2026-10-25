@@ -198,8 +198,8 @@ impl Terms {
     }
 
     /// Stops (`true`) or resumes sending output; the child blocks once the queue behind it is full.
-    pub fn set_paused(&self, id: u32, paused: bool) -> AppResult<()> {
-        self.get(id)?.output.set_paused(paused);
+    pub fn set_paused(&self, id: u32, paused: bool, seq: u64) -> AppResult<()> {
+        self.get(id)?.output.set_paused(paused, seq);
         Ok(())
     }
 

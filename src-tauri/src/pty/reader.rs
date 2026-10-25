@@ -44,6 +44,9 @@ struct State {
     sink: Sink,
     ring: Ring,
     paused: bool,
+    /// Sequence number of the last pause/resume applied. The two commands can reach Rust out of order (they
+    /// run concurrently); a late "pause" after its "resume" would otherwise stop the output for good.
+    flow_seq: u64,
     /// The terminal was removed: never wait for a resume again.
     closing: bool,
     exit: Option<PtyExit>,
@@ -58,6 +61,7 @@ impl Output {
                 sink,
                 ring: Ring::new(RING_BYTES),
                 paused: false,
+                flow_seq: 0,
                 closing: false,
                 exit: None,
                 exit_sent: false,
@@ -87,12 +91,20 @@ impl Output {
         st.sink = sink;
         // the new window starts with nothing unparsed
         st.paused = false;
+        st.flow_seq = 0;
         st.send_failed = false;
         self.changed.notify_all();
     }
 
-    pub fn set_paused(&self, paused: bool) {
-        self.state().paused = paused;
+    /// Applies a pause or resume unless a newer one (higher `seq`) was applied already.
+    pub fn set_paused(&self, paused: bool, seq: u64) {
+        let mut st = self.state();
+        if seq < st.flow_seq {
+            return;
+        }
+        st.flow_seq = seq;
+        st.paused = paused;
+        drop(st);
         self.changed.notify_all();
     }
 
@@ -313,13 +325,25 @@ pub mod tests {
     #[test]
     fn pause_holds_output_until_resumed() {
         let (tx, out, rec) = pumped();
-        out.set_paused(true);
+        out.set_paused(true, 1);
         std::thread::sleep(Duration::from_millis(60)); // let the pump reach the pause
         tx.send(b"later".to_vec()).unwrap();
         std::thread::sleep(Duration::from_millis(100));
         assert_eq!(rec.text(), "");
-        out.set_paused(false);
+        out.set_paused(false, 2);
         assert!(rec.wait(5, |r| r.text() == "later"));
+        drop(tx);
+        out.close();
+    }
+
+    #[test]
+    fn a_late_pause_after_its_resume_is_ignored() {
+        let (tx, out, rec) = pumped();
+        // resume (seq 2) arrives before the pause it answers (seq 1)
+        out.set_paused(false, 2);
+        out.set_paused(true, 1);
+        tx.send(b"still flowing".to_vec()).unwrap();
+        assert!(rec.wait(5, |r| r.text() == "still flowing"));
         drop(tx);
         out.close();
     }

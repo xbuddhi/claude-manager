@@ -30,8 +30,8 @@ declare module "../../core/api" {
     pty_list: { args: undefined; result: PtyInfo[] };
     /** Takes the terminal's output over (replaying its recent output first). */
     pty_attach: { args: { id: number } & PtyOutput; result: PtyInfo };
-    pty_pause: { args: { id: number }; result: null };
-    pty_resume_output: { args: { id: number }; result: null };
+    pty_pause: { args: { id: number; seq: number }; result: null };
+    pty_resume_output: { args: { id: number; seq: number }; result: null };
     pty_set_title: { args: { id: number; title: string }; result: null };
     pty_clipboard_text: { args: undefined; result: string };
     /** Opens the terminal in its own window; the caller removes its tab. */

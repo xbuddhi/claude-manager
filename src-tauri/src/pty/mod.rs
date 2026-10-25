@@ -177,15 +177,16 @@ pub async fn pty_attach(
     terms.attach(id, on_output, window.label())
 }
 
-/// Flow control: xterm has too much output it has not parsed yet.
+/// Flow control: xterm has too much output it has not parsed yet. `seq` orders pauses and resumes, which
+/// can arrive out of order.
 #[tauri::command]
-pub async fn pty_pause(terms: State<'_, Terms>, id: u32) -> AppResult<()> {
-    terms.set_paused(id, true)
+pub async fn pty_pause(terms: State<'_, Terms>, id: u32, seq: u64) -> AppResult<()> {
+    terms.set_paused(id, true, seq)
 }
 
 #[tauri::command]
-pub async fn pty_resume_output(terms: State<'_, Terms>, id: u32) -> AppResult<()> {
-    terms.set_paused(id, false)
+pub async fn pty_resume_output(terms: State<'_, Terms>, id: u32, seq: u64) -> AppResult<()> {
+    terms.set_paused(id, false, seq)
 }
 
 /// Remembers the tab title the terminal set (for a pop-out window and a reloaded page).

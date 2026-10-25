@@ -127,6 +127,14 @@ export interface TermViewOptions {
   menuItems?: () => MenuItem[];
 }
 
+/** Increasing across every window (wall clock based), so the backend can drop a pause or resume that arrives
+ * after a newer one. */
+let flowCounter = 0;
+function flowSeq(): number {
+  flowCounter = (flowCounter + 1) % 1000;
+  return Date.now() * 1000 + flowCounter;
+}
+
 export class TermView {
   readonly term: Terminal;
   readonly pane: HTMLElement;
@@ -233,10 +241,12 @@ export class TermView {
   private write(bytes: Uint8Array) {
     if (this.disposed) return;
     const n = bytes.length;
-    if (this.flow.add(n) && this.ptyId !== null) void call("pty_pause", { id: this.ptyId }, { quiet: true });
+    if (this.flow.add(n) && this.ptyId !== null) {
+      void call("pty_pause", { id: this.ptyId, seq: flowSeq() }, { quiet: true });
+    }
     this.term.write(bytes, () => {
       if (this.flow.done(n) && this.ptyId !== null && !this.disposed) {
-        void call("pty_resume_output", { id: this.ptyId }, { quiet: true });
+        void call("pty_resume_output", { id: this.ptyId, seq: flowSeq() }, { quiet: true });
       }
     });
   }
