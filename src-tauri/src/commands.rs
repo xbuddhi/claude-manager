@@ -27,6 +27,7 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::pty::pty_kill_all,
         // ---- live + notify (WP3) ----
         // ---- fsutil (WP4) ----
+        crate::fsutil::path_kinds,
         // ---- actions (WP5) ----
         // ---- profiles UI (WP6) ----
         // ---- usage (WP7) ----

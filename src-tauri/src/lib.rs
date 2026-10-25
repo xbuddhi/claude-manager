@@ -14,6 +14,7 @@ pub mod sessions;
 pub mod pty;
 // WP3 live + notify
 // WP4 fsutil
+pub mod fsutil;
 // WP5 actions
 // WP6 profiles_cmd
 // WP7 usage
