@@ -26,6 +26,23 @@
   --hover: #e6e6ea; /* list row hover */
   --term-bg: #fbfbfc;
   --term-fg: #1d1d1f;
+  /* ANSI colours made for a light background (xterm's defaults are for dark ones) */
+  --term-black: #000000;
+  --term-red: #cd3131;
+  --term-green: #107c10;
+  --term-yellow: #949800;
+  --term-blue: #0451a5;
+  --term-magenta: #bc05bc;
+  --term-cyan: #0598bc;
+  --term-white: #555555;
+  --term-bright-black: #666666;
+  --term-bright-red: #cd3131;
+  --term-bright-green: #14ce14;
+  --term-bright-yellow: #b5ba00;
+  --term-bright-blue: #0451a5;
+  --term-bright-magenta: #bc05bc;
+  --term-bright-cyan: #0598bc;
+  --term-bright-white: #a5a5a5;
   --backdrop: rgb(0 0 0 / 0.18);
   --shadow-pop: 0 10px 30px rgb(0 0 0 / 0.16), 0 1px 3px rgb(0 0 0 / 0.1);
   --light-off: #cdcdd1; /* traffic lights while the window is inactive */
@@ -77,6 +94,23 @@
     --hover: #333336;
     --term-bg: #141416;
     --term-fg: #e6e6ea;
+    /* xterm's default ANSI colours */
+    --term-black: #2e3436;
+    --term-red: #cc0000;
+    --term-green: #4e9a06;
+    --term-yellow: #c4a000;
+    --term-blue: #3465a4;
+    --term-magenta: #75507b;
+    --term-cyan: #06989a;
+    --term-white: #d3d7cf;
+    --term-bright-black: #555753;
+    --term-bright-red: #ef2929;
+    --term-bright-green: #8ae234;
+    --term-bright-yellow: #fce94f;
+    --term-bright-blue: #729fcf;
+    --term-bright-magenta: #ad7fa8;
+    --term-bright-cyan: #34e2e2;
+    --term-bright-white: #eeeeec;
     --backdrop: rgb(0 0 0 / 0.4);
     --shadow-pop: 0 12px 36px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.06);
     --light-off: #4d4d50;

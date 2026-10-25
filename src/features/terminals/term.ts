@@ -25,12 +25,47 @@ import type { PtyOutput } from "./pty";
 
 const dark = matchMedia("(prefers-color-scheme: dark)");
 
-/** xterm colours from the app's tokens (styles/tokens.css), so a terminal matches the theme in front. */
+/** The 16 ANSI colours, as ITheme keys; their tokens are `--term-<kebab-case key>`. */
+const ANSI = [
+  "black",
+  "red",
+  "green",
+  "yellow",
+  "blue",
+  "magenta",
+  "cyan",
+  "white",
+  "brightBlack",
+  "brightRed",
+  "brightGreen",
+  "brightYellow",
+  "brightBlue",
+  "brightMagenta",
+  "brightCyan",
+  "brightWhite",
+] as const;
+
+/** ANSI colours from the tokens; a missing token leaves xterm's default. */
+export function ansiColors(v: (name: string) => string): Partial<ITheme> {
+  const out: Partial<ITheme> = {};
+  for (const key of ANSI) {
+    const value = v(`--term-${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`);
+    if (value) out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * xterm colours from the app's tokens (styles/tokens.css), so a terminal matches the theme in front. The ANSI
+ * palette follows the theme too: xterm's own is made for dark backgrounds (white and bright yellow text
+ * would vanish on the light one).
+ */
 function theme(): ITheme {
   const css = getComputedStyle(document.documentElement);
   const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   const accent = v("--accent", "#d97757");
   return {
+    ...ansiColors((name) => v(name, "")),
     background: v("--term-bg", "#141416"),
     foreground: v("--term-fg", "#e6e6ea"),
     cursor: accent,
