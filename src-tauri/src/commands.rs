@@ -31,6 +31,10 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         // ---- profiles UI (WP6) ----
         // ---- usage (WP7) ----
         // ---- git (WP8) ----
+        crate::git::git_run,
+        crate::git::git_status,
+        crate::git::find_repos,
+        crate::git::read_new_file,
         // ---- os (WP9) ----
     ]
 }

@@ -18,6 +18,7 @@ pub mod pty;
 // WP6 profiles_cmd
 // WP7 usage
 // WP8 git
+pub mod git;
 // WP9 os
 pub mod os;
 // WP10 updater
