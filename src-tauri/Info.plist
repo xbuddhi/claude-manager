@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Merged by Tauri into the macOS bundle's Info.plist. macOS charges file access by the claude sessions the
+  app starts to Claude Manager, so these reasons appear in the permission prompts for project folders in
+  Documents, Desktop, Downloads and on other volumes. Apple events: claude and its tools may run osascript,
+  and sessions can open in Terminal or iTerm. No App Sandbox and no entitlements file (see README).
+-->
+<plist version="1.0">
+<dict>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Claude Code sessions you start run in your project folders.</string>
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>Claude Code sessions you start run in your project folders.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>Claude Code sessions you start run in your project folders.</string>
+  <key>NSRemovableVolumesUsageDescription</key>
+  <string>Claude Code sessions you start run in your project folders.</string>
+  <key>NSNetworkVolumesUsageDescription</key>
+  <string>Claude Code sessions you start run in your project folders.</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Claude Manager opens sessions in Terminal or iTerm.</string>
+</dict>
+</plist>

@@ -31,16 +31,36 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis", "dmg", "app"],
     "publisher": "xbuddhi",
-    "copyright": "Copyright © xbuddhi",
+    "copyright": "Copyright © 2026 xbuddhi",
+    "category": "DeveloperTool",
     "shortDescription": "Claude Code session manager",
+    "longDescription": "Claude Manager lists your Claude Code projects and sessions across profiles and runs claude in tabs: start, resume and fork sessions, see which ones are working, and review changes with source control.",
+    "licenseFile": "../LICENSE",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "installerHooks": "windows/uninstall-hooks.nsh"
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "hardenedRuntime": true,
+      "signingIdentity": "-"
+    }
   }
 }
