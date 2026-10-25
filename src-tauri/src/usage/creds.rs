@@ -73,19 +73,55 @@ fn read_file(dir: &Path) -> Creds {
     }
 }
 
+/// Where a sign-in is looked for.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Source {
+    Keychain(String),
+    File,
+}
+
+/// The places to look for `dir`'s sign-in, in order. With the Keychain (macOS): the profile's own item,
+/// then its own `.credentials.json` (more specific than the plain item, which belongs to the default
+/// account), then the plain item last (older Claude Code versions used it for every profile).
+pub fn sources(dir: &Path, home: &Path, keychain: bool) -> Vec<Source> {
+    if !keychain {
+        return vec![Source::File];
+    }
+    let mut out: Vec<Source> = Vec::new();
+    for service in keychain_services(dir, home) {
+        if service == SERVICE && !profiles::is_default(dir, home) {
+            out.push(Source::File);
+        }
+        out.push(Source::Keychain(service));
+    }
+    if !out.contains(&Source::File) {
+        out.push(Source::File);
+    }
+    out
+}
+
 /// Reads the sign-in of profile `dir`. Blocking (file or `/usr/bin/security`): call it off the UI thread.
 pub fn read(dir: &Path) -> Creds {
-    #[cfg(target_os = "macos")]
-    {
-        if let Ok(home) = paths::home() {
-            for service in keychain_services(dir, &home) {
-                if let Some(found) = keychain::read(&service) {
-                    return found;
-                }
-            }
+    let Ok(home) = paths::home() else {
+        return read_file(dir);
+    };
+    for source in sources(dir, &home, cfg!(target_os = "macos")) {
+        let found = match source {
+            Source::File => read_file(dir),
+            #[cfg(target_os = "macos")]
+            Source::Keychain(service) => match keychain::read(&service) {
+                Some(found) => found,
+                None => continue,
+            },
+            #[cfg(not(target_os = "macos"))]
+            Source::Keychain(_) => continue,
+        };
+        // a missing file is not an answer while other places remain
+        if !matches!(found, Ok(None)) {
+            return found;
         }
     }
-    read_file(dir)
+    Ok(None)
 }
 
 #[cfg(target_os = "macos")]
@@ -198,6 +234,22 @@ mod tests {
         .unwrap();
         assert_eq!(signed_in(&signed), Some(true));
         assert_eq!(signed_in(&none), Some(false));
+    }
+
+    #[test]
+    fn a_profiles_own_file_comes_before_the_default_accounts_item() {
+        let home = Path::new("/Users/x");
+        let work = home.join(".claude-work");
+        let hashed = keychain_services(&work, home)[0].clone();
+        assert_eq!(
+            sources(&work, home, true),
+            [Source::Keychain(hashed), Source::File, Source::Keychain(SERVICE.into())]
+        );
+        assert_eq!(
+            sources(&home.join(".claude"), home, true),
+            [Source::Keychain(SERVICE.into()), Source::File]
+        );
+        assert_eq!(sources(&work, home, false), [Source::File]);
     }
 
     #[test]
