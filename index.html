@@ -10,9 +10,12 @@
   <body>
     <!-- Layout shell (foundation-owned). Features render only into the *-slot / *-root elements. -->
     <header id="titlebar" data-tauri-drag-region="deep">
-      <div id="tb-title">
-        <span class="tb-name">Claude Manager</span>
-        <span class="tb-sub" id="tb-subtitle">Loading...</span>
+      <div id="tb-left">
+        <div id="tb-profile-slot"></div>
+        <div id="tb-title">
+          <span class="tb-name">Claude Manager</span>
+          <span class="tb-sub" id="tb-subtitle">Loading...</span>
+        </div>
       </div>
       <div id="tb-search-slot"></div>
       <div id="tb-right-slot"></div>

@@ -12,7 +12,7 @@ import { $, setHtml } from "../../core/dom";
 import { store } from "../../core/store";
 import { openPopover, type Popover } from "../../ui/popover";
 import { profileLabel } from "../profiles/api";
-import { localScope, planScope, plansStale, ringFraction, ringState, sameDirs, samePlans } from "./model";
+import { localScope, planScope, plansStale, ringFraction, ringState, sameDirs, samePlans, weekPercent } from "./model";
 import { panelHtml } from "./popover";
 import { createRing, type Ring } from "./ring";
 import "./state";
@@ -115,7 +115,12 @@ async function scopeChanged() {
 function paintRing() {
   const s = store.get();
   ring.el.hidden = !active();
-  ring.set(ringState(s.usagePlans, scopes().plans.length === 0), ringFraction(s.usagePlans, s.usageLocal));
+  const week = weekPercent(s.usagePlans);
+  ring.set(
+    ringState(s.usagePlans, scopes().plans.length === 0),
+    ringFraction(s.usagePlans, s.usageLocal),
+    week >= 0 ? week / 100 : -1,
+  );
 }
 
 function paintPanel() {

@@ -50,7 +50,8 @@ export const S = {
   dropHint: "Drop folders to pin them and start a session in each",
   subtitle: (who: string, sessions: number, folders: number, projects: number) => {
     const n = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
-    const parts = [who, n(sessions, "session"), n(folders, "folder")];
+    const parts = [n(sessions, "session"), n(folders, "folder")];
+    if (who) parts.unshift(who);
     if (projects) parts.push(n(projects, "project"));
     return parts.join(" · ");
   },

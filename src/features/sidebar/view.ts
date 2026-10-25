@@ -21,7 +21,6 @@ import { showMenu } from "../../ui/menu";
 import { toast } from "../../ui/toast";
 import { projectsFor, refreshIndex } from "../index-data/api";
 import { liveDot } from "../live/api";
-import { profileLabel } from "../profiles/api";
 import { attachDrag } from "./drag";
 import { deleteProject, groupOf, moveFolder, toggleFolders, toggleGroup } from "./groups";
 import { addMenu, deleteAllSessions, emptyMenu, folderMenu, groupMenu, newSession } from "./menus";
@@ -87,7 +86,7 @@ function rebuild() {
   // the picker owns the subtitle while it shows ("Choose a profile"); the 60 s rebuild must not overwrite it
   if (s.index.loaded !== "loading" && s.screen !== "picker") {
     const c = counts(folderList(input));
-    setSubtitle(S.subtitle(profileLabel(s.currentProfile), c.sessions, c.folders, s.settings.groups.length));
+    setSubtitle(S.subtitle("", c.sessions, c.folders, s.settings.groups.length));
   }
   void checkKinds(false);
 }

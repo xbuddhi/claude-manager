@@ -105,9 +105,7 @@ describe("sidebar view", () => {
       name: "Web",
       folders: ["C:\\src\\site", "C:\\src\\api"],
     });
-    expect(document.getElementById("tb-subtitle")?.textContent).toBe(
-      "All profiles · 3 sessions · 3 folders · 1 project",
-    );
+    expect(document.getElementById("tb-subtitle")?.textContent).toBe("3 sessions · 3 folders · 1 project");
   });
 
   it("moves with the arrows and publishes folder selections", () => {

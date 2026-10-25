@@ -1,7 +1,9 @@
-// The profile picture at the right end of the title bar (34px). Its tooltip names the profile in view
-// ("<name>  -  <email>"); a click opens the profile popover. A <button>, so the drag region lets it be clicked.
+// The profile chip at the left of the title bar: avatar, profile name and a chevron. Its tooltip names the
+// profile in view ("<name>  -  <email>"); a click opens the profile popover. A <button>, so the drag region
+// lets it be clicked.
 
 import { h } from "../../core/dom";
+import { icons } from "../../core/icons";
 import { store } from "../../core/store";
 import { profileAvatar, profileEmail, profileLabel } from "./api";
 import { toggleProfilePopover } from "./popover";
@@ -17,6 +19,11 @@ export function mountAvatarButton(slot: HTMLElement): void {
     class: "prof-avatar-btn",
     attrs: { "aria-haspopup": "menu", "aria-expanded": "false" },
   });
+  const pic = h("span", { class: "prof-chip-pic" });
+  const name = h("span", { class: "prof-chip-name" });
+  const chev = h("span", { class: "prof-chip-chev" });
+  chev.innerHTML = icons.chevronDown;
+  btn.append(pic, name, chev);
   // detail 0 = Enter or Space, so the popover takes the keyboard
   btn.addEventListener("click", (e) => void toggleProfilePopover(btn, e.detail === 0));
   slot.append(btn);
@@ -25,7 +32,8 @@ export function mountAvatarButton(slot: HTMLElement): void {
     (s) => [s.currentProfile, s.profiles] as const,
     ([dir]) => {
       const tip = avatarTip(dir);
-      btn.replaceChildren(profileAvatar(dir, 34));
+      pic.replaceChildren(profileAvatar(dir, 22));
+      name.textContent = profileLabel(dir);
       btn.dataset.tip = tip;
       btn.setAttribute("aria-label", `Profile: ${tip}`);
     },

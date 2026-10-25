@@ -14,6 +14,7 @@ import {
   sessionPercent,
   statusLine,
   usageAgo,
+  weekPercent,
 } from "./model";
 import { panelHtml } from "./popover";
 
@@ -85,6 +86,16 @@ describe("ring", () => {
     expect(sessionPercent([plan("a", { limits: [] })])).toBe(-1);
     expect(ringFraction([], local)).toBe(0.25);
     expect(ringFraction([], null)).toBe(0);
+  });
+
+  it("shows the highest weekly percent across models, -1 when none", () => {
+    const limits = [
+      { label: "Current session", percent: 50, resets: null },
+      { label: "Weekly · all models", percent: 12, resets: null },
+      { label: "Weekly · Fable", percent: 30, resets: null },
+    ];
+    expect(weekPercent([plan("a", { limits })])).toBe(30);
+    expect(weekPercent([plan("a", { limits: [] })])).toBe(-1);
   });
 
   it("is loading without plans and failed when none has numbers", () => {

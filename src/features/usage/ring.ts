@@ -1,5 +1,6 @@
-// The title-bar usage ring (Windows app: UsageRing). Loading: a 70° arc going round. Ok: an arc from 12
-// o'clock for the fraction, coloured by level and spring-animated. Failed: a muted ring with a 40° red arc.
+// The title-bar usage meter: two labelled bars, "Session" (the 5-hour window) and "Week", each with its
+// percent, coloured by level and spring-animated. Loading: a pulsing bar. Failed: "Usage unavailable".
+// The week bar hides when no weekly limit is known (e.g. local counts only).
 
 import { h } from "../../core/dom";
 import { levelColor } from "../../core/format";
@@ -8,13 +9,33 @@ import type { RingState } from "./model";
 
 export interface Ring {
   el: HTMLButtonElement;
-  set(state: RingState, fraction: number): void;
+  /** `session` 0..1; `week` 0..1, or -1 when unknown. */
+  set(state: RingState, session: number, week: number): void;
 }
 
-const SVG = `<svg viewBox="0 0 22 22" width="22" height="22" aria-hidden="true">
-  <circle class="use-track" cx="11" cy="11" r="8.5"/>
-  <g class="use-turn"><circle class="use-arc" cx="11" cy="11" r="8.5" pathLength="360" transform="rotate(-90 11 11)"/></g>
-</svg>`;
+interface Meter {
+  el: HTMLElement;
+  set(fraction: number): void;
+}
+
+function meter(label: string): Meter {
+  const el = h("span", { class: "use-m" });
+  el.innerHTML = `<span class="use-m-label">${label}</span><span class="use-m-bar"><i></i></span><span class="use-m-pct"></span>`;
+  const fill = el.querySelector("i") as HTMLElement;
+  const pct = el.querySelector(".use-m-pct") as HTMLElement;
+  const spring = new Spring(0.6, 1, 0.002);
+  const draw = (v: number) => {
+    fill.style.width = `${Math.max(0, Math.min(1, v)) * 100}%`;
+  };
+  return {
+    el,
+    set(f) {
+      pct.textContent = `${Math.round(f * 100)}%`;
+      fill.style.background = levelColor(f * 100);
+      animate(spring, f, draw);
+    },
+  };
+}
 
 export function createRing(): Ring {
   // a button: anything clickable in the title bar must be one, or the drag region swallows the click
@@ -23,37 +44,26 @@ export function createRing(): Ring {
     type: "button",
     attrs: { "aria-label": "Usage", "aria-haspopup": "dialog", "aria-expanded": "false" },
   });
-  el.innerHTML = SVG;
-  const arc = el.querySelector<SVGCircleElement>(".use-arc");
-  const fill = new Spring(0.6, 1, 0.002);
-  let state: RingState | null = null;
-
-  const draw = (v: number) => {
-    if (!arc || state !== "ok") return;
-    arc.style.strokeDasharray = `${v > 0.003 ? 360 * v : 0} 360`;
-    arc.style.stroke = levelColor(v * 100);
-  };
+  const session = meter("Session");
+  const week = meter("Week");
+  const note = h("span", { class: "use-note" });
+  el.append(session.el, week.el, note);
 
   return {
     el,
-    set(next, fraction) {
-      if (next !== state) {
-        state = next;
-        el.dataset.state = next;
-        if (arc && next !== "ok") {
-          arc.style.strokeDasharray = next === "loading" ? "70 360" : "40 360";
-          arc.style.stroke = "";
-        }
-      }
-      if (next === "ok") {
-        draw(fill.value);
-        animate(fill, fraction, draw);
+    set(state, s, w) {
+      el.dataset.state = state;
+      note.textContent = state === "loading" ? "Usage" : state === "failed" ? "Usage unavailable" : "";
+      if (state === "ok") {
+        session.set(s);
+        week.el.hidden = w < 0;
+        if (w >= 0) week.set(w);
       }
       el.setAttribute(
         "aria-label",
-        next === "ok"
-          ? `Usage ${Math.round(fraction * 100)}%`
-          : next === "loading"
+        state === "ok"
+          ? `Usage: session ${Math.round(s * 100)}%${w >= 0 ? `, week ${Math.round(w * 100)}%` : ""}`
+          : state === "loading"
             ? "Usage, loading"
             : "Usage unavailable",
       );

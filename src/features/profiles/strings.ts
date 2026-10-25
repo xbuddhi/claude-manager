@@ -2,7 +2,8 @@
 
 export const T = {
   pickerTitle: "Who's using Claude Code?",
-  pickerSub: "Pick a profile to see its projects and sessions. Switch any time from the picture at the top right.",
+  pickerSub:
+    "Pick a profile to see its projects and sessions. Switch any time from the profile button at the top left.",
   pickerSubtitle: "Choose a profile",
   showPicker: "Show this screen when the app starts",
   addProfile: "Add profile",

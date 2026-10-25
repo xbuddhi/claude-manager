@@ -36,6 +36,13 @@ export function sessionPercent(plans: PlanReport[]): number {
   return max;
 }
 
+/** Highest weekly percent across the shown profiles and models; -1 when none is known. */
+export function weekPercent(plans: PlanReport[]): number {
+  let max = -1;
+  for (const p of plans) for (const l of p.limits) if (l.label.startsWith("Weekly") && l.percent > max) max = l.percent;
+  return max;
+}
+
 export type RingState = "loading" | "ok" | "failed";
 
 /** Loading until plans arrive; failed when none of them has numbers. Nothing to fetch counts as ok. */

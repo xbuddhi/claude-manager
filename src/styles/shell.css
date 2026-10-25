@@ -19,12 +19,18 @@ body {
 html.os-macos:not(.fullscreen) #titlebar {
   padding-left: 80px;
 }
-/* Windows: the native title bar already names the app */
-html.os-windows .tb-name {
-  display: none;
+#tb-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
-html.os-windows .tb-sub {
-  font-size: 12.5px;
+#tb-profile-slot {
+  flex: none;
+  display: flex;
+}
+#tb-profile-slot:empty {
+  display: none;
 }
 
 #tb-title {
@@ -35,13 +41,13 @@ html.os-windows .tb-sub {
   line-height: 1.25;
   pointer-events: none; /* clicks fall through to the drag region */
 }
+/* the window title (native on Windows) and the profile chip already name the app and the profile */
 .tb-name {
-  font-weight: 600;
-  font-size: 13px;
+  display: none;
 }
 .tb-sub {
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -1,55 +1,92 @@
 /* Usage ring in the title bar and its popover (WP7). */
 
 .use-ring {
-  order: -1; /* left of the profile avatar, whichever mounts first */
   flex: none;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: none;
-  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--ctrl);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
   cursor: default;
+  transition: background-color 0.16s var(--ease);
 }
-.use-ring[hidden] {
+.use-ring[hidden],
+.use-m[hidden] {
   display: none;
+}
+.use-ring:hover,
+.use-ring[aria-expanded="true"] {
+  background: var(--ctrl-hover);
 }
 .use-ring:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.use-ring svg {
-  display: block;
-  fill: none;
-  stroke-width: 3;
-  stroke-linecap: round;
+.use-m {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
 }
-.use-track {
-  stroke: var(--track);
-  transition: stroke 0.15s var(--ease);
+.use-m-label {
+  color: var(--muted);
 }
-.use-ring:hover .use-track,
-.use-ring[aria-expanded="true"] .use-track {
-  stroke: var(--ctrl-hover);
+.use-m-bar {
+  position: relative;
+  width: 56px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track);
+  overflow: hidden;
 }
-.use-arc {
-  stroke: var(--accent);
-  stroke-dasharray: 0 360;
+.use-m-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  min-width: 3px;
+  border-radius: 3px;
+  background: var(--accent);
 }
-.use-turn {
-  transform-box: view-box;
-  transform-origin: center;
+.use-m-pct {
+  min-width: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
-.use-ring[data-state="loading"] .use-arc {
-  opacity: 0.7;
+.use-note {
+  color: var(--muted);
 }
-.use-ring[data-state="loading"] .use-turn {
-  animation: use-spin 1.2s linear infinite;
+.use-note:empty {
+  display: none;
 }
-.use-ring[data-state="failed"] .use-arc {
-  stroke: var(--danger);
-  opacity: 0.8;
+/* loading / failed: the note only, with a pulsing bar while loading */
+.use-ring:not([data-state="ok"]) .use-m {
+  display: none;
+}
+.use-ring[data-state="loading"]::before {
+  content: "";
+  width: 56px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track);
+  animation: use-pulse 1.2s ease-in-out infinite;
+}
+.use-ring[data-state="failed"]::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+@keyframes use-pulse {
+  50% {
+    opacity: 0.4;
+  }
 }
 @keyframes use-spin {
   to {

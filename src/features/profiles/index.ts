@@ -87,7 +87,7 @@ function crossfade() {
 
 export function mount(): void {
   picker = mountPicker($("#picker-root"));
-  mountAvatarButton($("#tb-right-slot"));
+  mountAvatarButton($("#tb-profile-slot"));
   crossfade();
   holdSubtitle();
 
