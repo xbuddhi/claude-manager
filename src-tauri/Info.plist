@@ -4,7 +4,7 @@
   Merged by Tauri into the macOS bundle's Info.plist. macOS charges file access by the claude sessions the
   app starts to Claude Manager, so these reasons appear in the permission prompts for project folders in
   Documents, Desktop, Downloads and on other volumes. Apple events: claude and its tools may run osascript,
-  and sessions can open in Terminal or iTerm. No App Sandbox and no entitlements file (see README).
+  and sessions can open in Terminal or iTerm. No App Sandbox; the Apple events entitlement is in Entitlements.plist.
 -->
 <plist version="1.0">
 <dict>

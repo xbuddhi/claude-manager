@@ -46,7 +46,8 @@ PowerShell app (`%APPDATA%\ClaudeManager\settings.json`); that file is left as i
 **macOS privacy.** Claude Code sessions you start run in your project folders, so macOS may ask whether Claude
 Manager may access Documents, Desktop, Downloads or other volumes. The app is not sandboxed and must stay
 that way: the App Sandbox would block reading `~/.claude*` and running `claude`. It uses the hardened runtime
-and needs no entitlements file.
+with one entitlement (`src-tauri/Entitlements.plist`): Apple events, so sessions can open in Terminal or iTerm.
+The first time, macOS asks whether Claude Manager may control Terminal.
 
 ## Development
 
