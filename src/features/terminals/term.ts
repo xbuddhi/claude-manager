@@ -118,7 +118,19 @@ function watch() {
       for (const v of views) v.term.options.scrollback = lines;
     },
   );
+  // after sleep, a GPU reset or a long time hidden the canvas can be stale: repaint what is on screen
+  const wake = () => {
+    for (const v of views) v.wake();
+  };
+  window.addEventListener("focus", wake);
+  window.addEventListener("pageshow", wake);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") wake();
+  });
 }
+
+/** How long after a lost WebGL context the renderer is tried again (the GPU is often back by then). */
+const GL_RETRY_MS = 1500;
 
 export interface TermViewOptions {
   /** The terminal named its chat (cleaned, at most 4 times a second). */
@@ -140,6 +152,9 @@ export class TermView {
   readonly pane: HTMLElement;
   private fit = new FitAddon();
   private gl: WebglAddon | null = null;
+  private glRetry: ReturnType<typeof setTimeout> | undefined;
+  /** In front (main window: the active tab; a pop-out: always). */
+  private active = false;
   private ptyId: number | null = null;
   private flow = new Watermark();
   private input = new InputQueue((data) => this.send(data));
@@ -284,7 +299,9 @@ export class TermView {
   /** In front: fit, focus and the WebGL renderer; behind: back to the DOM renderer (one GL context in use). */
   setActive(active: boolean): void {
     if (this.disposed) return;
+    this.active = active;
     if (!active) {
+      clearTimeout(this.glRetry);
       this.gl?.dispose();
       this.gl = null;
       return;
@@ -292,23 +309,39 @@ export class TermView {
     this.fitNow();
     // the PTY may still have the size of another window (pop-out, before a reload)
     this.resize(this.size);
-    if (!this.gl) {
-      try {
-        const gl = new WebglAddon();
-        gl.onContextLoss(() => {
-          gl.dispose();
-          if (this.gl === gl) this.gl = null;
-        });
-        this.term.loadAddon(gl);
-        this.gl = gl;
-        // the WebGL renderer measures cells to whole device pixels: fit again with its size
-        this.fitNow();
-        this.resize(this.size);
-      } catch {
-        // no WebGL: xterm keeps its DOM renderer
-      }
-    }
+    this.startGl();
     this.focus();
+  }
+
+  /** The app woke (focus, visible again, after sleep): repaint, and bring back a lost WebGL renderer. */
+  wake(): void {
+    if (this.disposed || !this.active) return;
+    this.startGl();
+    this.term.refresh(0, this.term.rows - 1);
+  }
+
+  private startGl() {
+    if (this.gl || this.disposed || !this.active) return;
+    try {
+      const gl = new WebglAddon();
+      gl.onContextLoss(() => {
+        // xterm falls back to its DOM renderer, which paints nothing until told to: repaint now, and try
+        // the GPU again shortly (after sleep it is usually back within a second)
+        gl.dispose();
+        if (this.gl === gl) this.gl = null;
+        if (this.disposed) return;
+        this.term.refresh(0, this.term.rows - 1);
+        clearTimeout(this.glRetry);
+        this.glRetry = setTimeout(() => this.wake(), GL_RETRY_MS);
+      });
+      this.term.loadAddon(gl);
+      this.gl = gl;
+      // the WebGL renderer measures cells to whole device pixels: fit again with its size
+      this.fitNow();
+      this.resize(this.size);
+    } catch {
+      // no WebGL: xterm keeps its DOM renderer
+    }
   }
 
   dispose(): void {
@@ -316,6 +349,7 @@ export class TermView {
     this.disposed = true;
     views.delete(this);
     this.input.clear();
+    clearTimeout(this.glRetry);
     this.gl?.dispose();
     this.term.dispose();
     this.pane.remove();

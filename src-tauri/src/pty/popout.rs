@@ -62,6 +62,7 @@ pub async fn pty_popout(app: AppHandle, terms: State<'_, Terms>, id: u32) -> App
         builder = builder.position(at.x + OFFSET, at.y + OFFSET);
     }
     let window = harden(builder, app.config()).build()?;
+    crate::core::webview::recover_on_crash(&window);
     terms.set_window(id, &label)?;
     // closed some other way than its own buttons (they destroy it after deciding): back to the main window
     let (handle, terms) = (app.clone(), terms.inner().clone());

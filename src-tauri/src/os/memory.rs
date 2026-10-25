@@ -1,7 +1,10 @@
-//! WebView2 memory (Windows): while the main window is in the background (unfocused, minimized or hidden)
-//! WebView2 is asked to use less memory, and back to normal when it gets focus. Scripts keep running, so
-//! terminals stay live. Needs WebView2 runtime 114 or later; older runtimes are left alone.
+//! WebView2 memory (Windows): while the main window is minimized or hidden, WebView2 is asked to use less
+//! memory, and back to normal when it gets focus. Only then: a window that is merely unfocused (say, while
+//! you work in a pop-out terminal) is still on screen, and the low level makes its updates sluggish.
+//! Needs WebView2 runtime 114 or later; older runtimes are left alone.
 
+#[cfg(windows)]
+use tauri::Manager;
 use tauri::{Builder, Wry};
 
 /// Adds a small plugin that watches the main window's focus.
@@ -17,7 +20,11 @@ pub fn attach(builder: Builder<Wry>) -> Builder<Wry> {
                 } = event
                     && label.as_str() == crate::core::lifecycle::MAIN_WINDOW
                 {
-                    win::set_low(app, !focused);
+                    let out_of_sight = || {
+                        app.get_webview_window(label)
+                            .is_some_and(|w| w.is_minimized().unwrap_or(false) || !w.is_visible().unwrap_or(true))
+                    };
+                    win::set_low(app, !focused && out_of_sight());
                 }
             })
             .build(),
