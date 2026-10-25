@@ -1,71 +1,66 @@
-// The "Sessions" view of the main card: the selected project's sessions.
-// TEMPORARY port of the prototype's Home page (header with New Session, a table, click a row to resume,
-// content settles in when it changes). WP5 replaces it with the virtualized table, details pane and actions.
+// The "Sessions" view of the main card: the sessions of the folder or project selected in the sidebar,
+// a details pane, and the actions on them (new, continue, resume, fork, delete).
 
-import type { Project } from "../../bindings/Project";
-import { emit } from "../../core/bus";
-import { $, html, setHtml } from "../../core/dom";
-import { ago, size } from "../../core/format";
+import { on } from "../../core/bus";
+import { registerCommand } from "../../core/commands";
+import { h } from "../../core/dom";
+import { registerShortcut } from "../../core/keyboard";
 import { scroller, settleIn } from "../../core/motion";
 import { profileName } from "../../core/profiles";
 import { store } from "../../core/store";
 import { registerView } from "../../core/views";
-import { button } from "../../ui/button";
-import { visibleProjects } from "../index-data/api";
+import { findSession, projectsFor } from "../index-data/api";
+import { sessionLevel } from "../live/api";
+import { deleteSelected, doNew, doResume, resumeSelected, selectedSessions } from "./actions";
+import { createDetails, type Details } from "./details";
+import { type Header, mountHeader } from "./header";
+import { showSessionMenu } from "./menus";
+import { buildScope } from "./model";
 import "./sessions.css";
+import "./state";
+import { createTable, type Table } from "./table";
 
-let body: HTMLElement;
+const MINUTE = 60_000;
 
-function current(): Project | undefined {
+let table: Table;
+let details: Details;
+let page: HTMLElement;
+let header: Header | null = null;
+
+function renderDetails() {
   const s = store.get();
-  const path = s.sidebarSelection?.path;
-  return visibleProjects(s.index.projects, s.currentProfile, s.searchQuery).find((p) => p.path === path);
+  const selected = selectedSessions();
+  const first = selected[0];
+  // until the index is there, say so instead of the usual hint
+  const { loaded, error } = s.index;
+  const hint =
+    loaded === "loading"
+      ? "Loading sessions..."
+      : loaded === "error"
+        ? `Could not read the sessions. ${error ?? ""}`
+        : undefined;
+  details.render(s.sessionsScope, selected, first ? sessionLevel(first.id) : 0, profileName, hint);
 }
 
-function newSession(p: Project) {
-  emit("launch", { dir: p.path }); // the handler picks the start profile
+function recomputeScope() {
+  const s = store.get();
+  const projects = projectsFor(s.currentProfile, s.index.projects);
+  store.set({ sessionsScope: buildScope(s.sidebarSelection, projects, s.platform.os) });
 }
 
-function resume(p: Project, sessionId: string | undefined) {
-  const session = p.sessions.find((x) => x.id === sessionId);
-  if (!session) return;
-  emit("launch", {
-    dir: session.cwd ?? p.path,
-    profile: session.profile,
-    resume: { sessionId: session.id, fork: false },
-    label: session.label,
-  });
+/** Selects the row asked for by sessionsWanted (search picked a session) once the table lists it. */
+function applyWanted() {
+  const id = store.get().sessionsWanted;
+  if (!id || !table.list.rows().some((r) => r.id === id)) return;
+  table.list.select([id]);
+  table.list.scrollToKey(id);
+  store.set({ sessionsWanted: null, sessionsSelected: [id] });
 }
 
-function render(animated: boolean) {
-  const p = current();
-  if (!p) {
-    setHtml(
-      body,
-      html`<div class="ses-hint"><h1>Claude Manager</h1><p>Pick a project on the left to see its sessions.<br>Double-click a project to start a new session, or click a session to resume it.</p></div>`,
-    );
-  } else {
-    setHtml(
-      body,
-      html`<div class="ses-page">
-        <header class="ses-head">
-          <div class="ses-title"><h2>${p.name}</h2><div class="ses-path selectable">${p.path}</div></div>
-        </header>
-        <div class="ses-table" role="table" aria-label="Sessions">
-          <div class="ses-thead" role="row"><span>Session</span><span>Messages</span><span>Last active</span><span>Profile</span><span>Size</span></div>
-          ${p.sessions.map(
-            (s) => html`<div class="ses-row" role="row" data-id="${s.id}" data-tip="Click to resume">
-              <span class="ses-label">${s.label}</span><span>${s.count}</span><span>${ago(s.modified)}</span><span>${profileName(s.profile)}</span><span>${size(s.sizeKb)}</span>
-            </div>`,
-          )}
-        </div>
-      </div>`,
-    );
-    $(".ses-head", body).append(
-      button({ label: "New Session", icon: "plus", kind: "primary", onClick: () => newSession(p) }),
-    );
-  }
-  if (animated) settleIn(body.firstElementChild as HTMLElement | null);
+/** Where the group folder picker opens for a keyboard New Session: under the button when it is on screen. */
+function newAnchor() {
+  const s = store.get();
+  return header && s.activeTerminal === null && s.view === "sessions" ? { anchor: header.newAnchor() } : undefined;
 }
 
 export function mount(): void {
@@ -73,32 +68,77 @@ export function mount(): void {
     id: "sessions",
     title: "Sessions",
     order: 0,
-    mount(el) {
-      body = el;
-      body.classList.add("ses-body");
-      scroller(body);
-      body.addEventListener("click", (e) => {
-        const row = (e.target as HTMLElement).closest<HTMLElement>(".ses-row");
-        const p = current();
-        if (row && p) resume(p, row.dataset.id);
+    mount(body) {
+      body.classList.add("ses-view");
+      table = createTable({
+        onSelect: (ids) => store.set({ sessionsSelected: ids }),
+        onActivate: (s) => void doResume(s),
+        onMenu: (s, e) => showSessionMenu(s, { x: e.clientX, y: e.clientY }),
+        onDelete: deleteSelected,
       });
+      scroller(table.list.el);
+      details = createDetails({
+        onResume: () => resumeSelected(),
+        onFork: () => resumeSelected({ fork: true }),
+        onDelete: deleteSelected,
+      });
+      page = h("div", { class: "ses-page" }, table.el, details.el);
+      body.append(page);
+    },
+    headerActions(el) {
+      header = mountHeader(el);
     },
   });
 
-  render(false);
-  // data or filters changed: redraw in place
   store.select(
-    (s) => [s.index, s.currentProfile, s.searchQuery, s.profiles] as const,
-    () => render(false),
-    { equals: (a, b) => a.every((v, i) => v === b[i]) },
+    (s) => s.sessionsScope,
+    (scope) => {
+      table.setRows(scope?.sessions ?? [], scope?.kind ?? "folder");
+      applyWanted();
+      renderDetails();
+    },
+    { immediate: true },
   );
-  // another project, or back from a terminal: the new content settles in
+  store.select((s) => [s.index, s.currentProfile, s.sidebarSelection, s.platform.os] as const, recomputeScope, {
+    equals: (a, b) => a.every((v, i) => v === b[i]),
+  });
+  recomputeScope();
+  store.select((s) => s.sessionsWanted, applyWanted);
+  store.select((s) => s.sessionsSelected, renderDetails);
+  store.select((s) => s.index.loaded, renderDetails);
+  // running state and profile names show in the rows and the pane
   store.select(
-    (s) => s.sidebarSelection?.path ?? null,
-    () => render(true),
+    (s) => [s.live, s.profiles] as const,
+    () => {
+      table.refresh();
+      renderDetails();
+    },
+    { equals: (a, b) => a[0] === b[0] && a[1] === b[1] },
+  );
+  // "5m ago" keeps up with the clock
+  setInterval(() => {
+    if (!document.hidden) table.refresh();
+  }, MINUTE);
+
+  // another folder, or back from a terminal: the content settles in
+  store.select(
+    (s) => s.sidebarSelection?.key ?? null,
+    () => settleIn(page),
   );
   store.select(
     (s) => s.activeTerminal === null,
-    (home) => home && render(true),
+    (home) => home && settleIn(page),
   );
+
+  on("session:resume", ({ sessionId, mode, fork }) => {
+    const found = findSession(sessionId);
+    if (found) void doResume(found.session, { mode, fork });
+  });
+  registerCommand({
+    id: "session:new",
+    title: "New Session",
+    run: () => doNew(undefined, newAnchor()),
+    enabled: () => store.get().sessionsScope !== null,
+  });
+  registerShortcut({ id: "session:new", keys: "CmdOrCtrl+T" });
 }
