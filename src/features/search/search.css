@@ -1,21 +1,23 @@
-/* TEMPORARY search box in the title bar, ported from the prototype; WP5 replaces it with the dropdown. */
+/* Title-bar search pill and its results dropdown (Spotlight / quick-open style). */
 .search {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 8px;
+  height: 32px;
+  padding: 0 6px 0 10px;
+  border-radius: 9px;
   border: 1px solid var(--border);
-  background: var(--card);
+  background: var(--track);
   transition:
     border-color 0.2s var(--ease),
     box-shadow 0.2s var(--ease);
 }
 .search:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgb(217 119 87 / 0.2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
+/* hidden on the profile picker and while a terminal tab is in front */
+.search.away,
 html.mode-terminal .search {
   visibility: hidden;
 }
@@ -39,4 +41,141 @@ html.mode-terminal .search {
 }
 .search-input::placeholder {
   color: var(--muted);
+}
+.search-clear {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: var(--muted);
+  transition: color 0.15s var(--ease);
+}
+.search-clear:hover {
+  color: var(--text);
+}
+.search-clear[hidden] {
+  display: none;
+}
+.search-clear svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* ---------- dropdown ---------- */
+#overlay-root > .search-pop {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: var(--menu);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  z-index: 20;
+}
+.search-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 0 4px;
+}
+.search-section {
+  height: 26px;
+  padding: 8px 18px 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.search-empty {
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+.search-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  margin: 1px 6px;
+  padding: 0 12px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.search-item.session {
+  height: 44px;
+}
+.search-item.on {
+  background: var(--accent-strong);
+  color: var(--on-accent);
+}
+.search-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  color: var(--muted);
+}
+.search-ico.accent {
+  color: var(--accent);
+}
+.search-item.on .search-ico {
+  color: var(--on-accent);
+}
+.search-ico svg {
+  width: 15px;
+  height: 15px;
+}
+.search-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.search-text.session {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+.search-title,
+.search-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-text:not(.session) .search-title {
+  flex: none;
+  max-width: 70%;
+  font-weight: 600;
+}
+.search-sub,
+.search-right {
+  color: var(--muted);
+  font-size: 12px;
+}
+.search-text.session .search-sub {
+  white-space: pre;
+}
+.search-right {
+  flex: none;
+  white-space: nowrap;
+}
+.search-item.on .search-sub,
+.search-item.on .search-right {
+  color: color-mix(in srgb, var(--on-accent) 84%, transparent);
+}
+.search-foot {
+  flex: none;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  margin: 0 12px;
+  padding: 0 6px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: pre;
 }
