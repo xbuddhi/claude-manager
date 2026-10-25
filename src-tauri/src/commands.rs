@@ -55,6 +55,10 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::usage::usage_plans,
         crate::usage::usage_local,
         // ---- git (WP8) ----
+        crate::git::git_run,
+        crate::git::git_status,
+        crate::git::find_repos,
+        crate::git::read_new_file,
         // ---- os (WP9) ----
         crate::os::explorer_menu::explorer_menu_state,
         crate::os::explorer_menu::explorer_menu_install,

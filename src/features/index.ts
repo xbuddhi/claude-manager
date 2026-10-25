@@ -27,6 +27,7 @@ import { mount as mountSettings } from "./settings";
 import { mount as mountUsage } from "./usage";
 
 // WP8 git
+import { mount as mountGit } from "./git";
 
 // WP9 os
 import { mount as mountOs } from "./os";
@@ -54,6 +55,7 @@ export function mountFeatures(): void {
   // WP7 usage
   mountUsage();
   // WP8 git
+  mountGit();
   // WP9 os
   mountOs();
   // WP10 updater
