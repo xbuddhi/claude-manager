@@ -1,4 +1,4 @@
-//! The tray icon (Windows) / menu bar icon (macOS) "Claude Sessions". It is there for the whole run, so a
+//! The tray icon (Windows) / menu bar icon (macOS) "Claude Manager". It is there for the whole run, so a
 //! window hidden by "Keep running" can always be brought back. Its menu items go through the one menu
 //! event handler in `menu.rs`.
 
@@ -10,13 +10,13 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
 const TRAY_ID: &str = "main";
-const TOOLTIP: &str = "Claude Sessions";
+const TOOLTIP: &str = "Claude Manager";
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
         &[
-            &MenuItem::with_id(app, SHOW_WINDOW, "Show Claude Sessions", true, None::<&str>)?,
+            &MenuItem::with_id(app, SHOW_WINDOW, "Show Claude Manager", true, None::<&str>)?,
             &MenuItem::with_id(app, TRAY_NEW_SESSION, "New session", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, QUIT, "Quit", true, None::<&str>)?,

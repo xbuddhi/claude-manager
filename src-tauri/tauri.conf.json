@@ -13,7 +13,7 @@
       {
         "label": "main",
         "create": false,
-        "title": "Claude Sessions",
+        "title": "Claude Manager",
         "width": 1320,
         "height": 820,
         "minWidth": 940,

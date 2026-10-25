@@ -25,7 +25,7 @@ pub const PREV_TAB: &str = "tab:prev";
 pub const FIND: &str = "search:focus";
 pub const REFRESH: &str = "refresh:full";
 pub const SHOW_LOGS: &str = "help:logs";
-/// The tray menu's "Show Claude Sessions"; handled here.
+/// The tray menu's "Show Claude Manager"; handled here.
 pub const SHOW_WINDOW: &str = "app:show";
 /// The tray menu's "New session". Its own id: the frontend runs it without the window-focus check that
 /// `session:new` has (a tray click leaves focus with the taskbar, so that check would drop it).
