@@ -120,6 +120,9 @@ pub struct Scanner {
     entries: Mutex<HashMap<PathBuf, Entry>>,
     /// States changed since the cache file was written.
     dirty: AtomicBool,
+    /// One save at a time: the watcher, the scan and the exit hook all save, and two writers of the
+    /// same temporary file could publish a mixed cache.
+    save_lock: Mutex<()>,
 }
 
 enum Outcome {
@@ -145,6 +148,7 @@ impl Scanner {
             cache_path,
             entries: Mutex::new(entries),
             dirty: AtomicBool::new(false),
+            save_lock: Mutex::new(()),
         }
     }
 
@@ -320,6 +324,7 @@ impl Scanner {
     /// Writes the states to the cache file when they changed since the last save.
     pub fn save(&self) -> AppResult<()> {
         let Some(path) = &self.cache_path else { return Ok(()) };
+        let _one = lock(&self.save_lock);
         if !self.dirty.swap(false, Ordering::Relaxed) {
             return Ok(());
         }
@@ -509,6 +514,27 @@ pub(crate) mod tests {
         let stats = warm.scan(&[profile], Some(HEADER_BYTES));
         assert_eq!((stats.opened, stats.changed), (0, true));
         assert_eq!(warm.sessions()[0].label, "one");
+    }
+
+    #[test]
+    fn saves_from_several_threads_at_once_leave_a_readable_cache() {
+        let home = tempfile::tempdir().unwrap();
+        let cache_file = home.path().join("cache").join("sessions-cache.json");
+        let (profile, _) = transcript(home.path(), "a", ID, &user_line("one", "/a"));
+        let scanner = Scanner::new(Some(cache_file.clone()));
+        scanner.scan(std::slice::from_ref(&profile), None);
+        std::thread::scope(|s| {
+            for _ in 0..8 {
+                s.spawn(|| {
+                    for _ in 0..20 {
+                        scanner.dirty.store(true, Ordering::Relaxed);
+                        scanner.save().unwrap();
+                    }
+                });
+            }
+        });
+        let warm = Scanner::new(Some(cache_file));
+        assert_eq!(warm.scan(&[profile], Some(HEADER_BYTES)).opened, 0);
     }
 
     /// Acceptance bench: a second scan of an unchanged 300 MB set takes under 50 ms (stat only).
