@@ -42,10 +42,11 @@ pub fn run() {
             crate::core::lifecycle::on_second_instance,
         ))
         .plugin(crate::core::log_plugin())
-        // the window stays hidden until the frontend has painted; restoring must not show it early
+        // the window stays hidden until the frontend has painted, so restoring must not show it early; the
+        // frame comes from the config (Windows draws its own title bar), never from a saved state
         .plugin(
             tauri_plugin_window_state::Builder::new()
-                .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
+                .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE & !StateFlags::DECORATIONS)
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
