@@ -67,17 +67,22 @@ html.has-tabs:not(.mode-terminal) #sidebar-slot {
   stroke: currentColor;
   stroke-width: 1.3;
 }
-/* hover: a free rounded shape that stops short of the panel; only the active tab joins it */
+/* hover: a ghost of the active tab, the same folder shape sitting on the panel line, only fainter */
 .term-tab::before {
   content: "";
   position: absolute;
-  inset: 0 0 3px;
+  inset: 0;
   z-index: -1;
-  border-radius: 8px;
-  transition: background-color 0.18s var(--ease);
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  transition:
+    background-color 0.18s var(--ease),
+    border-color 0.18s var(--ease);
 }
 .term-tab:not(.active):hover::before {
-  background: var(--hover);
+  background: color-mix(in srgb, var(--side) 80%, transparent);
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
 }
 .term-tab.active {
   color: var(--text);
