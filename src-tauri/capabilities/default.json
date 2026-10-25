@@ -23,6 +23,7 @@
     "notification:default",
     "log:default",
     "window-state:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "updater:default"
   ]
 }

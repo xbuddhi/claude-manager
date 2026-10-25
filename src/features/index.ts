@@ -33,6 +33,7 @@ import { mount as mountGit } from "./git";
 import { mount as mountOs } from "./os";
 
 // WP10 updater
+import { mount as mountUpdater } from "./updater";
 
 // ---- end feature imports ----
 
@@ -59,5 +60,6 @@ export function mountFeatures(): void {
   // WP9 os
   mountOs();
   // WP10 updater
+  mountUpdater();
   // ---- end feature mounts ----
 }

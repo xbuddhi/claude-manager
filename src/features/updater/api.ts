@@ -1,6 +1,8 @@
 // Public API of the updater feature (WP10). Other features may import this file only.
-// Stub provided by WP10, which replaces the body only. Updates stay disabled until a release endpoint and
-// a signing key exist (owner decision, docs/port/README.md), and then this still reports "disabled".
+// Updates are "disabled" until the build carries a release endpoint and a signing key (owner decision,
+// docs/port/README.md); the release workflow adds them once a repository and keys exist.
+
+import { checkForUpdate } from "./updater";
 
 export type UpdateCheck =
   | { kind: "disabled" }
@@ -8,7 +10,7 @@ export type UpdateCheck =
   | { kind: "available"; version: string }
   | { kind: "failed"; message: string };
 
-/** Checks for an update now (Settings > "Check for updates"). */
+/** Checks for an update now (Settings > "Check for updates"). An available update also shows the banner. */
 export async function checkNow(): Promise<UpdateCheck> {
-  return { kind: "disabled" };
+  return checkForUpdate(false);
 }

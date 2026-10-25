@@ -29,6 +29,7 @@ pub mod git;
 // WP9 os
 pub mod os;
 // WP10 updater
+pub mod updater;
 // ---- end feature modules ----
 
 use tauri_plugin_window_state::StateFlags;
@@ -74,6 +75,7 @@ pub fn run() {
             // WP9 os
             os::init(app)?;
             // WP10 updater
+            updater::init(app)?;
             // ---- end feature init ----
             crate::core::webview::create_main_window(app)?;
             Ok(())
