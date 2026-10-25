@@ -1,10 +1,11 @@
-// Tests for the release scripts: node --test scripts/ (run by the release workflow before building).
+// Tests for the release scripts: node --test "scripts/*.test.mjs" (run by the release workflow before building).
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { checkVersions, isNumericVersion, readVersions, setVersion, tagVersion } from "./bump-version.mjs";
 import { encodePng, render } from "./make-icons.mjs";
 import { buildConfig, envFileLines, forwardedSecrets, releaseNotes, signCommand, status } from "./release-config.mjs";
+import { renderNotices, runtimeCrates } from "./third-party-notices.mjs";
 
 const texts = {
   cargoToml:
@@ -139,5 +140,44 @@ describe("make-icons", () => {
     assert.deepEqual([...png.subarray(1, 4)], [0x50, 0x4e, 0x47]);
     assert.equal(png.readUInt32BE(16), 8);
     assert.equal(png[25], 6);
+  });
+});
+
+describe("third-party-notices", () => {
+  it("keeps only crates reached through normal dependencies", () => {
+    const dep = (pkg, kind) => ({ pkg, dep_kinds: [{ kind }] });
+    const metadata = {
+      packages: ["app", "lib", "deep", "devonly", "buildonly"].map((id) => ({ id, name: id })),
+      resolve: {
+        root: "app",
+        nodes: [
+          { id: "app", deps: [dep("lib", null), dep("devonly", "dev"), dep("buildonly", "build")] },
+          { id: "lib", deps: [dep("deep", null)] },
+          { id: "deep", deps: [dep("lib", null)] },
+          { id: "devonly", deps: [] },
+          { id: "buildonly", deps: [] },
+        ],
+      },
+    };
+    assert.deepEqual(
+      runtimeCrates(metadata).map((p) => p.name),
+      ["lib", "deep"],
+    );
+  });
+
+  it("lists packages sorted and prints each license text once", () => {
+    const mit = "MIT License\n\nPermission is hereby granted";
+    const out = renderNotices(
+      [
+        { name: "zeta", version: "1.0.0", license: "MIT", url: "https://z", texts: [mit] },
+        { name: "alpha", version: "2.0.0", license: "MIT", url: "https://a", texts: [mit] },
+      ],
+      [{ name: "@x/y", version: "3.0.0", license: "Apache-2.0", url: "https://x", texts: [] }],
+    );
+    assert.ok(out.indexOf("alpha 2.0.0 - MIT - https://a") < out.indexOf("zeta 1.0.0 - MIT - https://z"));
+    assert.match(out, /@x\/y 3\.0\.0 - Apache-2\.0 - https:\/\/x/);
+    assert.equal(out.split("Permission is hereby granted").length, 2);
+    assert.match(out, /Used by: alpha 2\.0\.0, zeta 1\.0\.0/);
+    assert.ok(out.endsWith("granted\n"));
   });
 });
