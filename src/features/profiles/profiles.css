@@ -124,19 +124,19 @@ html.prof-picker-open #tb-profile-slot {
   background: var(--ctrl);
   color: var(--text);
   font: inherit;
-  transition:
-    background-color 0.16s var(--ease),
-    transform 0.14s var(--ease);
+  transition: background-color 0.16s var(--ease);
 }
 .prof-avatar-btn:hover,
 .prof-avatar-btn[aria-expanded="true"] {
   background: var(--ctrl-hover);
 }
-.prof-avatar-btn:active {
-  transform: scale(0.97);
-}
 .prof-chip-pic {
   display: grid;
+}
+/* the chip gives the hover and press feedback; its avatar stays still (no ring, no press zoom) */
+.prof-chip-pic > .avatar {
+  box-shadow: none;
+  transform: none;
 }
 .prof-chip-name {
   min-width: 0;
