@@ -291,6 +291,9 @@ export class TermView {
         });
         this.term.loadAddon(gl);
         this.gl = gl;
+        // the WebGL renderer measures cells to whole device pixels: fit again with its size
+        this.fitNow();
+        this.resize(this.size);
       } catch {
         // no WebGL: xterm keeps its DOM renderer
       }
