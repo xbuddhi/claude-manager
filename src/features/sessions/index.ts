@@ -2,9 +2,7 @@
 // a details pane, and the actions on them (new, continue, resume, fork, delete).
 
 import { on } from "../../core/bus";
-import { registerCommand } from "../../core/commands";
 import { h } from "../../core/dom";
-import { registerShortcut } from "../../core/keyboard";
 import { scroller, settleIn } from "../../core/motion";
 import { profileName } from "../../core/profiles";
 import { store } from "../../core/store";
@@ -134,11 +132,13 @@ export function mount(): void {
     const found = findSession(sessionId);
     if (found) void doResume(found.session, { mode, fork });
   });
-  registerCommand({
-    id: "session:new",
-    title: "New Session",
-    run: () => doNew(undefined, newAnchor()),
-    enabled: () => store.get().sessionsScope !== null,
-  });
-  registerShortcut({ id: "session:new", keys: "CmdOrCtrl+T" });
+  // "session:new" (CmdOrCtrl+T) is registered once, by the terminals feature: it starts a session in the
+  // active tab's folder, and on Home it calls newSessionFromHome() through api.ts
+}
+
+/** New session from the workspace (Home): in the selected folder or group. False when nothing is selected. */
+export function newSessionFromHome(): boolean {
+  if (store.get().sessionsScope === null) return false;
+  doNew(undefined, newAnchor());
+  return true;
 }

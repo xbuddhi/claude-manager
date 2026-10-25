@@ -28,6 +28,7 @@ import { toast } from "../../ui/toast";
 import { refreshIndex } from "../index-data/api";
 import { copyText, folderLabel, openFolder, openInCode } from "../os/api";
 import { startProfile } from "../profiles/api";
+import { newSessionFromHome } from "../sessions/api";
 import { defaultTitle, quotePaths, tabSub } from "./logic";
 import "./pty";
 import { Strip } from "./tabs";
@@ -320,6 +321,8 @@ function newSession() {
     emit("launch", { dir: active.dir, profile: active.profile, mode: "embed" });
     return;
   }
+  // Home: the sessions view decides (selected session's folder, folder picker for a group)
+  if (newSessionFromHome()) return;
   const sel = store.get().sidebarSelection;
   if (sel?.kind === "folder" && sel.path) {
     emit("launch", { dir: sel.path });

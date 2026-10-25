@@ -85,3 +85,4 @@ export function selectSession(sessionId: string): void {
 
 /** The speech-bubble icon of a session row, for lists of sessions elsewhere (search). */
 export { chatIcon } from "./icons";
+export { newSessionFromHome } from "./index";
