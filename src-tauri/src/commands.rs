@@ -44,6 +44,7 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::live::close_orphans,
         crate::notify::set_active_terminal_pid,
         // ---- fsutil (WP4) ----
+        crate::fsutil::path_kinds,
         // ---- actions (WP5) ----
         crate::actions::trash::trash_sessions,
         crate::actions::trash::trash_path,

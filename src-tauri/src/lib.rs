@@ -17,6 +17,7 @@ pub mod pty;
 pub mod live;
 pub mod notify;
 // WP4 fsutil
+pub mod fsutil;
 // WP5 actions
 pub mod actions;
 // WP6 profiles_cmd
