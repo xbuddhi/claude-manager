@@ -13,6 +13,8 @@ pub const APP_OPEN_REQUEST: &str = "app:open-request";
 /// Payload: `MenuEvent`.
 pub const MENU: &str = "menu";
 // ---- sessions (WP1) ----
+/// Payload: `IndexChanged` (`sessions::types`): the index has a new generation; fetch it with `get_index`.
+pub const INDEX_CHANGED: &str = "index-changed";
 // ---- pty + launch (WP2) ----
 // ---- live + notify (WP3) ----
 // ---- usage (WP7) ----

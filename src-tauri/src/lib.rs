@@ -51,6 +51,7 @@ pub fn run() {
             crate::core::init(app)?;
             // ---- feature init ----
             // WP1 sessions
+            sessions::init(app)?;
             // WP2 pty + launch
             pty::init(app)?;
             // WP3 live + notify

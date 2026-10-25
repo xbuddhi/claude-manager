@@ -17,7 +17,9 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::core::open::open_log_dir,
         crate::core::open::open_url_https,
         // ---- sessions (WP1) ----
-        crate::sessions::list_projects,
+        crate::sessions::get_index,
+        crate::sessions::rescan_full,
+        crate::sessions::count_for,
         // ---- pty + launch (WP2) ----
         crate::pty::pty_new,
         crate::pty::pty_resume,
