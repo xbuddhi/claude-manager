@@ -51,6 +51,7 @@ html.has-tabs:not(.mode-terminal) #sidebar-slot {
   padding: 0 6px 0 10px;
   border-radius: 8px 8px 0 0;
   color: var(--muted);
+  isolation: isolate;
   overflow: hidden;
   white-space: nowrap;
   outline-offset: -2px;
@@ -66,7 +67,16 @@ html.has-tabs:not(.mode-terminal) #sidebar-slot {
   stroke: currentColor;
   stroke-width: 1.3;
 }
-.term-tab:not(.active):hover {
+/* hover: a free rounded shape that stops short of the panel; only the active tab joins it */
+.term-tab::before {
+  content: "";
+  position: absolute;
+  inset: 3px 0 4px;
+  z-index: -1;
+  border-radius: 7px;
+  transition: background-color 0.18s var(--ease);
+}
+.term-tab:not(.active):hover::before {
   background: var(--hover);
 }
 .term-tab.active {
@@ -144,11 +154,11 @@ html.has-tabs:not(.mode-terminal) #sidebar-slot {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
-  margin-left: auto;
+  height: 25px;
+  margin: 0 0 4px auto;
   padding: 0 10px;
   border: 0;
-  border-radius: 8px 8px 0 0;
+  border-radius: 7px;
   background: none;
   color: var(--text);
   font: inherit;

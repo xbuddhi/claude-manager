@@ -21,6 +21,11 @@ const TEMPLATE = {
   folder: "minmax(120px, 1fr) 90px 105px 85px 75px",
   group: "minmax(120px, 1fr) 150px 90px 105px 85px",
 };
+/** The same without the Profile column, for when one profile is in view (it would repeat on every row). */
+const TEMPLATE_ONE = {
+  folder: "minmax(120px, 1fr) 90px 105px 75px",
+  group: "minmax(120px, 1fr) 150px 90px 105px",
+};
 
 export type Mode = keyof typeof COLUMNS;
 
@@ -42,7 +47,7 @@ export interface TableOptions {
 export interface Table {
   el: HTMLElement;
   list: List<Session>;
-  setRows(rows: Session[], mode: Mode): void;
+  setRows(rows: Session[], mode: Mode, oneProfile?: boolean): void;
   /** Redraws the visible rows (live levels or the clock changed). */
   refresh(): void;
 }
@@ -109,21 +114,25 @@ export function createTable(opts: TableOptions): Table {
 
   const el = h("div", { class: "ses-table" }, head, list.el);
 
-  function setMode(next: Mode) {
-    if (next === mode && head.childElementCount) return;
+  let one = false;
+  function setMode(next: Mode, oneProfile: boolean) {
+    if (next === mode && oneProfile === one && head.childElementCount) return;
     mode = next;
-    el.style.setProperty("--ses-cols", TEMPLATE[mode]);
+    one = oneProfile;
+    el.dataset.mode = mode;
+    el.classList.toggle("one-profile", one);
+    el.style.setProperty("--ses-cols", (one ? TEMPLATE_ONE : TEMPLATE)[mode]);
     head.replaceChildren(
       ...COLUMNS[mode].map((t) => h("span", { class: "ses-cell", attrs: { role: "columnheader" } }, t)),
     );
   }
-  setMode("folder");
+  setMode("folder", false);
 
   return {
     el,
     list,
-    setRows(rows, next) {
-      setMode(next);
+    setRows(rows, next, oneProfile = false) {
+      setMode(next, oneProfile);
       list.setRows(rows);
     },
     refresh: () => list.refresh(),

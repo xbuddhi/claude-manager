@@ -79,6 +79,7 @@ export function createDetails(opts: DetailsOptions): Details {
       text.textContent = content.text;
       meta.textContent = content.meta;
       const n = selected.length;
+      el.classList.toggle("hint", n === 0);
       actions.hidden = n === 0;
       resume.hidden = fork.hidden = n !== 1;
       const resumeText = level ? "Switch to" : "Resume";

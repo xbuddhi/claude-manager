@@ -22,12 +22,12 @@ export const HINT_DEFAULT =
 export const HINT_NO_SESSIONS = "No sessions yet. Double-click the folder (or press New Session) to start one.";
 
 export function groupHint(name: string, folders: number): string {
-  return `Project '${name}': ${folders} folder(s). Drag folders onto it in the sidebar, or right-click a folder and pick Move to project. Folders on disk are never moved.`;
+  return `${name} has ${folders} folder${folders === 1 ? "" : "s"}. Drag folders onto it in the sidebar to add more; folders on disk are never moved.`;
 }
 
-/** The muted count beside the view title: "12   in   app". */
+/** The muted count beside the view title: "12 sessions in app". */
 export function countText(n: number, name: string): string {
-  return `${n}   in   ${name}`;
+  return `${n} session${n === 1 ? "" : "s"} in ${name}`;
 }
 
 /** "Working..." / "Open now" while the session runs (live level 2 / 1), else how long ago it was used. */

@@ -54,7 +54,8 @@ const project = (path: string, sessions: Session[]): Project => ({
 
 describe("strings", () => {
   it("count, last active and the long date", () => {
-    expect(countText(12, "app")).toBe("12   in   app");
+    expect(countText(12, "app")).toBe("12 sessions in app");
+    expect(countText(1, "app")).toBe("1 session in app");
     const now = new Date(2026, 9, 25, 14, 5).getTime();
     expect(lastActive(2, now - 3_600_000, now)).toBe("Working...");
     expect(lastActive(1, now, now)).toBe("Open now");
@@ -145,7 +146,7 @@ describe("scope and details pane", () => {
       "windows",
     );
     expect(detailsFor(group, [], 0, name)).toEqual({
-      text: "Project 'Web': 2 folder(s). Drag folders onto it in the sidebar, or right-click a folder and pick Move to project. Folders on disk are never moved.",
+      text: "Web has 2 folders. Drag folders onto it in the sidebar to add more; folders on disk are never moved.",
       meta: "C:\\code\\a     C:\\code\\b",
     });
     expect(detailsFor(null, [], 0, name).text).toBe(

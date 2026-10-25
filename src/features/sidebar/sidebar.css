@@ -38,17 +38,17 @@
   left: 4px;
   right: 4px;
   border-radius: 6px;
-  background: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
   pointer-events: none;
   will-change: transform, height;
 }
 .sb-tree:not(:focus-within) .sb-pill {
-  background: color-mix(in srgb, var(--accent-strong) 65%, var(--ctrl));
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 /* the pill draws the selection, so the list's own fill is off (the id outranks ui/list.css) */
 #sidebar-slot .list-row.selected {
   background: transparent;
-  color: var(--on-accent);
+  color: var(--text);
 }
 
 .sb-row {
@@ -205,17 +205,20 @@
   color: var(--muted);
 }
 
-.list-row.selected .sb-label,
-.list-row.selected .sb-ico,
-.list-row.selected .sb-chev {
-  color: var(--on-accent);
+.list-row.selected .sb-label {
+  color: var(--text);
+  font-weight: 600;
 }
+.list-row.selected .sb-ico {
+  color: var(--accent);
+}
+.list-row.selected .sb-chev,
 .list-row.selected .sb-detail {
-  color: color-mix(in srgb, var(--on-accent) 82%, transparent);
+  color: var(--muted);
 }
 .list-row.selected .sb-badge {
-  background: color-mix(in srgb, var(--on-accent) 24%, transparent);
-  color: var(--on-accent);
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--text);
 }
 .sb-row.nested.selected .sb-guide {
   visibility: hidden;

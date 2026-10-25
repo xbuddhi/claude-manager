@@ -91,7 +91,7 @@ export function mount(): void {
   store.select(
     (s) => s.sessionsScope,
     (scope) => {
-      table.setRows(scope?.sessions ?? [], scope?.kind ?? "folder");
+      table.setRows(scope?.sessions ?? [], scope?.kind ?? "folder", store.get().currentProfile !== null);
       applyWanted();
       renderDetails();
     },

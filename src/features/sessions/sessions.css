@@ -14,7 +14,7 @@
 .ses-count {
   color: var(--muted);
   font-size: 12px;
-  white-space: pre; /* the Windows app spaces it "12   in   app" */
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
@@ -32,6 +32,10 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+.ses-table.one-profile[data-mode="folder"] .ses-cell:nth-child(4),
+.ses-table.one-profile[data-mode="group"] .ses-cell:nth-child(5) {
+  display: none;
 }
 .ses-head,
 .ses-row {
@@ -110,17 +114,19 @@
 .ses-list .list-row.selected,
 .ses-list:not(:focus-within) .list-row.selected {
   background: transparent;
-  color: var(--on-accent);
+  color: var(--text);
 }
 .ses-list .list-row.zebra.selected {
   background: var(--alt);
 }
 .ses-row.selected::before {
-  background: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
-.ses-row.selected .ses-cell,
+.ses-list:not(:focus-within) .ses-row.selected::before {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
 .ses-row.selected .ses-ico {
-  color: var(--on-accent);
+  color: var(--accent);
 }
 /* adjacent selected rows form one block */
 .ses-row.sel-prev::before {
@@ -159,6 +165,10 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   line-clamp: 3;
+}
+.ses-details.hint .ses-dtext {
+  color: var(--muted);
+  font-size: 12.5px;
 }
 .ses-dmeta {
   color: var(--muted);
