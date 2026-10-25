@@ -66,11 +66,7 @@ html.prof-picker-open #tb-profile-slot {
   border: 1px solid var(--border);
   transition:
     background-color 0.15s var(--ease),
-    border-color 0.15s var(--ease),
-    transform 0.2s var(--ease);
-}
-.prof-card:active {
-  transform: scale(0.985);
+    border-color 0.15s var(--ease);
 }
 .prof-card:hover,
 .prof-card:focus-visible {
