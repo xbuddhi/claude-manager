@@ -1,408 +1,382 @@
-// Terminal tabs: a pinned Home tab plus one tab per claude session running in an xterm over a PTY.
-// TEMPORARY port of the prototype's tabs and terminals, kept behaviour for behaviour (gliding tab pill, tab
-// enter and close springs, second click to end a running session, resume of an open session switches to
-// its tab). WP2 owns and rewrites this: raw-byte channel, flow control, pop-out, background terminals,
-// external windows (every launch opens here for now, whatever settings.openIn says).
+// Terminal tabs: claude sessions in xterms over PTYs, in tabs next to the pinned Home tab (Windows app:
+// ClaudeManager.ps1 "terminal tabs"). Handles the bus events "launch" (a tab here, or a terminal window of
+// the OS per settings.openIn) and "terminal:show", the tab commands and keys, file drops, pop-out windows,
+// and the question asked when the app closes while terminals run.
+//
+// Terminals outlive the page: after a reload the tabs come back from pty_list (nothing is killed), and a
+// pop-out window gives its terminal back with "Move back to main window".
 
-import { Channel } from "@tauri-apps/api/core";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { FitAddon } from "@xterm/addon-fit";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
-import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal } from "@xterm/xterm";
-import "@xterm/xterm/css/xterm.css";
-import type { PtyEvent } from "../../bindings/PtyEvent";
+import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import type { PtyExit } from "../../bindings/PtyExit";
+import type { PtyInfo } from "../../bindings/PtyInfo";
 import type { QuitDecision } from "../../bindings/QuitDecision";
 import { call, listen } from "../../core/api";
-import { type LaunchRequest, on } from "../../core/bus";
+import { emit, type LaunchRequest, on } from "../../core/bus";
 import { registerCommand } from "../../core/commands";
-import { $, html, setHtml } from "../../core/dom";
+import { $ } from "../../core/dom";
 import { leaf } from "../../core/format";
-import { icon } from "../../core/icons";
+import { registerShortcut } from "../../core/keyboard";
 import { describeError, log } from "../../core/log";
-import { animate, Spring, settleIn } from "../../core/motion";
-import { isMac, isWindows, windowsBuild } from "../../core/platform";
+import { settleIn } from "../../core/motion";
 import { profileName } from "../../core/profiles";
 import { settings } from "../../core/settings";
 import { store, type TermInfo } from "../../core/store";
-import { choose } from "../../ui/dialog";
+import { ask, choose } from "../../ui/dialog";
+import { type MenuItem, showMenu } from "../../ui/menu";
+import { toast } from "../../ui/toast";
 import { refreshIndex } from "../index-data/api";
+import { copyText, folderLabel, openFolder, openInCode } from "../os/api";
 import { startProfile } from "../profiles/api";
+import { defaultTitle, quotePaths, tabSub } from "./logic";
+import "./pty";
+import { Strip } from "./tabs";
+import { TermView } from "./term";
 import "./terminals.css";
 
-declare module "../../core/api" {
-  interface Commands {
-    pty_new: {
-      args: { dir: string; profile: string; cols: number; rows: number; onEvent: Channel<PtyEvent> };
-      result: number;
-    };
-    pty_resume: {
-      args: {
-        sessionId: string;
-        profile: string;
-        fork: boolean;
-        dir: string;
-        cols: number;
-        rows: number;
-        onEvent: Channel<PtyEvent>;
-      };
-      result: number;
-    };
-    pty_write: { args: { id: number; data: string }; result: null };
-    pty_resize: { args: { id: number; cols: number; rows: number }; result: null };
-    pty_kill: { args: { id: number }; result: null };
-    pty_kill_all: { args: undefined; result: null };
-  }
-}
-
-/** A tab with its xterm. Presentation-only fields (armed, closing) stay here, not in the store. */
+/** A tab with its xterm. Presentation-only fields stay here, not in the store. */
 interface Tab extends TermInfo {
-  pane: HTMLElement;
-  term: Terminal;
-  fit: FitAddon;
-  /** ms timestamp until which a click on × ends the running session. */
-  armed: number;
+  view: TermView;
+  /** Closed (or moved to a pop-out window) while its terminal was still starting. */
   closing: boolean;
 }
 
 const tabs: Tab[] = [];
 let active: Tab | null = null; // null = Home
-let nextKey = 1;
-const entering = new Map<number, number>(); // tab key -> entrance progress 0..1, kept across re-renders
-const el = {} as { tabs: HTMLElement; tabList: HTMLElement; tabPill: HTMLElement; panes: HTMLElement };
+let nextId = 1;
+let strip: Strip;
+let panes: HTMLElement;
 
-/** Mirrors the tabs into the store for other features (and the shell, which shows terminal-root). */
+/** Mirrors the tabs into the store for other features (and the shell, which swaps workspace and terminals). */
 function publish() {
   store.set({
-    terminals: tabs
-      .filter((t) => !t.closing)
-      .map(({ id, ptyId, pid, title, sub, dir, profile, sessionId, exited }) => ({
-        id,
-        ptyId,
-        pid,
-        title,
-        sub,
-        dir,
-        profile,
-        sessionId,
-        exited,
-      })),
+    terminals: tabs.map(({ id, ptyId, pid, title, sub, dir, profile, sessionId, exited }) => ({
+      id,
+      ptyId,
+      pid,
+      title,
+      sub,
+      dir,
+      profile,
+      sessionId,
+      exited,
+    })),
     activeTerminal: active?.id ?? null,
   });
 }
 
-// ---------- motion ----------
-// the active tab's pill glides between tabs (same springs as the Windows tab strip)
-const tabX = new Spring(0.3, 0.86, 0.1);
-const tabW = new Spring(0.3, 0.9, 0.1);
-let tabPillShown = false;
-
-function placeTabPill() {
-  const cur = el.tabList.querySelector<HTMLElement>(`.term-tab[data-key="${active ? active.id : 0}"]`);
-  if (!cur) return;
-  const x = cur.offsetLeft;
-  const w = cur.offsetWidth;
-  const draw = () => {
-    el.tabPill.style.transform = `translateX(${tabX.value}px)`;
-    el.tabPill.style.width = `${tabW.value}px`;
-  };
-  if (!tabPillShown) {
-    tabX.snap(x);
-    tabW.snap(w);
-    draw();
-    tabPillShown = true;
-    return;
-  }
-  animate(tabX, x, draw);
-  animate(tabW, w, draw);
-}
-
-// a new tab fades and scales in; looked up by key each frame because re-renders replace the element
-function styleEntering(key: number, v: number) {
-  const node = el.tabList.querySelector<HTMLElement>(`.term-tab[data-key="${key}"]`);
-  if (!node) return;
-  node.style.opacity = String(Math.min(1, v));
-  node.style.transform = v >= 1 ? "" : `scale(${0.88 + 0.12 * v})`;
-}
-
-function enterTab(key: number) {
-  const s = new Spring(0.32, 0.78, 0.002);
-  entering.set(key, 0);
-  animate(
-    s,
-    1,
-    (v) => {
-      entering.set(key, v);
-      styleEntering(key, v);
-    },
-    () => {
-      entering.delete(key);
-      styleEntering(key, 1);
-    },
-  );
-}
-
-// ---------- tab strip ----------
-function renderTabs() {
-  setHtml(
-    el.tabList,
-    html`<div class="term-tab term-home${active ? "" : " active"}" data-key="0" role="tab" aria-selected="${String(!active)}">${icon("home")}<span>Home</span></div>${tabs.map(
-      (
-        t,
-      ) => html`<div class="term-tab${t === active ? " active" : ""}${t.exited ? " exited" : ""}" data-key="${t.id}" role="tab" aria-selected="${String(t === active)}" data-tip="${t.sub}">
-          ${icon("terminal")}<span class="term-title">${t.title}</span><span class="term-sub">${t.sub}</span>
-          <button class="term-close${t.armed > Date.now() ? " armed" : ""}" type="button" data-close="${t.id}" data-tip="${t.exited ? "Close" : "Click again to end this session"}" aria-label="Close">${icon("close")}</button>
-        </div>`,
-    )}`,
-  );
-  // a tab being closed keeps collapsing where it was
-  for (const t of tabs) {
-    if (t.closing) el.tabList.querySelector<HTMLElement>(`.term-tab[data-key="${t.id}"]`)?.classList.add("closing");
-  }
-  for (const [key, v] of entering) styleEntering(key, v);
-  placeTabPill();
-}
-
-function onTabClick(e: MouseEvent) {
-  const t = e.target as HTMLElement;
-  const close = t.closest<HTMLElement>("[data-close]");
-  if (close) {
-    const tab = tabs.find((x) => x.id === Number(close.dataset.close));
-    if (!tab || tab.closing) return;
-    // a running session needs a second click, so a stray click never ends Claude mid-task
-    if (!tab.exited && tab.armed < Date.now()) {
-      tab.armed = Date.now() + 2500;
-      renderTabs();
-      setTimeout(renderTabs, 2600);
-      return;
-    }
-    closeTab(tab);
-    return;
-  }
-  const key = t.closest<HTMLElement>("[data-key]")?.dataset.key;
-  if (key === undefined) return;
-  const tab = key === "0" ? null : tabs.find((x) => x.id === Number(key) && !x.closing);
-  if (tab !== undefined && tab !== active) showTab(tab);
+function renderStrip() {
+  strip.render(tabs, active?.id ?? null);
 }
 
 function showTab(tab: Tab | null) {
+  const prev = active;
   active = tab;
-  for (const t of tabs) t.pane.hidden = t !== tab;
+  for (const t of tabs) t.view.pane.hidden = t !== tab;
   publish(); // the shell swaps the workspace and the terminals synchronously
-  renderTabs();
+  renderStrip();
+  if (prev && prev !== tab) prev.view.setActive(false);
   if (tab) {
-    tab.fit.fit();
-    tab.term.focus();
-    settleIn(tab.pane, 0);
+    tab.view.setActive(true);
+    if (prev !== tab) settleIn(tab.view.pane, 0);
   }
 }
 
-function closeTab(tab: Tab) {
-  // also for an exited tab: the backend keeps its entry until told
-  if (tab.ptyId !== null) void call("pty_kill", { id: tab.ptyId });
+/** Removes a tab (its terminal keeps running unless the caller ends it). */
+function removeTab(tab: Tab) {
+  const i = tabs.indexOf(tab);
+  if (i < 0) return;
   tab.closing = true;
-  // switch away first, so the pill glides to the next tab while this one collapses
+  tabs.splice(i, 1);
   if (active === tab) {
-    const open = tabs.filter((t) => !t.closing);
-    const i = tabs.indexOf(tab);
-    const next =
-      tabs.slice(i + 1).find((t) => !t.closing) ??
-      tabs
-        .slice(0, i)
-        .reverse()
-        .find((t) => !t.closing) ??
-      null;
-    showTab(open.length ? next : null);
+    // the next tab to the right, else the one to the left, else Home
+    active = null;
+    showTab(tabs[i] ?? tabs[i - 1] ?? null);
   } else {
     publish();
-    renderTabs();
+    renderStrip();
   }
-  const node = el.tabList.querySelector<HTMLElement>(`.term-tab[data-key="${tab.id}"]`);
-  const w = node?.offsetWidth ?? 0;
-  const s = new Spring(0.26, 1, 0.003, 1);
-  animate(
-    s,
-    0,
-    (v) => {
-      const n = el.tabList.querySelector<HTMLElement>(`.term-tab[data-key="${tab.id}"]`);
-      if (n) {
-        const k = Math.max(0, v);
-        n.style.maxWidth = `${w * k}px`;
-        n.style.padding = `0 ${8 * k}px 0 ${10 * k}px`;
-        n.style.marginRight = `${4 * k}px`;
-        n.style.opacity = String(k);
-      }
-      placeTabPill();
-    },
-    () => {
-      tab.term.dispose();
-      tab.pane.remove();
-      tabs.splice(tabs.indexOf(tab), 1);
-      renderTabs();
-    },
-  );
+  tab.view.dispose();
 }
 
-// ---------- terminals ----------
-const dark = matchMedia("(prefers-color-scheme: dark)");
-
-function termTheme() {
-  return dark.matches
-    ? { background: "#141416", foreground: "#e6e6ea", cursor: "#d97757", selectionBackground: "#d9775755" }
-    : { background: "#fbfbfc", foreground: "#1d1d1f", cursor: "#d97757", selectionBackground: "#d9775740" };
-}
-
-function launch(req: LaunchRequest) {
-  const profile = req.profile ?? startProfile() ?? "";
-  if (req.resume) {
-    const { sessionId } = req.resume;
-    // already open? go to it
-    const open = tabs.find((t) => t.sessionId === sessionId && !t.exited && !t.closing);
-    if (open) return showTab(open);
-    const title = (req.label ?? "Resumed session").slice(0, 40);
-    void openTerminal(req, profile, title, `${leaf(req.dir)} · ${sessionId.slice(0, 8)}`);
-    return;
+/** Close terminal: asks first while it runs ("The Claude session is saved and can be resumed later."). */
+async function closeTab(tab: Tab, confirm = true) {
+  if (tab.closing) return;
+  if (confirm && !tab.exited) {
+    const ok = await ask(
+      `Close this terminal?\n\n${tab.title}\n${tab.sub}\n\nThe Claude session is saved and can be resumed later.`,
+      "Close terminal",
+    );
+    if (!ok || tab.closing) return;
   }
-  void openTerminal(req, profile, "New session", `${leaf(req.dir)} · ${profileName(profile)}`);
+  // also for an exited tab: the backend may not have dropped it yet
+  if (tab.ptyId !== null) void call("pty_kill", { id: tab.ptyId }, { quiet: true });
+  removeTab(tab);
 }
 
-/** Copy/paste keys: Cmd on macOS (Ctrl+C and Ctrl+V always reach claude there), Ctrl on Windows. */
-function clipboardKeys(term: Terminal) {
-  return (e: KeyboardEvent) => {
-    if (e.type !== "keydown" || e.altKey) return true;
-    const mod = isMac() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-    if (!mod) return true;
-    const key = e.key.toLowerCase();
-    // copy only with a selection; without one Ctrl+C on Windows interrupts, as in any terminal
-    if (key === "c" && term.hasSelection()) {
-      writeText(term.getSelection()).catch((err) => log.error(`copy failed: ${describeError(err)}`));
-      term.clearSelection();
-      return false;
-    }
-    if (key === "v") return false; // let the browser fire its paste event, which xterm handles
-    return true;
-  };
+async function popOut(tab: Tab) {
+  if (tab.ptyId === null || tab.exited || tab.closing) return;
+  const res = await call("pty_popout", { id: tab.ptyId });
+  if (res.ok && !tab.closing) removeTab(tab);
 }
 
-async function openTerminal(req: LaunchRequest, profile: string, title: string, sub: string) {
-  const pane = document.createElement("div");
-  pane.className = "term-pane";
-  pane.setAttribute("role", "tabpanel");
-  el.panes.appendChild(pane);
-  const mac = isMac();
-  const term = new Terminal({
-    allowProposedApi: true, // unicode11 widths
-    fontFamily: isWindows()
-      ? '"Cascadia Mono", "Cascadia Code", Consolas, "Segoe UI Emoji", "Nirmala UI", monospace'
-      : 'ui-monospace, "SF Mono", Menlo, "Apple Color Emoji", monospace',
-    fontSize: 13,
-    lineHeight: 1.15,
-    cursorBlink: true,
-    scrollback: settings().scrollback,
-    smoothScrollDuration: mac ? 0 : 110,
-    macOptionIsMeta: mac && settings().macOptionIsMeta,
-    macOptionClickForcesSelection: mac,
-    theme: termTheme(),
-    windowsPty: isWindows() ? { backend: "conpty", buildNumber: windowsBuild() } : undefined,
+function tabMenu(tab: Tab): MenuItem[] {
+  return [
+    { label: "Open folder in VS Code", icon: "vscode", run: () => void openInCode([tab.dir]) },
+    { label: folderLabel(), icon: "folder", run: () => void openFolder(tab.dir) },
+    { label: "Copy folder path", icon: "copy", run: () => void copyText(tab.dir) },
+    { kind: "separator" },
+    {
+      label: "Pop out to its own window",
+      icon: "popout",
+      disabled: tab.ptyId === null || tab.exited,
+      run: () => void popOut(tab),
+    },
+    { label: "Close terminal", icon: "close", danger: true, shortcut: "CmdOrCtrl+W", run: () => void closeTab(tab) },
+  ];
+}
+
+/** The terminal's own lines when it ends: why, if it failed to start claude. */
+function onExit(tab: Tab, exit: PtyExit) {
+  if (tab.closing) return;
+  tab.exited = true;
+  tab.pid = null;
+  if (exit.code === 127) tab.view.note("claude not found on PATH", "error");
+  tab.view.note("[session ended — close this tab, or resume it from the sidebar]");
+  publish();
+  renderStrip();
+  void refreshIndex();
+}
+
+function newTab(info: Pick<TermInfo, "title" | "dir" | "profile" | "sessionId">): Tab {
+  const id = nextId++;
+  const view = new TermView(panes, {
+    onTitle: (title) => setTitle(tab, title),
+    menuItems: () => [
+      {
+        label: "Pop out to its own window",
+        icon: "popout",
+        disabled: tab.ptyId === null || tab.exited,
+        run: () => void popOut(tab),
+      },
+      { label: "Close terminal", icon: "close", danger: true, run: () => void closeTab(tab) },
+    ],
   });
-  const fit = new FitAddon();
-  term.loadAddon(fit);
   const tab: Tab = {
-    id: nextKey++,
+    id,
     ptyId: null,
-    // the backend does not report it yet (WP2: pty_new returns it with the id)
     pid: null,
-    title,
-    sub,
-    dir: req.dir,
-    profile,
-    sessionId: req.resume?.sessionId ?? null,
+    title: info.title,
+    sub: tabSub(info.dir, profileName(info.profile)),
+    dir: info.dir,
+    profile: info.profile,
+    sessionId: info.sessionId,
     exited: false,
-    pane,
-    term,
-    fit,
-    armed: 0,
+    view,
     closing: false,
   };
   tabs.push(tab);
-  enterTab(tab.id); // before the first render, so the tab never shows at full opacity first
-  // in front before xterm opens, so it measures a visible pane
-  active = tab;
-  for (const t of tabs) t.pane.hidden = t !== tab;
+  return tab;
+}
+
+function setTitle(tab: Tab, title: string) {
+  if (tab.closing || title === tab.title) return;
+  tab.title = title;
+  strip.setTitle(tab.id, title);
   publish();
-  term.open(pane);
-  const uni = new Unicode11Addon();
-  term.loadAddon(uni);
-  term.unicode.activeVersion = "11";
-  try {
-    const gl = new WebglAddon();
-    gl.onContextLoss(() => gl.dispose());
-    term.loadAddon(gl);
-  } catch {
-    // no WebGL: xterm falls back to its DOM renderer
-  }
+  if (tab.ptyId !== null) void call("pty_set_title", { id: tab.ptyId, title }, { quiet: true });
+}
+
+/** Puts a new tab in front and opens its xterm (it measures a visible pane). */
+function openInFront(tab: Tab) {
+  const prev = active;
+  active = tab;
+  for (const t of tabs) t.view.pane.hidden = t !== tab;
+  publish();
+  tab.view.open();
+  prev?.view.setActive(false);
   showTab(tab);
+}
 
-  term.attachCustomKeyEventHandler(clipboardKeys(term));
+// ---------- launching ----------
 
-  const pending: string[] = []; // keys typed before the PTY is up
-  const send = (data: string) => {
-    if (tab.ptyId === null) pending.push(data);
-    else void call("pty_write", { id: tab.ptyId, data }, { quiet: true });
-  };
-  term.onData(send);
-  term.onResize(({ cols, rows }) => {
-    if (tab.ptyId !== null) void call("pty_resize", { id: tab.ptyId, cols, rows }, { quiet: true });
+function launch(req: LaunchRequest) {
+  const mode = req.shellOnly ? "external" : (req.mode ?? settings().openIn);
+  const profile = req.profile ?? startProfile() ?? undefined;
+  if (mode === "external") {
+    void call("launch_external", {
+      dir: req.dir,
+      profile,
+      sessionId: req.resume?.sessionId,
+      fork: req.resume?.fork ?? false,
+      shellOnly: req.shellOnly ?? false,
+    });
+    return;
+  }
+  if (!profile) {
+    toast("No Claude Code profile was found.", { kind: "error" });
+    return;
+  }
+  const resume = req.resume;
+  if (resume && !resume.fork) {
+    // already open here? go to it
+    const open = tabs.find((t) => t.sessionId === resume.sessionId && !t.exited);
+    if (open) return showTab(open);
+  }
+  const tab = newTab({
+    title: defaultTitle(resume, req.label),
+    dir: req.dir,
+    profile,
+    sessionId: resume && !resume.fork ? resume.sessionId : null,
   });
-  term.onTitleChange((t) => {
-    const next = t.trim();
-    if (!next || tab.closing || next === tab.title) return;
-    tab.title = next;
-    // in place: claude animates its title, and a full re-render per frame would be wasted work
-    const node = el.tabList.querySelector(`.term-tab[data-key="${tab.id}"] .term-title`);
-    if (node) node.textContent = next;
-    publish();
-  });
+  openInFront(tab);
+  void start(tab, req);
+}
 
-  const ch = new Channel<PtyEvent>();
-  ch.onmessage = (ev) => {
-    if (tab.closing) return; // the xterm may already be disposed
-    if (ev.kind === "data") {
-      term.write(ev.data);
-      return;
-    }
-    tab.exited = true;
-    term.write("\r\n\x1b[90m[session ended — close this tab, or resume it from the sidebar]\x1b[0m\r\n");
-    publish();
-    renderTabs();
-    void refreshIndex();
-  };
-  const size = { cols: term.cols, rows: term.rows, onEvent: ch };
+async function start(tab: Tab, req: LaunchRequest) {
+  const { onOutput } = tab.view.channel((exit) => onExit(tab, exit));
+  const common = { profile: tab.profile, dir: tab.dir, title: tab.title, ...tab.view.size, onOutput };
   const res = req.resume
     ? await call(
         "pty_resume",
-        { sessionId: req.resume.sessionId, profile, fork: req.resume.fork ?? false, dir: req.dir, ...size },
+        { sessionId: req.resume.sessionId, fork: req.resume.fork ?? false, ...common },
         { quiet: true },
       )
-    : await call("pty_new", { dir: req.dir, profile, ...size }, { quiet: true });
+    : await call("pty_new", common, { quiet: true });
   if (!res.ok) {
     tab.exited = true;
-    term.write(`\x1b[31m${res.error.message.replace(/\n/g, "\r\n")}\x1b[0m\r\n`);
+    tab.view.note(res.error.message, "error");
     publish();
-    renderTabs();
+    renderStrip();
     return;
   }
-  tab.ptyId = res.value;
   // closed while it was starting: end it now, nothing else will
   if (tab.closing) {
-    void call("pty_kill", { id: res.value });
+    void call("pty_kill", { id: res.value.id }, { quiet: true });
     return;
   }
+  bindTab(tab, res.value);
+}
+
+function bindTab(tab: Tab, info: PtyInfo) {
+  tab.ptyId = info.id;
+  tab.pid = info.pid;
+  tab.view.bind(info.id);
   publish();
-  for (const d of pending.splice(0)) send(d);
+  renderStrip();
+}
+
+/** Takes a running terminal over (after a reload, or back from a pop-out window). */
+async function adopt(info: PtyInfo, front: boolean): Promise<void> {
+  if (tabs.some((t) => t.ptyId === info.id)) return;
+  const tab = newTab({ title: info.title, dir: info.dir, profile: info.profile, sessionId: info.sessionId });
+  if (front) openInFront(tab);
+  else {
+    tab.view.pane.hidden = true;
+    // xterm opens on a hidden pane and fits once shown
+    tab.view.open();
+    publish();
+    renderStrip();
+  }
+  const { onOutput } = tab.view.channel((exit) => onExit(tab, exit));
+  const res = await call("pty_attach", { id: info.id, onOutput }, { quiet: true });
+  if (!res.ok) {
+    removeTab(tab);
+    return;
+  }
+  if (tab.closing) return;
+  bindTab(tab, res.value);
+}
+
+/** Terminals the previous page had open come back as tabs; Home stays in front. */
+async function restore() {
+  const res = await call("pty_list", undefined, { quiet: true });
+  if (!res.ok) return;
+  for (const info of res.value) {
+    if (info.window === null || info.window === "main") await adopt(info, false);
+  }
+}
+
+// ---------- commands ----------
+
+/** Next/previous tab, Home included, wrapping around. */
+function cycle(dir: 1 | -1) {
+  const order: Array<Tab | null> = [null, ...tabs];
+  const i = order.indexOf(active);
+  const next = order[(i + dir + order.length) % order.length];
+  if (next !== undefined && next !== active) showTab(next);
+}
+
+/** Cmd/Ctrl+1..9: Home is the first tab, 9 is always the last one (as in a browser). */
+function selectNth(n: number) {
+  const order: Array<Tab | null> = [null, ...tabs];
+  const next = n === 9 ? order[order.length - 1] : order[n - 1];
+  if (next !== undefined) showTab(next);
+}
+
+/** New session (Cmd/Ctrl+T): in the active tab's folder, else the folder selected in the sidebar. */
+function newSession() {
+  if (active) {
+    emit("launch", { dir: active.dir, profile: active.profile, mode: "embed" });
+    return;
+  }
+  const sel = store.get().sidebarSelection;
+  if (sel?.kind === "folder" && sel.path) {
+    emit("launch", { dir: sel.path });
+    return;
+  }
+  const folders = sel?.kind === "group" ? (sel.folders ?? []) : [];
+  if (folders.length === 1 && folders[0]) {
+    emit("launch", { dir: folders[0] });
+    return;
+  }
+  if (folders.length > 1) {
+    void showMenu(
+      [
+        { kind: "section", label: `Start in which folder of '${sel?.name ?? ""}'?` },
+        ...folders.map((dir) => ({
+          label: leaf(dir),
+          icon: "folder" as const,
+          detail: dir,
+          run: () => emit("launch", { dir }),
+        })),
+      ],
+      { at: { x: Math.max(16, window.innerWidth / 2 - 160), y: 96 }, label: "Start in folder" },
+    );
+    return;
+  }
+  toast("Select a folder in the sidebar first.");
+}
+
+/** Only for the window in front: macOS menu shortcuts reach every window of the app. */
+const focused = () => document.hasFocus();
+
+function registerCommands() {
+  registerCommand({
+    id: "tab:close",
+    title: "Close Tab",
+    enabled: () => active !== null && focused(),
+    run: () => {
+      if (active) void closeTab(active);
+    },
+  });
+  registerCommand({ id: "tab:next", title: "Next Tab", enabled: focused, run: () => cycle(1) });
+  registerCommand({ id: "tab:prev", title: "Previous Tab", enabled: focused, run: () => cycle(-1) });
+  registerCommand({ id: "session:new", title: "New Session", enabled: focused, run: newSession });
+  // Ctrl+W and Ctrl+T mean something to claude (delete word, task list): on Windows they stay with the
+  // terminal while it has focus; the Cmd versions on macOS always reach the app
+  registerShortcut({ id: "tab:close", keys: "CmdOrCtrl+W" });
+  registerShortcut({ id: "session:new", keys: "CmdOrCtrl+T" });
+  registerShortcut({ id: "tab:next", keys: ["Ctrl+Tab", "Cmd+Shift+]"], inTerminal: true });
+  registerShortcut({ id: "tab:prev", keys: ["Ctrl+Shift+Tab", "Cmd+Shift+["], inTerminal: true });
+  for (let n = 1; n <= 9; n++) {
+    registerCommand({ id: `tab:select${n}`, title: `Tab ${n}`, enabled: focused, run: () => selectNth(n) });
+    registerShortcut({ id: `tab:select${n}`, keys: `CmdOrCtrl+${n}`, inTerminal: true });
+  }
 }
 
 // ---------- quit while terminals run ----------
+
 async function onCloseRequested(n: number) {
   const decision = await choose<QuitDecision>(
     `${n} terminal${n === 1 ? " is" : "s are"} still open inside the app\nKeep running in the background? Claude can keep working, and they come back as tabs the next time you open the app. Closing them ends them; the sessions stay saved and can be resumed.`,
@@ -416,54 +390,62 @@ async function onCloseRequested(n: number) {
   await call("app_quit_decision", { decision });
 }
 
+/** Files dropped while a terminal tab is in front are pasted as shell-quoted paths. */
+function installDrops() {
+  getCurrentWebview()
+    .onDragDropEvent((e) => {
+      if (e.payload.type !== "drop" || !active || active.exited || store.get().screen !== "main") return;
+      active.view.paste(quotePaths(e.payload.paths, store.get().platform.os));
+      active.view.focus();
+    })
+    .catch((e) => log.warn(`file drops are not available: ${describeError(e)}`));
+}
+
 // ---------- mount ----------
+
 export function mount(): void {
-  const strip = $("#tabstrip-slot");
-  setHtml(
-    strip,
-    html`<div class="term-tabs"><div class="term-pill"></div><div class="term-tablist" role="tablist" aria-label="Terminals"></div></div>`,
-  );
-  el.tabs = $(".term-tabs", strip);
-  el.tabList = $(".term-tablist", strip);
-  el.tabPill = $(".term-pill", strip);
-  el.panes = $("#terminal-root");
-  el.tabs.addEventListener("click", onTabClick);
+  panes = $("#terminal-root");
+  strip = new Strip($("#tabstrip-slot"), {
+    select: (id) => {
+      const tab = id === null ? null : (tabs.find((t) => t.id === id) ?? undefined);
+      if (tab !== undefined && tab !== active) showTab(tab);
+      else tab?.view.focus();
+    },
+    close: (id) => {
+      const tab = tabs.find((t) => t.id === id);
+      if (tab) void closeTab(tab);
+    },
+    popOut: (id) => {
+      const tab = tabs.find((t) => t.id === id);
+      if (tab) void popOut(tab);
+    },
+    menu: (id, at) => {
+      const tab = tabs.find((t) => t.id === id);
+      if (tab) void showMenu(tabMenu(tab), { at, label: "Terminal tab" });
+    },
+  });
 
   on("launch", launch);
   on("terminal:show", ({ id }) => {
-    const tab = id === null ? null : tabs.find((t) => t.id === id && !t.closing);
+    const tab = id === null ? null : tabs.find((t) => t.id === id);
     if (tab !== undefined && tab !== active) showTab(tab);
   });
-  registerCommand({
-    id: "tab:close",
-    title: "Close Tab",
-    enabled: () => active !== null,
-    run: () => {
-      if (active) closeTab(active);
-    },
-  });
-  registerCommand({ id: "tab:next", title: "Next Tab", run: () => cycle(1) });
-  registerCommand({ id: "tab:prev", title: "Previous Tab", run: () => cycle(-1) });
+  registerCommands();
 
-  dark.addEventListener("change", () => {
-    for (const t of tabs) t.term.options.theme = termTheme();
+  // keep the visible terminal sized to its pane
+  new ResizeObserver(() => active?.view.fitNow()).observe(panes);
+  // window focus -> the terminal in front gets the keys
+  window.addEventListener("focus", () => {
+    if (active && store.get().screen === "main") active.view.focus();
   });
-  // keep the visible terminal sized to its pane, and the pill on its tab when the window resizes
-  new ResizeObserver(() => {
-    active?.fit.fit();
-    placeTabPill();
-  }).observe(el.panes);
-  new ResizeObserver(() => placeTabPill()).observe(el.tabs);
+  if (isTauri()) installDrops();
 
   void listen("app:close-requested", ({ terminals }) => void onCloseRequested(terminals));
-  void call("pty_kill_all", undefined, { quiet: true }); // after a reload, end terminals the old page had open
-  renderTabs();
-}
-
-/** Next/previous tab, Home included, wrapping around. */
-function cycle(dir: 1 | -1) {
-  const order: Array<Tab | null> = [null, ...tabs.filter((t) => !t.closing)];
-  const i = order.indexOf(active);
-  const next = order[(i + dir + order.length) % order.length];
-  if (next !== undefined && next !== active) showTab(next);
+  void listen("pty-returned", async (id) => {
+    const res = await call("pty_list", undefined, { quiet: true });
+    const info = res.ok ? res.value.find((t) => t.id === id) : undefined;
+    if (info) await adopt(info, true);
+  });
+  renderStrip();
+  void restore();
 }

@@ -1,53 +1,55 @@
-/* TEMPORARY terminals port (see index.ts). */
+/* Terminal tabs (tab strip in #tabstrip-slot, panes in #terminal-root) and the pop-out window. */
+
+/* ---------- tab strip ---------- */
 .term-tabs {
   position: relative;
   padding: 0 0 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-}
-.term-tabs::-webkit-scrollbar {
-  display: none;
+  overflow: hidden;
 }
 .term-tablist {
   position: relative;
   display: flex;
+  align-items: center;
+  gap: 4px;
 }
-/* gliding background behind the active tab (moved by springs in index.ts) */
+/* gliding background behind the active tab (moved by springs in tabs.ts) */
 .term-pill {
   position: absolute;
   top: 0;
   left: 0;
   height: 32px;
   border-radius: 8px;
-  background: var(--card);
+  background: var(--ctrl);
   border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
   pointer-events: none;
   will-change: transform, width;
 }
 .term-tab {
   position: relative;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 7px;
   height: 32px;
-  padding: 0 8px 0 10px;
-  margin-right: 4px;
+  min-width: 0;
+  padding: 0 6px 0 10px;
   border-radius: 8px;
   color: var(--muted);
-  max-width: 280px;
-  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
+  outline-offset: -2px;
   transition:
     background-color 0.18s var(--ease),
     color 0.2s var(--ease);
 }
-.term-title {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.term-tab > svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
 }
 .term-tab:not(.active):hover {
   background: var(--hover);
@@ -55,54 +57,105 @@
 .term-tab.active {
   color: var(--text);
 }
-.term-tab.closing {
-  pointer-events: none;
-}
-.term-tab.active svg:first-child {
+.term-tab.active > svg {
   color: var(--accent);
 }
-.term-tab.exited .term-title {
-  text-decoration: line-through;
-  opacity: 0.7;
+.term-home {
+  padding-right: 14px;
+  /* a little extra space before the terminal tabs */
+  margin-right: 6px;
 }
-.term-sub {
-  color: var(--muted);
-  font-size: 11.5px;
-  white-space: nowrap;
+.term-home::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  top: 9px;
+  bottom: 9px;
+  border-left: 1px solid var(--border);
+}
+.term-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.term-home {
-  padding-right: 12px;
+.term-sub {
+  flex: 1 1 0;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.term-close {
+.term-tab.exited .term-title {
+  opacity: 0.65;
+}
+.term-btn {
   display: grid;
   place-items: center;
   flex: none;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
   border-radius: 5px;
+  background: none;
+  color: var(--muted);
   opacity: 0;
   transition:
     background-color 0.16s var(--ease),
     transform 0.14s var(--ease),
     opacity 0.18s var(--ease);
 }
-.term-close:hover {
-  background: rgb(127 127 127 / 0.22);
+.term-tab .term-btn svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
 }
-.term-close:active {
+.term-btn:hover {
+  background: var(--ctrl-hover);
+  color: var(--text);
+}
+.term-btn:active {
   transform: scale(0.88);
 }
-.term-tab:hover .term-close,
-.term-tab.active .term-close,
-.term-close:focus-visible {
+.term-btn:disabled {
+  visibility: hidden;
+}
+.term-tab:hover .term-btn,
+.term-tab.active .term-btn,
+.term-tab:focus-within .term-btn,
+.term-btn:focus-visible {
   opacity: 1;
 }
-.term-close.armed {
-  background: var(--danger);
-  color: #fff;
-  opacity: 1;
+/* "more": the tabs that did not fit */
+.term-more {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  margin-left: auto;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
+.term-more:hover {
+  background: var(--hover);
+}
+.term-tabs .term-more svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
 }
 
 /* ---------- panes ---------- */
@@ -117,4 +170,13 @@
   inset: 0;
   padding: 8px 4px 4px 10px;
   background: var(--term-bg);
+}
+
+/* ---------- pop-out window ---------- */
+body.term-popout {
+  background: var(--term-bg);
+}
+#popout-root {
+  position: fixed;
+  inset: 0;
 }

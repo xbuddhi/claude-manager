@@ -39,6 +39,7 @@ export default defineConfig(() => ({
       input: {
         main: page("index.html"),
         // WP2 terminal pop-out window (popout.html)
+        popout: page("src/popout.html"),
       },
     },
   },
