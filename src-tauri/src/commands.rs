@@ -24,7 +24,16 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::pty::pty_write,
         crate::pty::pty_resize,
         crate::pty::pty_kill,
-        crate::pty::pty_kill_all,
+        crate::pty::pty_list,
+        crate::pty::pty_attach,
+        crate::pty::pty_pause,
+        crate::pty::pty_resume_output,
+        crate::pty::pty_set_title,
+        crate::pty::pty_clipboard_text,
+        crate::pty::popout::pty_popout,
+        crate::pty::popout::pty_return,
+        crate::pty::popout::pty_close_window,
+        crate::launch::launch_external,
         // ---- live + notify (WP3) ----
         // ---- fsutil (WP4) ----
         // ---- actions (WP5) ----

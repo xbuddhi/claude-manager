@@ -14,6 +14,9 @@ pub const APP_OPEN_REQUEST: &str = "app:open-request";
 pub const MENU: &str = "menu";
 // ---- sessions (WP1) ----
 // ---- pty + launch (WP2) ----
+/// Payload: `number`, a terminal id. A pop-out window gave its terminal back; the main window takes it
+/// over with `pty_attach`.
+pub const PTY_RETURNED: &str = "pty-returned";
 // ---- live + notify (WP3) ----
 // ---- usage (WP7) ----
 // ---- git (WP8) ----

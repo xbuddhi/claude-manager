@@ -11,6 +11,7 @@ pub mod core;
 // WP1 sessions
 pub mod sessions;
 // WP2 pty + launch
+pub mod launch;
 pub mod pty;
 // WP3 live + notify
 // WP4 fsutil
