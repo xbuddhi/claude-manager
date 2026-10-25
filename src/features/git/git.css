@@ -323,7 +323,8 @@
   fill: var(--ctrl-hover);
 }
 .git-subject {
-  flex: 1 1 auto;
+  /* basis 0: the subject gives way before the ref pills do */
+  flex: 1 1 0;
   min-width: 70px;
   overflow: hidden;
   text-overflow: ellipsis;
