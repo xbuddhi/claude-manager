@@ -35,7 +35,7 @@ fn is_default_profile(profile: &Path, home: &Path) -> bool {
 // ---- Windows ----
 
 /// Loads the PowerShell profiles by hand, for a shell started with -NoProfile.
-#[cfg(any(windows, test))]
+#[cfg(windows)]
 const LOAD_PROFILES: &str = "foreach ($p in @($PROFILE.AllUsersAllHosts, $PROFILE.AllUsersCurrentHost, \
      $PROFILE.CurrentUserAllHosts, $PROFILE.CurrentUserCurrentHost)) { if (Test-Path $p) { . $p } }";
 
@@ -58,7 +58,7 @@ fn ps_quote(s: &str) -> String {
 /// What PowerShell runs: set the profile's config folder, run claude, and load the PowerShell profiles
 /// once it ends (`finally`: also after Ctrl+C). CLAUDE_CONFIG_DIR is also set on the process, but a
 /// Windows Terminal tab may not get the caller's environment, so the script sets it too.
-#[cfg(any(windows, test))]
+#[cfg(windows)]
 fn ps_claude_script(launch: &Launch, claude: &Path, home: &Path) -> String {
     let config = if is_default_profile(&launch.profile, home) {
         "Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue".to_string()
