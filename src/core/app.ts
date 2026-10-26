@@ -18,6 +18,7 @@ import { initProfiles } from "./profiles";
 import { initSettings, settings } from "./settings";
 import { initShell } from "./shell";
 import { store } from "./store";
+import { initTheme } from "./theme";
 import { initTitlebar } from "./titlebar";
 import { initViews } from "./views";
 
@@ -95,6 +96,7 @@ export async function start(mountFeatures: () => void): Promise<void> {
   try {
     installTooltips();
     await Promise.all([initPlatform(), initSettings(), initProfiles()]);
+    initTheme();
     await initTitlebar();
     initShell();
     initViews();

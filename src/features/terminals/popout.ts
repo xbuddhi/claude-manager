@@ -17,6 +17,7 @@ import { initPlatform } from "../../core/platform";
 import { initProfiles, profileName } from "../../core/profiles";
 import { initSettings } from "../../core/settings";
 import { store } from "../../core/store";
+import { initTheme } from "../../core/theme";
 import { ask } from "../../ui/dialog";
 import { installTooltips } from "../../ui/tooltip";
 import { quotePaths, tabSub } from "./logic";
@@ -60,6 +61,7 @@ async function start() {
   captureGlobalErrors();
   installTooltips();
   await Promise.all([initPlatform(), initSettings(), initProfiles()]);
+  initTheme();
   await installKeyboard();
   const win = getCurrentWindow();
   const id = Number(win.label.replace(/^term-/, ""));

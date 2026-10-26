@@ -18,12 +18,11 @@ import { reduceMotion } from "../../core/motion";
 import { isMac, isWindows, windowsBuild } from "../../core/platform";
 import { settings } from "../../core/settings";
 import { store } from "../../core/store";
+import { onThemeChange, termDark } from "../../core/theme";
 import { type MenuItem, showMenu } from "../../ui/menu";
 import { copyText, openUrlHttps } from "../os/api";
 import { chatName, debounce, type Input, InputQueue, throttle, Watermark } from "./logic";
 import type { PtyOutput } from "./pty";
-
-const dark = matchMedia("(prefers-color-scheme: dark)");
 
 /** The 16 ANSI colours, as ITheme keys; their tokens are `--term-<kebab-case key>`. */
 const ANSI = [
@@ -56,8 +55,8 @@ export function ansiColors(v: (name: string) => string): Partial<ITheme> {
 }
 
 /**
- * xterm colours from the app's tokens (styles/tokens.css), so a terminal matches the theme in front. The ANSI
- * palette follows the theme too: xterm's own is made for dark backgrounds (white and bright yellow text
+ * xterm colours from the app's tokens (styles/tokens.css), in the terminal theme (core/theme.ts). The ANSI
+ * palette follows it too: xterm's own is made for dark backgrounds (white and bright yellow text
  * would vanish on the light one).
  */
 function theme(): ITheme {
@@ -70,7 +69,7 @@ function theme(): ITheme {
     foreground: v("--term-fg", "#e6e6ea"),
     cursor: accent,
     cursorAccent: v("--term-bg", "#141416"),
-    selectionBackground: dark.matches ? `${accent}55` : `${accent}40`,
+    selectionBackground: termDark() ? `${accent}55` : `${accent}40`,
   };
 }
 
@@ -97,7 +96,7 @@ let watching = false;
 function watch() {
   if (watching) return;
   watching = true;
-  dark.addEventListener("change", () => {
+  onThemeChange(() => {
     for (const v of views) v.term.options.theme = theme();
   });
   reduceMotion.addEventListener("change", () => {

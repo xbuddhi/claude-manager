@@ -159,6 +159,8 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarWidth: 340,
   sidebarHidden: false,
   sidebarStyle: "classic",
+  theme: "system",
+  terminalTheme: "app",
   gitSplit: null,
   claudePath: null,
   macOptionIsMeta: true,

@@ -1,7 +1,8 @@
-/* Every colour the app uses. Light is the default; dark follows the OS live (prefers-color-scheme).
+/* Every colour the app uses. Light is the default; <html data-theme="dark"> switches the app to dark and
+   <html data-term-theme="dark"> the terminals (core/theme.ts sets both from settings and the OS).
    Palette from the Windows app (MacUI Theme); fixed colours are the same in both themes. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   --bg: #ececee;
   --side: #f4f4f6;
@@ -70,44 +71,46 @@
   --titlebar-h: 48px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1c1c1e;
-    --side: #232325;
-    --card: #262628;
-    --alt: #2a2a2c;
-    --ctrl: #3a3a3c;
-    --ctrl-hover: #48484a;
-    --track: #323234;
-    --seg-sel: #636366;
-    --text: #f2f2f7;
-    --muted: #98989f;
-    --border: #3a3a3c;
-    --accent-hover: #e58a6b;
-    --danger: #ff453a;
-    --menu: #2c2c2e;
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1c1c1e;
+  --side: #232325;
+  --card: #262628;
+  --alt: #2a2a2c;
+  --ctrl: #3a3a3c;
+  --ctrl-hover: #48484a;
+  --track: #323234;
+  --seg-sel: #636366;
+  --text: #f2f2f7;
+  --muted: #98989f;
+  --border: #3a3a3c;
+  --accent-hover: #e58a6b;
+  --danger: #ff453a;
+  --menu: #2c2c2e;
 
-    --hover: #333336;
-    --term-bg: #141416;
-    --term-fg: #e6e6ea;
-    /* xterm's default ANSI colours */
-    --term-black: #2e3436;
-    --term-red: #cc0000;
-    --term-green: #4e9a06;
-    --term-yellow: #c4a000;
-    --term-blue: #3465a4;
-    --term-magenta: #75507b;
-    --term-cyan: #06989a;
-    --term-white: #d3d7cf;
-    --term-bright-black: #555753;
-    --term-bright-red: #ef2929;
-    --term-bright-green: #8ae234;
-    --term-bright-yellow: #fce94f;
-    --term-bright-blue: #729fcf;
-    --term-bright-magenta: #ad7fa8;
-    --term-bright-cyan: #34e2e2;
-    --term-bright-white: #eeeeec;
-    --backdrop: rgb(0 0 0 / 0.4);
-    --shadow-pop: 0 12px 36px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.06);
-  }
+  --hover: #333336;
+  --backdrop: rgb(0 0 0 / 0.4);
+  --shadow-pop: 0 12px 36px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+
+:root[data-term-theme="dark"] {
+  --term-bg: #141416;
+  --term-fg: #e6e6ea;
+  /* xterm's default ANSI colours */
+  --term-black: #2e3436;
+  --term-red: #cc0000;
+  --term-green: #4e9a06;
+  --term-yellow: #c4a000;
+  --term-blue: #3465a4;
+  --term-magenta: #75507b;
+  --term-cyan: #06989a;
+  --term-white: #d3d7cf;
+  --term-bright-black: #555753;
+  --term-bright-red: #ef2929;
+  --term-bright-green: #8ae234;
+  --term-bright-yellow: #fce94f;
+  --term-bright-blue: #729fcf;
+  --term-bright-magenta: #ad7fa8;
+  --term-bright-cyan: #34e2e2;
+  --term-bright-white: #eeeeec;
 }

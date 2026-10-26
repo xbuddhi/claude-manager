@@ -2,6 +2,8 @@
 import type { Group } from "./Group";
 import type { OpenIn } from "./OpenIn";
 import type { SidebarStyle } from "./SidebarStyle";
+import type { TerminalTheme } from "./TerminalTheme";
+import type { Theme } from "./Theme";
 
 /**
  * Everything the app remembers between runs (`<app config dir>/settings.json`).
@@ -27,7 +29,7 @@ bgTerms: unknown[], sidebarWidth: number,
 /**
  * Sidebar hidden: it slides in over the content while the pointer is at the left edge.
  */
-sidebarHidden: boolean, sidebarStyle: SidebarStyle, 
+sidebarHidden: boolean, sidebarStyle: SidebarStyle, theme: Theme, terminalTheme: TerminalTheme, 
 /**
  * Source control split position; null = default layout.
  */

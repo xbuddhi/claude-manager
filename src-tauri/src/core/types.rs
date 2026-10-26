@@ -104,6 +104,28 @@ pub enum SidebarStyle {
     Docked,
 }
 
+/// Light or dark for the app: as the OS is set, or always one.
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+/// Light or dark for the terminals: the same as the app, or always one.
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum TerminalTheme {
+    #[default]
+    App,
+    Light,
+    Dark,
+}
+
 /// A named sidebar group. It only references folders; nothing on disk moves.
 #[derive(Serialize, Deserialize, TS, Clone, Debug, Default, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
@@ -139,6 +161,8 @@ pub struct Settings {
     /// Sidebar hidden: it slides in over the content while the pointer is at the left edge.
     pub sidebar_hidden: bool,
     pub sidebar_style: SidebarStyle,
+    pub theme: Theme,
+    pub terminal_theme: TerminalTheme,
     /// Source control split position; null = default layout.
     pub git_split: Option<f64>,
     /// Absolute path to the claude executable, overriding discovery.
@@ -169,6 +193,8 @@ impl Default for Settings {
             sidebar_width: 340,
             sidebar_hidden: false,
             sidebar_style: SidebarStyle::Classic,
+            theme: Theme::System,
+            terminal_theme: TerminalTheme::App,
             git_split: None,
             claude_path: None,
             mac_option_is_meta: true,

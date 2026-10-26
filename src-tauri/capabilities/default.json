@@ -19,6 +19,7 @@
     "core:window:allow-unminimize",
     "core:window:allow-is-fullscreen",
     "core:window:allow-is-maximized",
+    "core:window:allow-set-theme",
     "dialog:allow-open",
     "clipboard-manager:allow-write-text",
     "notification:default",

@@ -139,6 +139,13 @@ html.layout-docked:not(.mode-terminal) .term-pill {
 .term-tab.active > svg {
   color: var(--accent);
 }
+/* the active terminal tab sits on the terminal's colour, which can be the other theme than the app's */
+html.mode-terminal .term-tab.active {
+  --text: var(--term-fg);
+  --muted: color-mix(in srgb, var(--term-fg) 62%, transparent);
+  --ctrl-hover: color-mix(in srgb, var(--term-fg) 12%, transparent);
+  color: var(--text);
+}
 .term-home {
   padding-right: 14px;
   /* a little extra space before the terminal tabs */

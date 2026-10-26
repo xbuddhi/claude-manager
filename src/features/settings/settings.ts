@@ -8,6 +8,8 @@ import { open as openFile } from "@tauri-apps/plugin-dialog";
 import type { OpenIn } from "../../bindings/OpenIn";
 import type { Settings } from "../../bindings/Settings";
 import type { SidebarStyle } from "../../bindings/SidebarStyle";
+import type { TerminalTheme } from "../../bindings/TerminalTheme";
+import type { Theme } from "../../bindings/Theme";
 import { call } from "../../core/api";
 import { h } from "../../core/dom";
 import { describeError, log } from "../../core/log";
@@ -104,6 +106,26 @@ export function openSettings(): void {
     checked: s.sidebarHidden,
     label: "Hide the sidebar",
     onChange: (on) => void updateSettings({ sidebarHidden: on }),
+  });
+  const theme = segmented<Theme>({
+    label: "Theme",
+    items: [
+      { id: "system", label: "System" },
+      { id: "light", label: "Light" },
+      { id: "dark", label: "Dark" },
+    ],
+    value: s.theme,
+    onChange: (id) => void updateSettings({ theme: id }),
+  });
+  const terminalTheme = segmented<TerminalTheme>({
+    label: "Terminal theme",
+    items: [
+      { id: "app", label: "Same as app" },
+      { id: "light", label: "Light" },
+      { id: "dark", label: "Dark" },
+    ],
+    value: s.terminalTheme,
+    onChange: (id) => void updateSettings({ terminalTheme: id }),
   });
   const sidebarStyle = segmented<SidebarStyle>({
     label: "Sidebar style",
@@ -224,6 +246,11 @@ export function openSettings(): void {
     "div",
     { class: "set-body" },
     section(
+      "Appearance",
+      row("Theme", theme.el, "System follows your computer's light or dark mode."),
+      row("Terminal theme", terminalTheme.el, "Terminals can be dark with a light app, or the other way round."),
+    ),
+    section(
       "General",
       row("Show the profile picker when the app starts", showPicker.el),
       row("Finish notifications", notify.el, "A notification when Claude finishes while you are elsewhere."),
@@ -283,6 +310,8 @@ export function openSettings(): void {
         usage.set(next.showUsage);
         sidebarHidden.set(next.sidebarHidden);
         sidebarStyle.set(next.sidebarStyle);
+        theme.set(next.theme);
+        terminalTheme.set(next.terminalTheme);
         openIn.set(next.openIn);
         optionMeta?.set(next.macOptionIsMeta);
         if (document.activeElement !== scrollback) scrollback.value = String(next.scrollback);
