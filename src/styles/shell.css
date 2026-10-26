@@ -154,7 +154,7 @@ html.window-inactive .tb-cap:not(:hover) {
   border-radius: var(--radius-card);
   overflow: hidden;
 }
-/* ---------- hidden sidebar (slides in from the left edge) ---------- */
+/* ---------- hidden sidebar ---------- */
 #workspace {
   position: relative;
 }
@@ -162,21 +162,58 @@ html.window-inactive .tb-cap:not(:hover) {
 #sidebar-show {
   display: none;
 }
-html.sidebar-hidden #workspace-splitter {
-  display: none;
+/* hiding: the sidebar slides out to the left and the content grows into its place */
+#sidebar-slot {
+  transition:
+    margin-left 0.36s cubic-bezier(0.22, 0.9, 0.25, 1),
+    opacity 0.24s var(--ease);
+}
+#workspace-splitter {
+  transition: width 0.36s cubic-bezier(0.22, 0.9, 0.25, 1);
+}
+html.sidebar-hidden #workspace {
+  overflow: hidden;
 }
 html.sidebar-hidden #sidebar-slot {
+  margin-left: calc(-1 * var(--sidebar-w, 340px));
+  opacity: 0;
+  pointer-events: none;
+}
+html.sidebar-hidden #workspace-splitter {
+  width: 0;
+  pointer-events: none;
+}
+html.sidebar-instant #sidebar-slot,
+html.sidebar-instant #workspace-splitter {
+  transition: none !important;
+}
+/* peek: over the content, sliding in from the left edge */
+html.sidebar-hidden.sidebar-peek #sidebar-slot {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
   z-index: 20;
+  margin-left: 0;
+  opacity: 1;
+  pointer-events: auto;
   box-shadow: var(--shadow-pop);
-  transform: translateX(calc(-100% - 24px));
-  transition: transform 0.34s cubic-bezier(0.22, 0.9, 0.25, 1);
+  transition: none;
+  animation: sb-peek-in 0.32s cubic-bezier(0.22, 0.9, 0.25, 1);
 }
-html.sidebar-hidden.sidebar-peek #sidebar-slot {
-  transform: none;
+html.sidebar-hidden.sidebar-peek-out #sidebar-slot {
+  pointer-events: none;
+  animation: sb-peek-out 0.22s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+@keyframes sb-peek-in {
+  from {
+    transform: translateX(calc(-100% - 16px));
+  }
+}
+@keyframes sb-peek-out {
+  to {
+    transform: translateX(calc(-100% - 16px));
+  }
 }
 /* the strip the pointer touches to bring the sidebar in */
 html.sidebar-hidden #sidebar-edge {
@@ -184,8 +221,8 @@ html.sidebar-hidden #sidebar-edge {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -14px;
-  width: 22px;
+  left: 0;
+  width: 10px;
   z-index: 19;
 }
 html.sidebar-hidden #sidebar-show {

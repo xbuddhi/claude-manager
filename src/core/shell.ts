@@ -3,6 +3,7 @@
 
 import { button } from "../ui/button";
 import { splitter } from "../ui/splitter";
+import { emit } from "./bus";
 import { registerCommand } from "./commands";
 import { $ } from "./dom";
 import { registerShortcut } from "./keyboard";
@@ -34,8 +35,9 @@ function suppressContextMenu() {
 const PEEK_LINGER_MS = 280;
 
 /**
- * Hidden sidebar: when hidden it is out of the layout (the card takes the width) and slides in over the
- * card while the pointer is at the workspace's left edge, then slides away once the pointer leaves it.
+ * Hidden sidebar: hiding slides it out to the left while the content grows into its place. While hidden,
+ * the pointer at the workspace's left edge slides it in over the content ("peek"), and it slides away once
+ * the pointer has left it.
  */
 function initSidebarHiding() {
   const root = document.documentElement;
@@ -44,19 +46,45 @@ function initSidebarHiding() {
   edge.id = "sidebar-edge";
   $("#workspace").prepend(edge);
   let linger: ReturnType<typeof setTimeout> | undefined;
+  /** Puts the sidebar back into the layout without animating the switch itself. */
+  const settle = () => {
+    root.classList.add("sidebar-instant");
+    root.classList.remove("sidebar-peek", "sidebar-peek-out");
+    void side.offsetWidth;
+    requestAnimationFrame(() => root.classList.remove("sidebar-instant"));
+  };
   const peek = (on: boolean) => {
     clearTimeout(linger);
-    root.classList.toggle("sidebar-peek", on);
+    linger = undefined;
+    if (on) {
+      root.classList.remove("sidebar-peek-out");
+      root.classList.add("sidebar-peek");
+    } else if (root.classList.contains("sidebar-peek")) {
+      root.classList.add("sidebar-peek-out");
+    }
   };
+  side.addEventListener("animationend", (e) => {
+    if (e.target === side && root.classList.contains("sidebar-peek-out")) settle();
+  });
   edge.addEventListener("pointerenter", () => peek(true));
-  side.addEventListener("pointerenter", () => clearTimeout(linger));
-  side.addEventListener("pointerleave", () => {
-    clearTimeout(linger);
-    linger = setTimeout(() => {
-      // a menu or dialog opened from the sidebar keeps it out
-      if ($("#overlay-root").childElementCount > 0) return;
-      peek(false);
-    }, PEEK_LINGER_MS);
+  // while peeking, the pointer's position decides: over the sidebar (or just beside it) keeps it, anywhere
+  // else hides it after a moment. Enter/leave events alone miss a pointer that touches the edge and leaves.
+  window.addEventListener("pointermove", (e) => {
+    if (!root.classList.contains("sidebar-peek") || root.classList.contains("sidebar-peek-out")) return;
+    // where the sidebar ends once in (not its animated position while it slides)
+    const right = $("#workspace").getBoundingClientRect().left + side.offsetWidth;
+    const near = e.clientX <= right + 16;
+    if (near) {
+      clearTimeout(linger);
+      linger = undefined;
+    } else if (linger === undefined) {
+      linger = setTimeout(() => {
+        linger = undefined;
+        // a menu or dialog opened from the sidebar keeps it out
+        if ($("#overlay-root").childElementCount > 0) return;
+        peek(false);
+      }, PEEK_LINGER_MS);
+    }
   });
 
   const toggle = () => void updateSettings({ sidebarHidden: !settings().sidebarHidden });
@@ -89,11 +117,19 @@ function initSidebarHiding() {
   store.select(
     (s) => s.settings.sidebarHidden,
     (hidden) => {
+      // shown again while peeking: it is already on screen, so it just stays
+      if (!hidden && root.classList.contains("sidebar-peek")) settle();
       root.classList.toggle("sidebar-hidden", hidden);
-      peek(false);
     },
     { immediate: true },
   );
+
+  // Docked: the sidebar is home. Picking anything in it brings that project's sessions back in front of a
+  // terminal (there is no Home tab).
+  side.addEventListener("click", (e) => {
+    if (!root.classList.contains("layout-docked") || store.get().activeTerminal === null) return;
+    if ((e.target as Element).closest(".list-row")) emit("terminal:show", { id: null });
+  });
 }
 
 export function initShell(): void {

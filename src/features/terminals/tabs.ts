@@ -134,7 +134,8 @@ export class Strip {
   }
 
   private homeWidth(): number {
-    return this.node(0)?.offsetWidth || 96;
+    // 0 when the Home tab is hidden (docked style)
+    return this.node(0)?.offsetWidth ?? 96;
   }
 
   private node(id: number): HTMLElement | null {
