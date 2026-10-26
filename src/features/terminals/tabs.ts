@@ -153,6 +153,8 @@ export class Strip {
     const x = cur.offsetLeft;
     const w = cur.offsetWidth;
     this.pill.classList.toggle("at-start", x < 1);
+    // the panel under a tab at the left edge loses its rounded corner there, so the two join
+    document.documentElement.classList.toggle("tab-at-start", x < 1);
     const draw = () => {
       this.pill.style.transform = `translateX(${this.pillX.value}px)`;
       this.pill.style.width = `${this.pillW.value}px`;

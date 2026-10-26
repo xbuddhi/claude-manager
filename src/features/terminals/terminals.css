@@ -76,6 +76,9 @@ html.layout-classic.sidebar-hidden.has-tabs:not(.mode-terminal) #card,
 html.layout-classic.has-tabs:not(.mode-terminal):not(.sidebar-hidden) #sidebar-slot {
   border-top-left-radius: 0;
 }
+html.tab-at-start.mode-terminal #terminal-root {
+  border-top-left-radius: 0;
+}
 html.layout-classic:not(.mode-terminal):not(.sidebar-hidden) .term-pill {
   --pill-bg: var(--side);
 }
