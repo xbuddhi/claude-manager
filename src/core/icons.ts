@@ -14,6 +14,8 @@ export const icons = {
   chevron: svg(`<path d="M6 4l4 4-4 4"/>`),
   chevronDown: svg(`<path d="M4 6l4 4 4-4"/>`),
   chevronLeft: svg(`<path d="M10 4L6 8l4 4"/>`),
+  /** Show or hide the sidebar: a window with its left column. */
+  sidebar: svg(`<rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M6 2.5v11"/>`),
   plus: svg(`<path d="M8 3v10M3 8h10"/>`),
   close: svg(`<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>`),
   minus: svg(`<path d="M3.5 8h9"/>`),

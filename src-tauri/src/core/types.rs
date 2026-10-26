@@ -93,6 +93,17 @@ pub enum OpenIn {
     Embed,
 }
 
+/// Where the sidebar lives. Classic: on Home only, under full-width tabs. Docked: always there, full height,
+/// with the tabs and the Home card or a terminal beside it.
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum SidebarStyle {
+    #[default]
+    Classic,
+    Docked,
+}
+
 /// A named sidebar group. It only references folders; nothing on disk moves.
 #[derive(Serialize, Deserialize, TS, Clone, Debug, Default, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
@@ -125,6 +136,9 @@ pub struct Settings {
     #[ts(type = "unknown[]")]
     pub bg_terms: Vec<Value>,
     pub sidebar_width: u32,
+    /// Sidebar hidden: it slides in over the content while the pointer is at the left edge.
+    pub sidebar_hidden: bool,
+    pub sidebar_style: SidebarStyle,
     /// Source control split position; null = default layout.
     pub git_split: Option<f64>,
     /// Absolute path to the claude executable, overriding discovery.
@@ -153,6 +167,8 @@ impl Default for Settings {
             notify: true,
             bg_terms: Vec::new(),
             sidebar_width: 340,
+            sidebar_hidden: false,
+            sidebar_style: SidebarStyle::Classic,
             git_split: None,
             claude_path: None,
             mac_option_is_meta: true,

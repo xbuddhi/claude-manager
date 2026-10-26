@@ -157,6 +157,8 @@ export const DEFAULT_SETTINGS: Settings = {
   notify: true,
   bgTerms: [],
   sidebarWidth: 340,
+  sidebarHidden: false,
+  sidebarStyle: "classic",
   gitSplit: null,
   claudePath: null,
   macOptionIsMeta: true,

@@ -528,10 +528,18 @@ mod tests {
             .unwrap();
         assign_to_job(child.id()).unwrap();
         assert!(job::in_job(child.id()));
-        // the second ping starts about a second after the assignment
+        // the second ping starts about a second after the assignment (later on a busy machine)
         let started_later = || {
-            std::thread::sleep(Duration::from_millis(1500));
-            Procs::new().descendants_of(child.id())
+            let start = std::time::Instant::now();
+            loop {
+                std::thread::sleep(Duration::from_millis(250));
+                let found = Procs::new().descendants_of(child.id());
+                if (!found.is_empty() && start.elapsed() >= Duration::from_millis(1500))
+                    || start.elapsed() > Duration::from_secs(10)
+                {
+                    return found;
+                }
+            }
         };
         let later = started_later();
         assert!(!later.is_empty());

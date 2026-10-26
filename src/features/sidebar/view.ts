@@ -6,6 +6,7 @@
 import type { PathKind } from "../../bindings/PathKind";
 import { call } from "../../core/api";
 import { on } from "../../core/bus";
+import { runCommand } from "../../core/commands";
 import { $, h } from "../../core/dom";
 import { ago } from "../../core/format";
 import { iconNode } from "../../core/icons";
@@ -363,7 +364,15 @@ export function mountView(slot: HTMLElement): void {
   const add = button({ icon: "plus", kind: "plain", title: S.addTip });
   add.classList.add("sb-add");
   add.addEventListener("click", () => void showMenu(addMenu(), { at: { anchor: add, align: "end" }, label: S.addTip }));
-  const head = h("header", { class: "sb-head" }, h("span", { class: "sb-title" }, S.title), add);
+  const hide = button({ icon: "sidebar", kind: "plain", title: "Hide sidebar  (Ctrl+S)" });
+  hide.classList.add("sb-add");
+  hide.addEventListener("click", () => runCommand("sidebar:toggle"));
+  const head = h(
+    "header",
+    { class: "sb-head" },
+    h("span", { class: "sb-title" }, S.title),
+    h("span", { class: "sb-head-actions" }, add, hide),
+  );
   status = h("div", { class: "sb-status", attrs: { role: "status" } });
   status.hidden = true;
 

@@ -7,6 +7,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import type { OpenIn } from "../../bindings/OpenIn";
 import type { Settings } from "../../bindings/Settings";
+import type { SidebarStyle } from "../../bindings/SidebarStyle";
 import { call } from "../../core/api";
 import { h } from "../../core/dom";
 import { describeError, log } from "../../core/log";
@@ -98,6 +99,20 @@ export function openSettings(): void {
     checked: s.showUsage,
     label: "Show plan usage in the title bar",
     onChange: (on) => void updateSettings({ showUsage: on }),
+  });
+  const sidebarHidden = toggle({
+    checked: s.sidebarHidden,
+    label: "Hide the sidebar",
+    onChange: (on) => void updateSettings({ sidebarHidden: on }),
+  });
+  const sidebarStyle = segmented<SidebarStyle>({
+    label: "Sidebar style",
+    items: [
+      { id: "classic", label: "Classic" },
+      { id: "docked", label: "Docked" },
+    ],
+    value: s.sidebarStyle,
+    onChange: (id) => void updateSettings({ sidebarStyle: id }),
   });
   const openIn = segmented<OpenIn>({
     label: "New sessions open in",
@@ -213,6 +228,16 @@ export function openSettings(): void {
       row("Show the profile picker when the app starts", showPicker.el),
       row("Finish notifications", notify.el, "A notification when Claude finishes while you are elsewhere."),
       row("Show plan usage in the title bar", usage.el),
+      row(
+        "Sidebar style",
+        sidebarStyle.el,
+        "Classic: the sidebar is on Home only. Docked: it stays beside your terminals too.",
+      ),
+      row(
+        "Hide the sidebar",
+        sidebarHidden.el,
+        "Point at the left edge to slide it in. Ctrl+S shows or hides it any time.",
+      ),
       row("New sessions open in", openIn.el),
     ),
     section(
@@ -256,6 +281,8 @@ export function openSettings(): void {
         showPicker.set(next.showPicker);
         notify.set(next.notify);
         usage.set(next.showUsage);
+        sidebarHidden.set(next.sidebarHidden);
+        sidebarStyle.set(next.sidebarStyle);
         openIn.set(next.openIn);
         optionMeta?.set(next.macOptionIsMeta);
         if (document.activeElement !== scrollback) scrollback.value = String(next.scrollback);

@@ -36,6 +36,15 @@ use tauri_plugin_window_state::StateFlags;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // A second launch hands over to the running app, which then raises its window. Windows only lets the
+    // process the user just started take the foreground; this lets the running one take it instead.
+    #[cfg(windows)]
+    // SAFETY: plain Win32 call with a constant argument
+    unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(
+            windows_sys::Win32::UI::WindowsAndMessaging::ASFW_ANY,
+        );
+    }
     let builder = tauri::Builder::default()
         // must be the first plugin, so a second launch exits before anything else starts
         .plugin(tauri_plugin_single_instance::init(

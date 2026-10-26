@@ -269,3 +269,9 @@ html.sb-dragging .sb-tree * {
   font-weight: 600;
   box-shadow: var(--shadow-pop);
 }
+
+.sb-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}

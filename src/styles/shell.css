@@ -137,7 +137,7 @@ html.window-inactive .tb-cap:not(:hover) {
   padding: 0 14px 14px;
 }
 
-/* ---------- workspace: sidebar | splitter | card ---------- */
+/* ---------- workspace: sidebar | splitter | content (tabs over the Home card or a terminal) ---------- */
 #workspace {
   flex: 1;
   min-height: 0;
@@ -154,9 +154,63 @@ html.window-inactive .tb-cap:not(:hover) {
   border-radius: var(--radius-card);
   overflow: hidden;
 }
+/* ---------- hidden sidebar (slides in from the left edge) ---------- */
+#workspace {
+  position: relative;
+}
+#sidebar-edge,
+#sidebar-show {
+  display: none;
+}
+html.sidebar-hidden #workspace-splitter {
+  display: none;
+}
+html.sidebar-hidden #sidebar-slot {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  box-shadow: var(--shadow-pop);
+  transform: translateX(calc(-100% - 24px));
+  transition: transform 0.34s cubic-bezier(0.22, 0.9, 0.25, 1);
+}
+html.sidebar-hidden.sidebar-peek #sidebar-slot {
+  transform: none;
+}
+/* the strip the pointer touches to bring the sidebar in */
+html.sidebar-hidden #sidebar-edge {
+  display: block;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -14px;
+  width: 22px;
+  z-index: 19;
+}
+html.sidebar-hidden #sidebar-show {
+  display: inline-flex;
+  margin-right: 4px;
+}
+#card-head {
+  gap: 6px;
+}
+
 #workspace-splitter {
   flex: none;
   width: 10px;
+}
+#content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+#panes {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
 #card {
   flex: 1;
@@ -208,8 +262,11 @@ html.window-inactive .tb-cap:not(:hover) {
   gap: 8px;
 }
 
-/* a terminal tab in front replaces the workspace */
-html.mode-terminal #workspace {
+/* a terminal tab in front replaces the Home card; in the classic style it replaces the sidebar too */
+html.mode-terminal #card,
+html.layout-classic.mode-terminal #sidebar-slot,
+html.layout-classic.mode-terminal #workspace-splitter,
+html.layout-classic.mode-terminal #sidebar-edge {
   display: none;
 }
 #terminal-root {

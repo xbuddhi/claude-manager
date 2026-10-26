@@ -23,19 +23,24 @@
     </header>
     <div id="picker-root" hidden></div>
     <main id="main">
-      <div id="tabstrip-slot" data-tauri-drag-region="deep"></div>
+      <!-- Docked style: the sidebar runs the full height; tabs and the Home card or a terminal sit beside it -->
       <div id="workspace">
         <aside id="sidebar-slot"></aside>
         <div id="workspace-splitter"></div>
-        <section id="card">
-          <header id="card-head">
-            <div id="card-switch"></div>
-            <div id="card-actions-slot"></div>
-          </header>
-          <div id="card-body"></div>
-        </section>
+        <div id="content">
+          <div id="tabstrip-slot" data-tauri-drag-region="deep"></div>
+          <div id="panes">
+            <section id="card">
+              <header id="card-head">
+                <div id="card-switch"></div>
+                <div id="card-actions-slot"></div>
+              </header>
+              <div id="card-body"></div>
+            </section>
+            <div id="terminal-root"></div>
+          </div>
+        </div>
       </div>
-      <div id="terminal-root"></div>
     </main>
     <div id="overlay-root"></div>
   </body>
