@@ -56,6 +56,8 @@ pub fn run() {
         .plugin(
             tauri_plugin_window_state::Builder::new()
                 .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE & !StateFlags::DECORATIONS)
+                // more windows are placed next to the one in front, not where some earlier one was
+                .with_filter(|label| label == crate::core::lifecycle::MAIN_WINDOW)
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())

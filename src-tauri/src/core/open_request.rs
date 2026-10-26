@@ -50,7 +50,7 @@ pub fn receive(app: &AppHandle, args: &[String], cwd: &Path) {
         return;
     };
     lock(&state.pending).push(request);
-    if let Err(e) = app.emit(events::APP_OPEN_REQUEST, ()) {
+    if let Err(e) = app.emit_to(super::lifecycle::MAIN_WINDOW, events::APP_OPEN_REQUEST, ()) {
         log::error!("could not announce an open request: {e}");
     }
 }

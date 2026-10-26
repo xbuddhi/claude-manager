@@ -1,16 +1,17 @@
 //! Finish notifications: on each live tick, a session that stops working shows "Claude finished", and one
 //! that ends while working shows "Claude session ended". Nothing is shown with `settings.notify` off, or
-//! while the user watches that session (window focused and its tab in front). Clicking a notification
-//! shows the window and switches to the session (`notify:clicked`, handled by the live frontend).
+//! while the user watches that session (its window focused and its tab in front there). Clicking a
+//! notification shows the window in front and switches to the session (`notify:clicked`, handled by the
+//! live frontend, which finds its tab in any window).
 
 use crate::core::error::{AppResult, lock};
 use crate::core::types::LiveSession;
-use crate::core::{events, lifecycle, settings};
+use crate::core::{events, lifecycle, settings, windows};
 use crate::live::snapshot::Snapshot;
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
-use tauri::{App, AppHandle, Emitter, Manager, State};
+use tauri::{App, AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_notification::NotificationExt;
 use ts_rs::TS;
 
@@ -34,8 +35,8 @@ pub struct Notifier(Mutex<Inner>);
 struct Inner {
     /// Sessions of the previous tick, by id.
     prev: HashMap<String, LiveSession>,
-    /// Process of the terminal tab in front (reported by the frontend).
-    active_pid: Option<u32>,
+    /// Process of the terminal tab in front of each window, by window label (reported by the frontend).
+    active_pids: HashMap<String, u32>,
     shown: VecDeque<(i32, String)>,
     next_id: i32,
 }
@@ -53,9 +54,10 @@ pub fn init(app: &mut App) -> AppResult<()> {
             let st = lock(&notifier.0);
             st.shown.iter().find(|(n, _)| *n == id).map(|(_, s)| s.clone())
         });
-        lifecycle::show_main(&handle);
+        let front = lifecycle::show_front(&handle);
         if let Some(session_id) = session
-            && let Err(e) = handle.emit(events::NOTIFY_CLICKED, NotifyClicked { session_id })
+            && let Some(front) = front
+            && let Err(e) = handle.emit_to(front.label(), events::NOTIFY_CLICKED, NotifyClicked { session_id })
         {
             log::error!("could not report a notification click: {e}");
         }
@@ -126,25 +128,26 @@ fn leaf(path: &str) -> Option<String> {
 /// Runs after each live scan, also while the profile picker is shown.
 pub fn on_tick(app: &AppHandle, sessions: &[LiveSession], snap: &Snapshot) {
     let notifier = app.state::<Notifier>();
-    let (prev, active_pid) = {
+    let (prev, active_pids) = {
         let mut st = lock(&notifier.0);
         if !settings::get(app).notify {
             st.prev.clear();
             return;
         }
         let now = sessions.iter().map(|s| (s.session_id.clone(), s.clone())).collect();
-        (std::mem::replace(&mut st.prev, now), st.active_pid)
+        (std::mem::replace(&mut st.prev, now), st.active_pids.clone())
     };
     let done = finished(&prev, sessions);
     if done.is_empty() {
         return;
     }
-    let focused = app
-        .get_webview_window(lifecycle::MAIN_WINDOW)
-        .and_then(|w| w.is_focused().ok())
-        .unwrap_or(false);
+    // the tab in front of the focused window (none when another app has the focus)
+    let active_pid = windows::all(app)
+        .into_iter()
+        .find(|w| w.is_focused().unwrap_or(false))
+        .and_then(|w| active_pids.get(w.label()).copied());
     for f in done {
-        let watching = focused && active_pid.is_some_and(|a| a == f.pid || snap.chain(f.pid, DEPTH).contains(&a));
+        let watching = active_pid.is_some_and(|a| a == f.pid || snap.chain(f.pid, DEPTH).contains(&a));
         if watching {
             continue;
         }
@@ -174,11 +177,19 @@ fn show(app: &AppHandle, session_id: &str, title: &str, body: &str) {
 
 // ---- commands ----
 
-/// The process of the terminal tab in front (null = no tab in front), so notifications for the session
-/// the user is watching are skipped.
+/// The process of the terminal tab in front of the calling window (null = no tab in front), so
+/// notifications for the session the user is watching are skipped.
 #[tauri::command]
-pub async fn set_active_terminal_pid(notifier: State<'_, Notifier>, pid: Option<u32>) -> AppResult<()> {
-    lock(&notifier.0).active_pid = pid;
+pub async fn set_active_terminal_pid(
+    window: WebviewWindow,
+    notifier: State<'_, Notifier>,
+    pid: Option<u32>,
+) -> AppResult<()> {
+    let mut st = lock(&notifier.0);
+    match pid {
+        Some(pid) => st.active_pids.insert(window.label().to_string(), pid),
+        None => st.active_pids.remove(window.label()),
+    };
     Ok(())
 }
 

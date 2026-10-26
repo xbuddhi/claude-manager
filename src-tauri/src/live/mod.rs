@@ -204,7 +204,8 @@ pub async fn live_ancestors(app: AppHandle, session_id: String) -> AppResult<Vec
     .await
 }
 
-/// Brings the window a running session lives in to the front (after the frontend found no tab for it).
+/// Brings a running session to the front (after the frontend found no tab for it in its own window): its
+/// tab in another app window, else the window it runs in.
 #[tauri::command]
 pub async fn focus_live(app: AppHandle, session_id: String) -> AppResult<bool> {
     let Some(session) = app.state::<Live>().session(&session_id) else {
@@ -212,6 +213,12 @@ pub async fn focus_live(app: AppHandle, session_id: String) -> AppResult<bool> {
     };
     blocking(move || {
         let snap = Snapshot::take(&app.state::<Procs>(), &HashSet::new());
+        let chain = snap.chain(session.pid, reach::TERM_DEPTH);
+        if let Some((id, window)) = terms::tab_of(&app, &chain)
+            && crate::pty::windows::focus(&app, id, &window)?
+        {
+            return Ok(true);
+        }
         Ok(focus::bring_forward(&app, &snap, session.pid))
     })
     .await

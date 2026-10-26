@@ -249,6 +249,19 @@ pub enum QuitDecision {
     Keep,
 }
 
+/// Answer to `window:close-requested` (a [`CloseRequest`] for one window while others stay open).
+#[derive(Deserialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum WindowDecision {
+    /// Keep the window open.
+    Cancel,
+    /// End its terminals and close it.
+    Close,
+    /// Move its terminals to another window and close it.
+    Move,
+}
+
 /// A validated request from outside the app to start a session in a folder (see `core::open_request`).
 #[derive(Serialize, TS, Clone, Debug, PartialEq, Eq)]
 #[ts(export)]

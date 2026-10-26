@@ -1,13 +1,13 @@
-//! WebView2 memory (Windows): while the main window is minimized or hidden, WebView2 is asked to use less
+//! WebView2 memory (Windows): while an app window is minimized or hidden, its WebView2 is asked to use less
 //! memory, and back to normal when it gets focus. Only then: a window that is merely unfocused (say, while
-//! you work in a pop-out terminal) is still on screen, and the low level makes its updates sluggish.
+//! you work in another of the app's windows) is still on screen, and the low level makes it sluggish.
 //! Needs WebView2 runtime 114 or later; older runtimes are left alone.
 
 #[cfg(windows)]
 use tauri::Manager;
 use tauri::{Builder, Wry};
 
-/// Adds a small plugin that watches the main window's focus.
+/// Adds a small plugin that watches the app windows' focus.
 pub fn attach(builder: Builder<Wry>) -> Builder<Wry> {
     #[cfg(windows)]
     let builder = builder.plugin(
@@ -18,13 +18,13 @@ pub fn attach(builder: Builder<Wry>) -> Builder<Wry> {
                     event: tauri::WindowEvent::Focused(focused),
                     ..
                 } = event
-                    && label.as_str() == crate::core::lifecycle::MAIN_WINDOW
+                    && crate::core::windows::is_app_window(label)
                 {
                     let out_of_sight = || {
                         app.get_webview_window(label)
                             .is_some_and(|w| w.is_minimized().unwrap_or(false) || !w.is_visible().unwrap_or(true))
                     };
-                    win::set_low(app, !focused && out_of_sight());
+                    win::set_low(app, label, !focused && out_of_sight());
                 }
             })
             .build(),
@@ -34,7 +34,6 @@ pub fn attach(builder: Builder<Wry>) -> Builder<Wry> {
 
 #[cfg(windows)]
 mod win {
-    use crate::core::lifecycle::MAIN_WINDOW;
     use std::ffi::c_void;
     use tauri::{AppHandle, Manager};
     use webview2_com::Microsoft::Web::WebView2::Win32::{
@@ -52,8 +51,8 @@ mod win {
         query_interface: unsafe extern "system" fn(*mut c_void, *const GUID, *mut *mut c_void) -> i32,
     }
 
-    pub fn set_low(app: &AppHandle, low: bool) {
-        let Some(window) = app.get_webview_window(MAIN_WINDOW) else {
+    pub fn set_low(app: &AppHandle, label: &str, low: bool) {
+        let Some(window) = app.get_webview_window(label) else {
             return;
         };
         let result = window.with_webview(move |webview| {

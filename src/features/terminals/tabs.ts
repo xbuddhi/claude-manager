@@ -1,7 +1,9 @@
 // The tab strip (the Windows app's TabStrip): a pinned Home tab, then terminal tabs that share the width
-// (150-250 px, never under 110), a gliding pill behind the active tab, pop-out and close buttons on the
-// hovered and the active tab, and a "more" button listing every tab when they do not all fit (the active
-// tab is always shown). Middle-click closes a tab; right-click opens its menu.
+// (150-250 px, never under 110), a gliding pill behind the active tab, move-to-new-window and close buttons
+// on the hovered and the active tab, and a "more" button listing every tab when they do not all fit (the
+// active tab is always shown). Middle-click closes a tab; right-click opens its menu. Dragging a tab moves
+// it along the strip; dragging it well away from the strip moves it to another window (the one it is
+// dropped on, else a new one), like a browser tab.
 //
 // Everything clickable is a button or has role="tab": the strip is a window drag region (README).
 
@@ -23,12 +25,36 @@ export interface StripHandlers {
   /** null = Home. */
   select(id: number | null): void;
   close(id: number): void;
-  popOut(id: number): void;
+  /** To a new window. */
+  moveOut(id: number): void;
+  /** Dragged along the strip: put it before tab `before` (null = at the end). */
+  reorder(id: number, before: number | null): void;
+  /** Dragged off the strip and dropped at screen point `at` (CSS screen pixels). */
+  tearOff(id: number, at: { x: number; y: number }): void;
   menu(id: number, at: { x: number; y: number }): void;
 }
 
 /** Extra space after the pinned Home tab. */
 const HOME_GAP = 10;
+/** Pointer travel before a press on a tab becomes a drag. */
+const DRAG_START = 6;
+/** How far above or below the strip a dragged tab must go to leave it (for another window). */
+const TEAR_DISTANCE = 48;
+
+interface Drag {
+  id: number;
+  pointer: number;
+  node: HTMLElement;
+  startX: number;
+  startY: number;
+  dragging: boolean;
+  /** Off the strip: dropping it moves the tab to another window. */
+  torn: boolean;
+  /** Left edges and widths of the shown tabs (ids in order) when the drag started. */
+  slots: Array<{ id: number; left: number; width: number }>;
+  /** Where it would land: before this tab id, null = at the end. */
+  before: number | null;
+}
 
 export class Strip {
   private root: HTMLElement;
@@ -41,6 +67,9 @@ export class Strip {
   private pillW = new Spring(0.3, 0.9, 0.1);
   private pillShown = false;
   private lastLayout = "";
+  private drag: Drag | null = null;
+  /** The click that ends a drag is not a tab click. */
+  private swallowClick = false;
 
   constructor(
     private slot: HTMLElement,
@@ -70,6 +99,11 @@ export class Strip {
       this.h.menu(id, { x: e.clientX, y: e.clientY });
     });
     this.root.addEventListener("keydown", (e) => this.onKey(e));
+    this.root.addEventListener("pointerdown", (e) => this.onDown(e));
+    this.root.addEventListener("pointermove", (e) => this.onMove(e));
+    this.root.addEventListener("pointerup", (e) => this.onUp(e));
+    this.root.addEventListener("pointercancel", () => this.endDrag());
+    this.root.addEventListener("lostpointercapture", () => this.endDrag());
     new ResizeObserver(() => {
       // a different width can change how many tabs fit
       if (this.layoutKey() !== this.lastLayout) this.render(this.tabs, this.active);
@@ -79,6 +113,7 @@ export class Strip {
 
   /** Redraws the strip; hidden while there are no terminals. */
   render(tabs: StripTab[], active: number | null): void {
+    this.endDrag();
     this.tabs = tabs;
     this.active = active;
     this.slot.hidden = tabs.length === 0;
@@ -105,7 +140,7 @@ export class Strip {
           t,
         ) => html`<div class="term-tab${t.id === active ? " active" : ""}${t.exited ? " exited" : ""}" data-key="${t.id}" role="tab" tabindex="${t.id === active ? 0 : -1}" aria-selected="${String(t.id === active)}" style="width:${layout.width}px" data-tip="${t.sub ? `${t.title}\n${t.sub}` : t.title}">
           ${icon("terminal")}<span class="term-title">${t.title}</span><span class="term-sub">${t.sub}</span>
-          <button class="term-btn" type="button" data-act="pop" aria-label="Pop out" data-tip="Pop out to its own window"${t.exited ? " disabled" : ""}>${icon("popout")}</button>
+          <button class="term-btn" type="button" data-act="pop" aria-label="Move to new window" data-tip="Move to new window"${t.exited ? " disabled" : ""}>${icon("popout")}</button>
           <button class="term-btn" type="button" data-act="close" aria-label="Close terminal" data-tip="Close terminal">${icon("close")}</button>
         </div>`,
       )}
@@ -183,7 +218,129 @@ export class Strip {
     animate(s, 1, style, () => style(1));
   }
 
+  // ---- dragging ----
+
+  private onDown(e: PointerEvent) {
+    if (e.button !== 0 || this.drag) return;
+    const target = e.target as Element;
+    if (target.closest("[data-act]")) return;
+    const id = this.tabId(target);
+    const node = id === null ? null : this.node(id);
+    if (id === null || !node) return;
+    this.drag = {
+      id,
+      pointer: e.pointerId,
+      node,
+      startX: e.clientX,
+      startY: e.clientY,
+      dragging: false,
+      torn: false,
+      slots: [],
+      before: null,
+    };
+  }
+
+  private onMove(e: PointerEvent) {
+    const d = this.drag;
+    if (!d || e.pointerId !== d.pointer) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.dragging) {
+      if (Math.hypot(dx, dy) < DRAG_START) return;
+      d.dragging = true;
+      // keeps the moves (also outside the window) and the release coming here
+      try {
+        this.root.setPointerCapture(e.pointerId);
+      } catch {
+        // a pointer that is already gone: the drag ends with it
+      }
+      d.slots = [...this.list.querySelectorAll<HTMLElement>(".term-tab:not(.term-home)")].map((n) => ({
+        id: Number(n.dataset.key),
+        left: n.offsetLeft,
+        width: n.offsetWidth,
+      }));
+      d.node.classList.add("dragging");
+      this.root.classList.add("dragging-tab");
+    }
+    const strip = this.root.getBoundingClientRect();
+    const off =
+      e.clientY < strip.top - TEAR_DISTANCE ||
+      e.clientY > strip.bottom + TEAR_DISTANCE ||
+      e.clientX < 0 ||
+      e.clientX > window.innerWidth;
+    // only a tab that can move (a running terminal) leaves the strip
+    d.torn = off && !this.tabs.find((t) => t.id === d.id)?.exited;
+    d.node.classList.toggle("torn", d.torn);
+    if (d.torn) {
+      this.shiftOthers(d, null);
+      d.node.style.transform = `translate(${dx}px, ${dy}px)`;
+      return;
+    }
+    // along the strip: kept inside it, the others make room
+    const me = d.slots.find((s) => s.id === d.id);
+    if (!me) return;
+    const first = d.slots[0];
+    const last = d.slots[d.slots.length - 1];
+    const min = (first?.left ?? me.left) - me.left;
+    const max = (last ? last.left + last.width : me.left + me.width) - (me.left + me.width);
+    const x = Math.max(min, Math.min(max, dx));
+    d.node.style.transform = `translateX(${x}px)`;
+    const center = me.left + x + me.width / 2;
+    const others = d.slots.filter((s) => s.id !== d.id);
+    const next = others.find((s) => center < s.left + s.width / 2);
+    this.shiftOthers(d, next?.id ?? null);
+  }
+
+  /** Slides the tabs between the dragged tab's place and `before` aside, to show where it lands. */
+  private shiftOthers(d: Drag, before: number | null) {
+    d.before = before;
+    const me = d.slots.findIndex((s) => s.id === d.id);
+    const width = (d.slots[me]?.width ?? 0) + TAB_GAP;
+    const others = d.slots.filter((s) => s.id !== d.id);
+    const landing = before === null ? others.length : others.findIndex((s) => s.id === before);
+    others.forEach((s, i) => {
+      const node = this.node(s.id);
+      if (!node) return;
+      // index among the others vs. among all: tabs past the dragged one shift left, then back right
+      const was = i >= me ? i + 1 : i;
+      const now = i >= landing ? i + 1 : i;
+      const shift = d.torn ? 0 : (now - was) * width;
+      node.style.transform = shift ? `translateX(${shift}px)` : "";
+      node.classList.add("making-room");
+    });
+  }
+
+  private onUp(e: PointerEvent) {
+    const d = this.drag;
+    if (!d || e.pointerId !== d.pointer) return;
+    if (!d.dragging) {
+      this.drag = null;
+      return;
+    }
+    this.swallowClick = true;
+    const { id, torn, before } = d;
+    this.endDrag();
+    if (torn) this.h.tearOff(id, { x: e.screenX, y: e.screenY });
+    else this.h.reorder(id, before);
+  }
+
+  private endDrag() {
+    const d = this.drag;
+    if (!d) return;
+    this.drag = null;
+    if (this.root.hasPointerCapture?.(d.pointer)) this.root.releasePointerCapture(d.pointer);
+    this.root.classList.remove("dragging-tab");
+    for (const n of this.list.querySelectorAll<HTMLElement>(".term-tab")) {
+      n.classList.remove("dragging", "torn", "making-room");
+      n.style.transform = "";
+    }
+  }
+
   private onClick(e: MouseEvent) {
+    if (this.swallowClick) {
+      this.swallowClick = false;
+      return;
+    }
     const target = e.target as Element;
     if (target.closest(".term-more")) {
       this.showMore(target.closest<HTMLElement>(".term-more") as HTMLElement);
@@ -192,7 +349,7 @@ export class Strip {
     const id = this.tabId(target);
     const act = target.closest<HTMLElement>("[data-act]")?.dataset.act;
     if (id !== null && act === "close") return this.h.close(id);
-    if (id !== null && act === "pop") return this.h.popOut(id);
+    if (id !== null && act === "pop") return this.h.moveOut(id);
     if (target.closest(".term-tab")) this.h.select(id);
   }
 

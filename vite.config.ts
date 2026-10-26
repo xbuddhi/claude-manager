@@ -38,8 +38,6 @@ export default defineConfig(() => ({
       // every HTML page of the app; a package adds its page under its own marker
       input: {
         main: page("index.html"),
-        // WP2 terminal pop-out window (popout.html)
-        popout: page("src/popout.html"),
       },
     },
   },

@@ -8,6 +8,7 @@ import { animate, Spring } from "../../core/motion";
 import { settings } from "../../core/settings";
 import { type Screen, store } from "../../core/store";
 import { setSubtitle } from "../../core/titlebar";
+import { isMainWindow } from "../../core/window";
 import { mountAvatarButton } from "./avatar-button";
 import { newProfile } from "./newprofile";
 import { mountPicker, type Picker } from "./picker";
@@ -96,7 +97,9 @@ export function mount(): void {
   on("picker:show", showPicker);
 
   const s = store.get();
-  const choice = startChoice(settings(), s.profiles, s.platform.os);
-  if (choice.picker) showPicker();
-  else enterProfile(choice.dir);
+  // another window (New window, moved tabs) never starts on the picker: the profile last used, else all
+  const main = isMainWindow();
+  const choice = startChoice(main ? settings() : { ...settings(), showPicker: false }, s.profiles, s.platform.os);
+  if (choice.picker && main) showPicker();
+  else enterProfile(choice.picker ? null : choice.dir);
 }

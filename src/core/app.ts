@@ -54,6 +54,9 @@ function registerCoreCommands() {
   registerCommand({ id: "search:focus", title: "Find", run: () => emit("search:focus") });
   registerCommand({ id: "refresh:full", title: "Refresh", run: () => emit("refresh:full") });
   registerCommand({ id: "help:logs", title: "Show Logs", run: () => void call("open_log_dir") });
+  // like a browser's: another window with its own tabs (macOS: the Session menu item)
+  registerCommand({ id: "window:new", title: "New Window", run: () => void call("window_new") });
+  registerShortcut({ id: "window:new", keys: "CmdOrCtrl+Shift+N", inTerminal: true });
   registerShortcut({ id: "search:focus", keys: "CmdOrCtrl+F" });
   registerShortcut({ id: "refresh:full", keys: ["F5", "Cmd+R"] });
 }

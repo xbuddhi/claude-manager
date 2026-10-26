@@ -6,8 +6,11 @@
 pub const SETTINGS_CHANGED: &str = "settings-changed";
 /// Payload: `Profile[]` (the full new list).
 pub const PROFILES_CHANGED: &str = "profiles-changed";
-/// Payload: `CloseRequest`.
+/// Payload: `CloseRequest`. Sent to the window in front only.
 pub const APP_CLOSE_REQUESTED: &str = "app:close-requested";
+/// Payload: `CloseRequest` (that window's terminals). Sent to the window being closed while others stay;
+/// answered with `window_close_decision`.
+pub const WINDOW_CLOSE_REQUESTED: &str = "window:close-requested";
 /// No payload: an `OpenRequest` is waiting; take it with `take_open_request`.
 pub const APP_OPEN_REQUEST: &str = "app:open-request";
 /// Payload: `MenuEvent`.
@@ -16,9 +19,10 @@ pub const MENU: &str = "menu";
 /// Payload: `IndexChanged` (`sessions::types`): the index has a new generation; fetch it with `get_index`.
 pub const INDEX_CHANGED: &str = "index-changed";
 // ---- pty + launch (WP2) ----
-/// Payload: `number`, a terminal id. A pop-out window gave its terminal back; the main window takes it
-/// over with `pty_attach`.
-pub const PTY_RETURNED: &str = "pty-returned";
+/// Payload: `number[]`, terminal ids moved to the receiving window; it takes them over with `pty_attach`.
+pub const PTY_MOVED: &str = "pty-moved";
+/// Payload: `number`, a terminal id: the receiving window brings that terminal's tab to the front.
+pub const PTY_FOCUS: &str = "pty-focus";
 // ---- live + notify (WP3) ----
 /// Payload: `LiveChanged` (every running session; sent only when an id or level changed).
 pub const LIVE_CHANGED: &str = "live-changed";

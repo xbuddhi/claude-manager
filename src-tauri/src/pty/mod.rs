@@ -2,14 +2,14 @@
 //! folder, a profile and a session id; what runs is decided in Rust (`launch`).
 //!
 //! A terminal's output goes to the output channel of one window at a time: raw bytes, then one JSON
-//! `PtyExit` message when it ends. A pop-out window or a reloaded page takes a terminal over with
-//! `pty_attach`, which first replays the last 256 KB of its output.
+//! `PtyExit` message when it ends. A window it moved to (windows.rs) or a reloaded page takes a terminal
+//! over with `pty_attach`, which first replays the last 256 KB of its output.
 
 pub mod manager;
-pub mod popout;
 mod reader;
 mod ring;
 pub mod types;
+pub mod windows;
 mod writer;
 
 use crate::core::error::{AppError, AppResult, blocking};
@@ -189,18 +189,14 @@ pub async fn pty_resume_output(terms: State<'_, Terms>, id: u32, seq: u64) -> Ap
     terms.set_paused(id, false, seq)
 }
 
-/// Remembers the tab title the terminal set (for a pop-out window and a reloaded page).
+/// Remembers the tab title the terminal set (for a window it moves to and a reloaded page).
 #[tauri::command]
-pub async fn pty_set_title(app: AppHandle, terms: State<'_, Terms>, id: u32, title: String) -> AppResult<()> {
+pub async fn pty_set_title(terms: State<'_, Terms>, id: u32, title: String) -> AppResult<()> {
     let title = clean_title(&title);
     if title.is_empty() {
         return Ok(());
     }
-    terms.set_title(id, &title)?;
-    if let Some(w) = app.get_webview_window(&popout::label(id)) {
-        w.set_title(&title)?;
-    }
-    Ok(())
+    terms.set_title(id, &title)
 }
 
 /// The clipboard's text, for a terminal's Paste menu item (read in Rust: the webview has no clipboard

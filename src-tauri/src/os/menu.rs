@@ -30,6 +30,8 @@ pub const SHOW_WINDOW: &str = "app:show";
 /// The tray menu's "New session". Its own id: the frontend runs it without the window-focus check that
 /// `session:new` has (a tray click leaves focus with the taskbar, so that check would drop it).
 pub const TRAY_NEW_SESSION: &str = "tray:new-session";
+/// A new, empty window (like a browser's); handled here.
+pub const NEW_WINDOW: &str = "window:new";
 
 /// Installs the menu on macOS, and the menu event handler everywhere. The tray menu uses the same
 /// handler: Tauri sends every menu event to every global handler, so there must be exactly one.
@@ -92,6 +94,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         true,
         &[
             &item(NEW_SESSION, "New Session", Some("CmdOrCtrl+T"))?,
+            &item(NEW_WINDOW, "New Window", Some("CmdOrCtrl+Shift+N"))?,
             // Cmd+W closes the terminal tab, never the window
             &item(CLOSE_TAB, "Close Tab", Some("CmdOrCtrl+W"))?,
             &sep()?,
@@ -133,10 +136,14 @@ pub fn on_menu_event(app: &AppHandle, id: &str) {
                 log::error!("{e}");
             }
         }
+        NEW_WINDOW => lifecycle::new_window(app),
         _ => {
-            // the tray, or macOS with the window closed or behind another app: show and raise it first
-            lifecycle::show_main(app);
-            if let Err(e) = app.emit(events::MENU, MenuEvent { id: id.to_string() }) {
+            // the tray, or macOS with the window closed or behind another app: show and raise it first;
+            // only the window in front acts on it
+            let Some(front) = lifecycle::show_front(app) else {
+                return;
+            };
+            if let Err(e) = app.emit_to(front.label(), events::MENU, MenuEvent { id: id.to_string() }) {
                 log::error!("could not send menu event {id}: {e}");
             }
         }

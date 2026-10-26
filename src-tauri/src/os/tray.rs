@@ -2,7 +2,7 @@
 //! window hidden by "Keep running" can always be brought back. Its menu items go through the one menu
 //! event handler in `menu.rs`.
 
-use super::menu::{QUIT, SHOW_WINDOW, TRAY_NEW_SESSION};
+use super::menu::{NEW_WINDOW, QUIT, SHOW_WINDOW, TRAY_NEW_SESSION};
 use crate::core::lifecycle;
 use tauri::AppHandle;
 use tauri::image::Image;
@@ -18,6 +18,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         &[
             &MenuItem::with_id(app, SHOW_WINDOW, "Show Claude Manager", true, None::<&str>)?,
             &MenuItem::with_id(app, TRAY_NEW_SESSION, "New session", true, None::<&str>)?,
+            &MenuItem::with_id(app, NEW_WINDOW, "New window", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, QUIT, "Quit", true, None::<&str>)?,
         ],

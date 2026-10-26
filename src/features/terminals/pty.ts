@@ -1,8 +1,10 @@
 // The terminal feature's backend commands and events (src-tauri/src/pty, src-tauri/src/launch).
 
 import type { Channel } from "@tauri-apps/api/core";
+import type { Point } from "../../bindings/Point";
 import type { PtyExit } from "../../bindings/PtyExit";
 import type { PtyInfo } from "../../bindings/PtyInfo";
+import type { WindowInfo } from "../../bindings/WindowInfo";
 
 /** A terminal's output: raw bytes, then one PtyExit message after the last output. */
 export type PtyOutput = {
@@ -34,19 +36,26 @@ declare module "../../core/api" {
     pty_resume_output: { args: { id: number; seq: number }; result: null };
     pty_set_title: { args: { id: number; title: string }; result: null };
     pty_clipboard_text: { args: undefined; result: string };
-    /** Opens the terminal in its own window; the caller removes its tab. */
-    pty_popout: { args: { id: number }; result: null };
-    /** From a pop-out window: give the terminal back to the main window and close this window. */
-    pty_return: { args: undefined; result: null };
-    /** From a pop-out window: close it, ending its terminal when `kill` is set. */
-    pty_close_window: { args: { kill: boolean }; result: null };
+    /**
+     * Moves this window's terminals to window `to`, else the window under the screen point `at`, else a new
+     * window. Returns the label of the window they went to; the caller removes their tabs.
+     */
+    pty_move: { args: { ids: number[]; to?: string; at?: Point }; result: string };
+    /** Brings terminal `id`'s tab forward in whichever window shows it. */
+    pty_focus: { args: { id: number }; result: boolean };
+    /** Brings session `sessionId`'s tab forward when another window shows it; false when none does. */
+    pty_focus_session: { args: { sessionId: string }; result: boolean };
+    /** The app windows on screen, the main window first. */
+    window_list: { args: undefined; result: WindowInfo[] };
     launch_external: {
       args: { dir: string; profile?: string; sessionId?: string; fork?: boolean; shellOnly?: boolean };
       result: null;
     };
   }
   interface BackendEvents {
-    /** A pop-out window gave terminal `id` back to the main window. */
-    "pty-returned": number;
+    /** Terminals moved to this window; take them over with pty_attach. */
+    "pty-moved": number[];
+    /** Bring this terminal's tab forward. */
+    "pty-focus": number;
   }
 }

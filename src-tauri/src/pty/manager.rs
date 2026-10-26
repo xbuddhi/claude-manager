@@ -254,6 +254,24 @@ impl Terms {
     pub fn count(&self) -> usize {
         lock(&self.inner.map).len()
     }
+
+    /// Ids of the terminals shown in window `label`.
+    pub fn ids_in(&self, label: &str) -> Vec<u32> {
+        self.list()
+            .into_iter()
+            .filter(|t| t.window.as_deref() == Some(label))
+            .map(|t| t.id)
+            .collect()
+    }
+
+    /// The terminal (id and window) whose child is one of `pids`.
+    pub fn of_pids(&self, pids: &[u32]) -> Option<(u32, String)> {
+        let terms: Vec<(u32, Arc<Term>)> = lock(&self.inner.map).iter().map(|(k, v)| (*k, v.clone())).collect();
+        terms.iter().find_map(|(id, t)| {
+            let pid = (*lock(&t.pid))?;
+            pids.contains(&pid).then(|| (*id, lock(&t.meta).window.clone()))
+        })
+    }
 }
 
 fn end(terms: Vec<Arc<Term>>, grace: Duration) {
@@ -288,6 +306,32 @@ impl ShutdownHook for Terms {
         self.count()
     }
 
+    fn live_in(&self, label: &str) -> usize {
+        self.ids_in(label).len()
+    }
+
+    fn hand_over(&self, from: Option<&str>, to: &str) -> Vec<u32> {
+        let moved: Vec<u32> = self
+            .list()
+            .into_iter()
+            .filter(|t| t.window.as_deref() != Some(to) && from.is_none_or(|f| t.window.as_deref() == Some(f)))
+            .map(|t| t.id)
+            .collect();
+        for id in &moved {
+            let _ = self.set_window(*id, to);
+        }
+        moved
+    }
+
+    fn end_in(&self, label: &str) {
+        let terms: Vec<Arc<Term>> = self
+            .ids_in(label)
+            .into_iter()
+            .filter_map(|id| self.remove(id))
+            .collect();
+        end(terms, procs::GRACE);
+    }
+
     fn shutdown(&self) {
         self.kill_all(procs::GRACE_ON_EXIT);
     }
@@ -296,6 +340,10 @@ impl ShutdownHook for Terms {
 impl TermPids for Terms {
     fn pids(&self) -> Vec<u32> {
         self.running_pids()
+    }
+
+    fn tab_of(&self, pids: &[u32]) -> Option<(u32, String)> {
+        self.of_pids(pids)
     }
 }
 
@@ -496,6 +544,28 @@ mod tests {
         }
         assert_eq!(terms.live_count(), 2);
         terms.kill_all(procs::GRACE_ON_EXIT);
+        assert_eq!(terms.live_count(), 0);
+    }
+
+    #[test]
+    fn windows_hand_over_and_end_their_terminals() {
+        let terms = Terms::default();
+        let _cleanup = Cleanup(terms.clone());
+        let script = if cfg!(windows) {
+            "ping -n 60 127.0.0.1 >NUL"
+        } else {
+            "sleep 60"
+        };
+        let a = spawn(&terms, shell(script), &Recorder::default());
+        let b = spawn(&terms, shell(script), &Recorder::default());
+        terms.set_window(b.id, "win-2").unwrap();
+        assert_eq!((terms.live_in("main"), terms.live_in("win-2")), (1, 1));
+        assert_eq!(terms.of_pids(&[b.pid.unwrap()]), Some((b.id, "win-2".to_string())));
+        // into the main window: only what is elsewhere moves
+        assert_eq!(terms.hand_over(None, "main"), vec![b.id]);
+        assert_eq!(terms.ids_in("main"), vec![a.id, b.id]);
+        assert_eq!(terms.hand_over(Some("main"), "win-3"), vec![a.id, b.id]);
+        terms.end_in("win-3");
         assert_eq!(terms.live_count(), 0);
     }
 }

@@ -1,4 +1,4 @@
-/* Terminal tabs (tab strip in #tabstrip-slot, panes in #terminal-root) and the pop-out window. */
+/* Terminal tabs (tab strip in #tabstrip-slot, panes in #terminal-root). */
 
 /* ---------- tab strip ---------- */
 /* The active tab joins the panel below it, like a folder tab: the strip overlaps the panel's top border by
@@ -136,6 +136,25 @@ html.layout-docked:not(.mode-terminal) .term-pill {
 .term-tab.active {
   color: var(--text);
 }
+/* dragging a tab: it follows the pointer above the others, which slide aside to make room */
+.term-tab.dragging {
+  z-index: 2;
+  cursor: grabbing;
+  transition: none;
+}
+.term-tab.making-room {
+  transition: transform 0.18s var(--ease);
+}
+.term-tabs.dragging-tab .term-pill {
+  opacity: 0;
+}
+/* off the strip: dropping it moves the tab to another window */
+.term-tab.torn {
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: var(--shadow-pop);
+  opacity: 0.92;
+}
 .term-tab.active > svg {
   color: var(--accent);
 }
@@ -251,13 +270,4 @@ html.mode-terminal .term-tab.active {
   inset: 0;
   padding: 8px 4px 4px 10px;
   background: var(--term-bg);
-}
-
-/* ---------- pop-out window ---------- */
-body.term-popout {
-  background: var(--term-bg);
-}
-#popout-root {
-  position: fixed;
-  inset: 0;
 }

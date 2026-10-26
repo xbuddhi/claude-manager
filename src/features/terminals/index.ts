@@ -1,27 +1,34 @@
 // Terminal tabs: claude sessions in xterms over PTYs, in tabs next to the pinned Home tab (Windows app:
 // ClaudeManager.ps1 "terminal tabs"). Handles the bus events "launch" (a tab here, or a terminal window of
-// the OS per settings.openIn) and "terminal:show", the tab commands and keys, file drops, pop-out windows,
-// and the question asked when the app closes while terminals run.
+// the OS per settings.openIn) and "terminal:show", the tab commands and keys, file drops, and the
+// questions asked when the app or this window closes while terminals run.
 //
-// Terminals outlive the page: after a reload the tabs come back from pty_list (nothing is killed), and a
-// pop-out window gives its terminal back with "Move back to main window".
+// Every app window has its own tabs, like browser windows (core/window.ts). Tabs move between windows
+// (dragged out of the strip, or "Move to ..." in their menu); their terminals keep running and the window
+// they go to takes them over. Opening a session that is open in another window brings that tab forward.
+// Terminals outlive the page: after a reload the tabs come back from pty_list (nothing is killed).
 
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { Point } from "../../bindings/Point";
 import type { PtyExit } from "../../bindings/PtyExit";
 import type { PtyInfo } from "../../bindings/PtyInfo";
 import type { QuitDecision } from "../../bindings/QuitDecision";
+import type { WindowDecision } from "../../bindings/WindowDecision";
+import type { WindowInfo } from "../../bindings/WindowInfo";
 import { call, listen } from "../../core/api";
 import { emit, type LaunchRequest, on } from "../../core/bus";
 import { registerCommand } from "../../core/commands";
 import { $ } from "../../core/dom";
-import { leaf } from "../../core/format";
+import { leaf, plural } from "../../core/format";
 import { modalOpen, registerShortcut } from "../../core/keyboard";
 import { describeError, log } from "../../core/log";
 import { settleIn } from "../../core/motion";
 import { profileName } from "../../core/profiles";
 import { settings } from "../../core/settings";
 import { store, type TermInfo } from "../../core/store";
+import { isMainWindow, MAIN_WINDOW, windowLabel } from "../../core/window";
 import { ask, choose } from "../../ui/dialog";
 import { type MenuItem, showMenu } from "../../ui/menu";
 import { toast } from "../../ui/toast";
@@ -38,7 +45,7 @@ import "./terminals.css";
 /** A tab with its xterm. Presentation-only fields stay here, not in the store. */
 interface Tab extends TermInfo {
   view: TermView;
-  /** Closed (or moved to a pop-out window) while its terminal was still starting. */
+  /** Closed (or moved to another window) while its terminal was still starting. */
   closing: boolean;
 }
 
@@ -115,26 +122,98 @@ async function closeTab(tab: Tab, confirm = true) {
   removeTab(tab);
 }
 
-async function popOut(tab: Tab) {
-  if (tab.ptyId === null || tab.exited || tab.closing) return;
-  const res = await call("pty_popout", { id: tab.ptyId });
-  if (res.ok && !tab.closing) removeTab(tab);
+/** Closes several tabs with one question for the ones still running. */
+async function closeTabs(list: Tab[]) {
+  const running = list.filter((t) => !t.exited && !t.closing);
+  if (running.length) {
+    const ok = await ask(
+      `Close ${running.length} terminal${running.length === 1 ? "" : "s"}?\n\nThe Claude sessions are saved and can be resumed later.`,
+      "Close terminals",
+    );
+    if (!ok) return;
+  }
+  for (const t of list) await closeTab(t, false);
 }
 
-function tabMenu(tab: Tab): MenuItem[] {
-  return [
+const movable = (t: Tab) => t.ptyId !== null && !t.exited && !t.closing;
+
+/**
+ * Moves tabs to window `to`, else to the window under the screen point `at`, else to a new window. Their
+ * terminals keep running; the other window takes them over. Another window left with no tabs closes, like
+ * a browser window whose last tab was dragged out.
+ */
+async function moveTabs(list: Tab[], where: { to?: string; at?: Point } = {}) {
+  const going = list.filter(movable);
+  if (!going.length) return;
+  const res = await call("pty_move", { ids: going.map((t) => t.ptyId as number), ...where });
+  if (!res.ok) return;
+  for (const t of going) if (!t.closing) removeTab(t);
+  if (!tabs.length && !isMainWindow()) void getCurrentWindow().close();
+}
+
+/** "main window", "Window 2", ... */
+function windowName(w: WindowInfo): string {
+  return w.label === MAIN_WINDOW ? "main window" : `Window ${w.number}`;
+}
+
+async function tabMenu(tab: Tab): Promise<MenuItem[]> {
+  const wins = await call("window_list", undefined, { quiet: true });
+  const others = wins.ok ? wins.value.filter((w) => !w.current) : [];
+  const i = tabs.indexOf(tab);
+  const right = tabs.slice(i + 1);
+  const rest = tabs.filter((t) => t !== tab);
+  const canMove = movable(tab);
+  const items: MenuItem[] = [
     { label: "Open folder in VS Code", icon: "vscode", run: () => void openInCode([tab.dir]) },
     { label: folderLabel(), icon: "folder", run: () => void openFolder(tab.dir) },
     { label: "Copy folder path", icon: "copy", run: () => void copyText(tab.dir) },
     { kind: "separator" },
-    {
-      label: "Pop out to its own window",
-      icon: "popout",
-      disabled: tab.ptyId === null || tab.exited,
-      run: () => void popOut(tab),
-    },
-    { label: "Close terminal", icon: "close", danger: true, shortcut: "CmdOrCtrl+W", run: () => void closeTab(tab) },
   ];
+  if (tab.sessionId) {
+    const sessionId = tab.sessionId;
+    items.push({
+      label: "Fork as a new session",
+      icon: "fork",
+      run: () =>
+        emit("launch", { dir: tab.dir, profile: tab.profile, mode: "embed", resume: { sessionId, fork: true } }),
+    });
+  }
+  items.push(
+    { label: "Move to new window", icon: "popout", disabled: !canMove, run: () => void moveTabs([tab]) },
+    ...others.map(
+      (w): MenuItem => ({
+        label: `Move to ${windowName(w)}`,
+        icon: "attach",
+        detail: plural(w.terminals, "tab"),
+        disabled: !canMove,
+        run: () => void moveTabs([tab], { to: w.label }),
+      }),
+    ),
+    { kind: "separator" },
+    { label: "Close terminal", icon: "close", danger: true, shortcut: "CmdOrCtrl+W", run: () => void closeTab(tab) },
+    { label: "Close other tabs", disabled: !rest.length, run: () => void closeTabs(rest) },
+    { label: "Close tabs to the right", disabled: !right.length, run: () => void closeTabs(right) },
+  );
+  return items;
+}
+
+/** Moves a tab one place left or right (Ctrl+Shift+PageUp / PageDown, as in a browser). */
+function shiftTab(tab: Tab | null, by: -1 | 1) {
+  if (!tab) return;
+  const i = tabs.indexOf(tab);
+  const j = i + by;
+  if (i < 0 || j < 0 || j >= tabs.length) return;
+  reorder(tab, j);
+}
+
+/** Puts a tab at index `to` of the strip. */
+function reorder(tab: Tab, to: number) {
+  const i = tabs.indexOf(tab);
+  if (i < 0 || i === to) return;
+  tabs.splice(i, 1);
+  tabs.splice(Math.max(0, Math.min(to, tabs.length)), 0, tab);
+  publish();
+  renderStrip();
 }
 
 /** The terminal's own lines when it ends: why, if it failed to start claude. */
@@ -154,12 +233,7 @@ function newTab(info: Pick<TermInfo, "title" | "dir" | "profile" | "sessionId">)
   const view = new TermView(panes, {
     onTitle: (title) => setTitle(tab, title),
     menuItems: () => [
-      {
-        label: "Pop out to its own window",
-        icon: "popout",
-        disabled: tab.ptyId === null || tab.exited,
-        run: () => void popOut(tab),
-      },
+      { label: "Move to new window", icon: "popout", disabled: !movable(tab), run: () => void moveTabs([tab]) },
       { label: "Close terminal", icon: "close", danger: true, run: () => void closeTab(tab) },
     ],
   });
@@ -223,7 +297,17 @@ function launch(req: LaunchRequest) {
     // already open here? go to it
     const open = tabs.find((t) => t.sessionId === resume.sessionId && !t.exited);
     if (open) return showTab(open);
+    // open in another window: that window comes forward with it (two tabs on one session would clash)
+    void call("pty_focus_session", { sessionId: resume.sessionId }, { quiet: true }).then((res) => {
+      if (!(res.ok && res.value)) openTab(req, profile);
+    });
+    return;
   }
+  openTab(req, profile);
+}
+
+function openTab(req: LaunchRequest, profile: string) {
+  const resume = req.resume;
   const tab = newTab({
     title: defaultTitle(resume, req.label),
     dir: req.dir,
@@ -267,7 +351,7 @@ function bindTab(tab: Tab, info: PtyInfo) {
   renderStrip();
 }
 
-/** Takes a running terminal over (after a reload, or back from a pop-out window). */
+/** Takes a running terminal over (after a reload, or moved here from another window). */
 async function adopt(info: PtyInfo, front: boolean): Promise<void> {
   if (tabs.some((t) => t.ptyId === info.id)) return;
   const tab = newTab({ title: info.title, dir: info.dir, profile: info.profile, sessionId: info.sessionId });
@@ -289,12 +373,32 @@ async function adopt(info: PtyInfo, front: boolean): Promise<void> {
   bindTab(tab, res.value);
 }
 
-/** Terminals the previous page had open come back as tabs; Home stays in front. */
+/**
+ * Terminals this window had open come back as tabs (after a reload), Home staying in front; the main window
+ * also takes terminals whose window is gone. A window opened for moved tabs shows the first one.
+ */
 async function restore() {
   const res = await call("pty_list", undefined, { quiet: true });
   if (!res.ok) return;
+  const me = windowLabel();
+  const main = me === MAIN_WINDOW;
   for (const info of res.value) {
-    if (info.window === null || info.window === "main") await adopt(info, false);
+    if (info.window === me || (main && info.window === null)) await adopt(info, false);
+  }
+  const first = tabs[0];
+  if (!main && first && !active) showTab(first);
+}
+
+/** Terminals moved here from another window, the first in front. */
+async function takeMoved(ids: number[]) {
+  const res = await call("pty_list", undefined, { quiet: true });
+  if (!res.ok) return;
+  let front = true;
+  for (const id of ids) {
+    const info = res.value.find((t) => t.id === id);
+    if (!info) continue;
+    await adopt(info, front);
+    front = false;
   }
 }
 
@@ -375,6 +479,18 @@ function registerCommands() {
   registerShortcut({ id: "session:new", keys: "CmdOrCtrl+T" });
   registerShortcut({ id: "tab:next", keys: ["Ctrl+Tab", "Cmd+Shift+]"], inTerminal: true });
   registerShortcut({ id: "tab:prev", keys: ["Ctrl+Shift+Tab", "Cmd+Shift+["], inTerminal: true });
+  registerCommand({ id: "tab:moveLeft", title: "Move Tab Left", enabled: focused, run: () => shiftTab(active, -1) });
+  registerCommand({ id: "tab:moveRight", title: "Move Tab Right", enabled: focused, run: () => shiftTab(active, 1) });
+  registerShortcut({ id: "tab:moveLeft", keys: "CmdOrCtrl+Shift+PageUp", inTerminal: true });
+  registerShortcut({ id: "tab:moveRight", keys: "CmdOrCtrl+Shift+PageDown", inTerminal: true });
+  registerCommand({
+    id: "tab:moveToNewWindow",
+    title: "Move Tab to New Window",
+    enabled: () => active !== null && focused(),
+    run: () => {
+      if (active) void moveTabs([active]);
+    },
+  });
   for (let n = 1; n <= 9; n++) {
     registerCommand({ id: `tab:select${n}`, title: `Tab ${n}`, enabled: focused, run: () => selectNth(n) });
     registerShortcut({ id: `tab:select${n}`, keys: `CmdOrCtrl+${n}`, inTerminal: true });
@@ -394,6 +510,20 @@ async function onCloseRequested(n: number) {
     { cancel: "cancel", primary: "keep", kind: "warning" },
   );
   await call("app_quit_decision", { decision });
+}
+
+/** This window closes while other windows stay: its running terminals move to another window or end. */
+async function onWindowCloseRequested(n: number) {
+  const decision = await choose<WindowDecision>(
+    `${n} terminal${n === 1 ? " is" : "s are"} open in this window\nMove ${n === 1 ? "it" : "them"} to another window, or close ${n === 1 ? "it" : "them"}? Closing ends ${n === 1 ? "it" : "them"}; the sessions stay saved and can be resumed.`,
+    [
+      { id: "cancel", label: "Cancel" },
+      { id: "close", label: "Close terminals", kind: "danger" },
+      { id: "move", label: "Move to other window", kind: "primary" },
+    ],
+    { cancel: "cancel", primary: "move", kind: "warning" },
+  );
+  await call("window_close_decision", { decision });
 }
 
 /** Files dropped while a terminal tab is in front are pasted as shell-quoted paths. */
@@ -421,13 +551,24 @@ export function mount(): void {
       const tab = tabs.find((t) => t.id === id);
       if (tab) void closeTab(tab);
     },
-    popOut: (id) => {
+    moveOut: (id) => {
       const tab = tabs.find((t) => t.id === id);
-      if (tab) void popOut(tab);
+      if (tab) void moveTabs([tab]);
+    },
+    reorder: (id, before) => {
+      const tab = tabs.find((t) => t.id === id);
+      if (!tab) return;
+      const target = before === null ? undefined : tabs.find((t) => t.id === before);
+      const rest = tabs.filter((t) => t !== tab);
+      reorder(tab, target ? rest.indexOf(target) : rest.length);
+    },
+    tearOff: (id, at) => {
+      const tab = tabs.find((t) => t.id === id);
+      if (tab) void moveTabs([tab], { at });
     },
     menu: (id, at) => {
       const tab = tabs.find((t) => t.id === id);
-      if (tab) void showMenu(tabMenu(tab), { at, label: "Terminal tab" });
+      if (tab) void tabMenu(tab).then((items) => showMenu(items, { at, label: "Terminal tab" }));
     },
   });
 
@@ -447,10 +588,13 @@ export function mount(): void {
   if (isTauri()) installDrops();
 
   void listen("app:close-requested", ({ terminals }) => void onCloseRequested(terminals));
-  void listen("pty-returned", async (id) => {
-    const res = await call("pty_list", undefined, { quiet: true });
-    const info = res.ok ? res.value.find((t) => t.id === id) : undefined;
-    if (info) await adopt(info, true);
+  void listen("window:close-requested", ({ terminals }) => void onWindowCloseRequested(terminals));
+  void listen("pty-moved", (ids) => void takeMoved(ids));
+  void listen("pty-focus", (id) => {
+    const tab = tabs.find((t) => t.ptyId === id);
+    if (!tab) return;
+    if (tab !== active) showTab(tab);
+    tab.view.focus();
   });
   renderStrip();
   void restore();

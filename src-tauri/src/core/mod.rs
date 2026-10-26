@@ -15,6 +15,7 @@ pub mod spawn;
 pub mod terms;
 pub mod types;
 pub mod webview;
+pub mod windows;
 
 use error::AppResult;
 use tauri::{App, Manager, Runtime};

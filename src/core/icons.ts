@@ -30,6 +30,8 @@ export const icons = {
   check: svg(`<path d="M3.5 8.5l3 3 6-7"/>`),
   trash: svg(`<path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9M6.8 7v4.5M9.2 7v4.5"/>`),
   vscode: svg(`<path d="M11.5 1.8l2.5 1.2v10l-2.5 1.2-7-6.2-2.5 2V6l2.5 2z M11.5 4.8v6.4L7.4 8z"/>`),
+  /** Attach: back into the main window (the arrow points into the box). */
+  attach: svg(`<path d="M13.5 2.5L8.5 7.5M8.5 3.5v4h4M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/>`),
   popout: svg(`<path d="M9 2.5h4.5V7M13.5 2.5L8 8M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/>`),
   search: svg(`<circle cx="7" cy="7" r="4.5"/><path d="M10.3 10.3l3.2 3.2"/>`),
   more: svg(`<circle cx="3.5" cy="8" r=".6"/><circle cx="8" cy="8" r=".6"/><circle cx="12.5" cy="8" r=".6"/>`),

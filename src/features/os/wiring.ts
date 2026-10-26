@@ -8,6 +8,7 @@ import { emit } from "../../core/bus";
 import { samePath } from "../../core/paths";
 import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
+import { isMainWindow } from "../../core/window";
 import { refreshIndex } from "../index-data/api";
 
 /** Adds `dir` to the pinned folders unless it is there already. */
@@ -30,6 +31,7 @@ async function takeOpenRequests(): Promise<void> {
 }
 
 export async function installOpenRequests(): Promise<void> {
+  if (!isMainWindow()) return;
   await listen("app:open-request", () => void takeOpenRequests());
   // requests made before the page listened (a first launch from the Explorer menu)
   await takeOpenRequests();

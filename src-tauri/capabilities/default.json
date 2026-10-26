@@ -4,7 +4,7 @@
   "description": "What the app's own pages may call. Kept minimal: no opener, shell or fs access from the webview.",
   "windows": [
     "main",
-    "term-*"
+    "win-*"
   ],
   "permissions": [
     "core:event:default",

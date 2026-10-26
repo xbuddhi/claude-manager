@@ -1,4 +1,4 @@
-// One xterm bound to one backend terminal, used by the main window's tabs and by pop-out windows.
+// One xterm bound to one backend terminal, shown in a tab of an app window.
 // - Options per platform (fonts, Option as Meta, ConPTY build), theme from the colour tokens (live), reduced
 //   motion, unicode 11 widths, fit; the WebGL renderer only while the terminal is in front.
 // - Keys per "Terminal input": copy/paste modifiers, Shift+Enter, the macOS Cmd editing keys.
@@ -140,7 +140,7 @@ const GL_RETRY_MS = 1500;
 export interface TermViewOptions {
   /** The terminal named its chat (cleaned, at most 4 times a second). */
   onTitle?: (title: string) => void;
-  /** Extra items at the end of the right-click menu (pop out, close, ...). */
+  /** Extra items at the end of the right-click menu (detach, close, ...). */
   menuItems?: () => MenuItem[];
 }
 
@@ -158,7 +158,7 @@ export class TermView {
   private fit = new FitAddon();
   private gl: WebglAddon | null = null;
   private glRetry: ReturnType<typeof setTimeout> | undefined;
-  /** In front (main window: the active tab; a pop-out: always). */
+  /** In front (the active tab of its window). */
   private active = false;
   private ptyId: number | null = null;
   private flow = new Watermark();
@@ -319,7 +319,7 @@ export class TermView {
       return;
     }
     this.fitNow();
-    // the PTY may still have the size of another window (pop-out, before a reload)
+    // the PTY may still have the size of another window (it moved here, or before a reload)
     this.resize(this.size);
     this.startGl();
     this.focus();

@@ -1,4 +1,4 @@
-//! The most recent output of a terminal, replayed when another window attaches to it (pop-out, page reload).
+//! The most recent output of a terminal, replayed when another window attaches to it (a moved tab, a page reload).
 
 use std::collections::VecDeque;
 

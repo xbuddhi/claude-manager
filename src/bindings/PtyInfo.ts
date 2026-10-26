@@ -21,7 +21,7 @@ sessionId: string | null,
  */
 title: string, 
 /**
- * Label of the window showing the terminal ("main", "term-<id>"); null when that window is gone
- * (e.g. the page was reloaded or a pop-out window closed), so anyone may take it.
+ * Label of the window showing the terminal ("main", "win-<n>"); null when that window is gone, so
+ * the main window takes it.
  */
 window: string | null, };

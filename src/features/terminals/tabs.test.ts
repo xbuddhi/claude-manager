@@ -4,7 +4,14 @@ import { Strip, type StripHandlers } from "./tabs";
 function setup() {
   const slot = document.createElement("div");
   document.body.append(slot);
-  const h: StripHandlers = { select: vi.fn(), close: vi.fn(), popOut: vi.fn(), menu: vi.fn() };
+  const h: StripHandlers = {
+    select: vi.fn(),
+    close: vi.fn(),
+    moveOut: vi.fn(),
+    reorder: vi.fn(),
+    tearOff: vi.fn(),
+    menu: vi.fn(),
+  };
   return { slot, h, strip: new Strip(slot, h) };
 }
 
@@ -42,13 +49,31 @@ describe("tab strip", () => {
     tab.querySelector<HTMLElement>('[data-act="close"]')?.click();
     expect(h.close).toHaveBeenCalledWith(1);
     tab.querySelector<HTMLElement>('[data-act="pop"]')?.click();
-    expect(h.popOut).toHaveBeenCalledWith(1);
+    expect(h.moveOut).toHaveBeenCalledWith(1);
     slot.querySelector<HTMLElement>(".term-home")?.click();
     expect(h.select).toHaveBeenCalledWith(null);
     tab.dispatchEvent(new MouseEvent("auxclick", { button: 1, bubbles: true }));
     expect(h.close).toHaveBeenCalledTimes(2);
     tab.dispatchEvent(new MouseEvent("contextmenu", { clientX: 5, clientY: 6, bubbles: true }));
     expect(h.menu).toHaveBeenCalledWith(1, { x: 5, y: 6 });
+  });
+
+  it("moves a tab dragged off the strip to another window", () => {
+    const { slot, h, strip } = setup();
+    strip.render(tabs, 1);
+    const tab = slot.querySelector<HTMLElement>('.term-tab[data-key="1"]') as HTMLElement;
+    const at = (type: string, x: number, y: number) =>
+      tab.dispatchEvent(new PointerEvent(type, { pointerId: 1, button: 0, clientX: x, clientY: y, bubbles: true }));
+    at("pointerdown", 10, 10);
+    at("pointermove", 14, 300);
+    expect(tab.classList.contains("torn")).toBe(true);
+    at("pointerup", 14, 300);
+    expect(h.tearOff).toHaveBeenCalledTimes(1);
+    expect(h.tearOff).toHaveBeenCalledWith(1, expect.anything());
+    expect(h.reorder).not.toHaveBeenCalled();
+    // the click that ends the drag does not select
+    tab.click();
+    expect(h.select).not.toHaveBeenCalled();
   });
 
   it("renames a tab in place", () => {
