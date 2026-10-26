@@ -40,6 +40,9 @@ function trackFocus() {
   window.addEventListener("focus", () => apply(true));
   window.addEventListener("blur", () => apply(false));
   apply(document.hasFocus());
+  const hidden = () => document.documentElement.classList.toggle("page-hidden", document.hidden);
+  document.addEventListener("visibilitychange", hidden);
+  hidden();
 }
 
 const GLYPH = {

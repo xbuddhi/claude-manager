@@ -46,6 +46,19 @@ impl Procs {
         f(&sys)
     }
 
+    /// Refreshes every process without reading command lines, then reads the command lines of `cmd_for`
+    /// only. The live scan runs every 2 s while claude starts many short helper processes: reading each new
+    /// one's command line was most of the scan's cost.
+    pub fn with_cmd_of<T>(&self, cmd_for: &[Pid], f: impl FnOnce(&System) -> T) -> T {
+        let mut sys = lock(&self.sys);
+        sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+        if !cmd_for.is_empty() {
+            let kind = ProcessRefreshKind::nothing().with_cmd(UpdateKind::OnlyIfNotSet);
+            sys.refresh_processes_specifics(ProcessesToUpdate::Some(cmd_for), false, kind);
+        }
+        f(&sys)
+    }
+
     pub fn alive(&self, pid: u32) -> bool {
         let pid = Pid::from_u32(pid);
         self.with(ProcessesToUpdate::Some(&[pid]), |s| s.process(pid).is_some())

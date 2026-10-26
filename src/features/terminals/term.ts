@@ -103,7 +103,7 @@ function watch() {
   reduceMotion.addEventListener("change", () => {
     for (const v of views) {
       v.term.options.smoothScrollDuration = smoothScroll();
-      v.term.options.cursorBlink = !reduceMotion.matches;
+      v.term.options.cursorBlink = !reduceMotion.matches && document.hasFocus();
     }
   });
   store.select(
@@ -123,6 +123,12 @@ function watch() {
     for (const v of views) v.wake();
   };
   window.addEventListener("focus", wake);
+  const blink = () => {
+    const on = !reduceMotion.matches && document.hasFocus();
+    for (const v of views) v.term.options.cursorBlink = on;
+  };
+  window.addEventListener("focus", blink);
+  window.addEventListener("blur", blink);
   window.addEventListener("pageshow", wake);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") wake();
@@ -183,7 +189,7 @@ export class TermView {
       fontFamily: fontFamily(),
       fontSize: mac ? 12 : 13,
       lineHeight: 1.15,
-      cursorBlink: !reduce,
+      cursorBlink: !reduce && document.hasFocus(),
       scrollback: settings().scrollback,
       smoothScrollDuration: smoothScroll(),
       macOptionIsMeta: mac && settings().macOptionIsMeta,
@@ -216,6 +222,13 @@ export class TermView {
     }
     this.pane.addEventListener("contextmenu", (e) => {
       e.preventDefault();
+      // Windows Terminal style: right-click copies the selection, or pastes when nothing is selected;
+      // Shift+right-click (and every right-click on macOS) opens the menu
+      if (!isMac() && !e.shiftKey) {
+        if (this.term.hasSelection()) this.copy();
+        else void this.pasteClipboard();
+        return;
+      }
       void showMenu(this.menu(), { at: { x: e.clientX, y: e.clientY }, label: "Terminal" });
     });
     this.fitNow();

@@ -2,7 +2,6 @@
 
 use crate::core::procs::Procs;
 use std::collections::{HashMap, HashSet};
-use sysinfo::ProcessesToUpdate;
 
 #[derive(Clone, Debug, Default)]
 pub struct Proc {
@@ -24,7 +23,8 @@ pub struct Snapshot {
 impl Snapshot {
     /// Reads every process, with the command lines of `cmd_for`.
     pub fn take(procs: &Procs, cmd_for: &HashSet<u32>) -> Self {
-        procs.with(ProcessesToUpdate::All, |sys| Snapshot {
+        let wanted: Vec<sysinfo::Pid> = cmd_for.iter().map(|&p| sysinfo::Pid::from_u32(p)).collect();
+        procs.with_cmd_of(&wanted, |sys| Snapshot {
             procs: sys
                 .processes()
                 .iter()

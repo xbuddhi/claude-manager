@@ -119,3 +119,14 @@ input::-webkit-search-cancel-button {
     animation: none !important;
   }
 }
+
+/* Endless animations (live dots, loading pulses) stop while the window is in the background or hidden:
+   each one keeps the GPU drawing frames. */
+html.window-inactive *,
+html.window-inactive *::before,
+html.window-inactive *::after,
+html.page-hidden *,
+html.page-hidden *::before,
+html.page-hidden *::after {
+  animation-play-state: paused !important;
+}
