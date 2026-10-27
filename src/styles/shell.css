@@ -313,7 +313,8 @@ html.layout-classic.mode-terminal #sidebar-edge {
   min-height: 0;
 }
 html.mode-terminal #terminal-root {
-  display: block;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ---------- overlays: menus, popovers, dialogs, toasts ---------- */

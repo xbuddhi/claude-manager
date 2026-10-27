@@ -145,15 +145,38 @@ html.layout-docked:not(.mode-terminal) .term-pill {
 .term-tab.making-room {
   transition: transform 0.18s var(--ease);
 }
-.term-tabs.dragging-tab .term-pill {
-  opacity: 0;
-}
-/* off the strip: dropping it moves the tab to another window */
+/* off the strip (dropping it moves the tab to another window): its place empties while a floating copy
+   follows the pointer */
 .term-tab.torn {
-  border-radius: 8px;
+  visibility: hidden;
+}
+.term-tabs.tearing-active .term-pill {
+  opacity: 0;
+  transition: opacity 0.12s var(--ease);
+}
+.term-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  color: var(--text);
   background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
   box-shadow: var(--shadow-pop);
-  opacity: 0.92;
+  pointer-events: none;
+  opacity: 0.96;
+  scale: 1.02;
+  transition:
+    opacity 0.22s var(--ease),
+    scale 0.22s var(--ease);
+}
+.term-ghost .term-btn {
+  display: none;
+}
+.term-ghost.dropped {
+  opacity: 0;
+  scale: 0.9;
 }
 .term-tab.active > svg {
   color: var(--accent);
@@ -264,6 +287,85 @@ html.mode-terminal .term-tab.active {
   border: 1px solid var(--border);
   background: var(--term-bg);
   overflow: hidden;
+}
+/* the session's folder, branch and shortcuts, over the terminal (on its colours, which can be the other
+   theme than the app's) */
+.ses-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--term-fg) 10%, transparent);
+  --text: var(--term-fg);
+  --muted: color-mix(in srgb, var(--term-fg) 60%, transparent);
+  --ctrl-hover: color-mix(in srgb, var(--term-fg) 10%, transparent);
+  color: var(--muted);
+  font: 12px var(--font-ui);
+}
+.ses-bar > svg,
+.ses-git > svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+}
+.ses-path,
+.ses-git {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.15s var(--ease);
+}
+.ses-path {
+  flex: 0 1 auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.ses-git {
+  flex: 0 1 auto;
+  color: var(--muted);
+}
+.ses-git-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ses-path:hover,
+.ses-git:hover {
+  background: var(--ctrl-hover);
+}
+.ses-path:active,
+.ses-git:active {
+  filter: brightness(0.86);
+}
+.ses-gap {
+  flex: 1;
+}
+.ses-bar .btn {
+  height: 24px;
+  color: var(--muted);
+}
+.ses-bar .btn:hover {
+  color: var(--text);
+}
+.term-panes {
+  position: relative;
+  flex: 1;
+  min-height: 0;
 }
 .term-pane {
   position: absolute;

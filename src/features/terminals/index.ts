@@ -20,7 +20,7 @@ import type { WindowInfo } from "../../bindings/WindowInfo";
 import { call, listen } from "../../core/api";
 import { emit, type LaunchRequest, on } from "../../core/bus";
 import { registerCommand } from "../../core/commands";
-import { $ } from "../../core/dom";
+import { $, h } from "../../core/dom";
 import { leaf, plural } from "../../core/format";
 import { modalOpen, registerShortcut } from "../../core/keyboard";
 import { describeError, log } from "../../core/log";
@@ -38,6 +38,7 @@ import { startProfile } from "../profiles/api";
 import { newSessionFromHome } from "../sessions/api";
 import { defaultTitle, quotePaths, tabSub } from "./logic";
 import "./pty";
+import { SessionBar } from "./sessionbar";
 import { Strip } from "./tabs";
 import { TermView } from "./term";
 import "./terminals.css";
@@ -54,6 +55,7 @@ let active: Tab | null = null; // null = Home
 let nextId = 1;
 let strip: Strip;
 let panes: HTMLElement;
+let bar: SessionBar;
 
 /** Mirrors the tabs into the store for other features (and the shell, which swaps workspace and terminals). */
 function publish() {
@@ -71,6 +73,7 @@ function publish() {
     })),
     activeTerminal: active?.id ?? null,
   });
+  bar.show(active?.dir ?? null);
 }
 
 function renderStrip() {
@@ -540,7 +543,10 @@ function installDrops() {
 // ---------- mount ----------
 
 export function mount(): void {
-  panes = $("#terminal-root");
+  // the session bar over the terminals' panes
+  bar = new SessionBar();
+  panes = h("div", { class: "term-panes" });
+  $("#terminal-root").append(bar.el, panes);
   strip = new Strip($("#tabstrip-slot"), {
     select: (id) => {
       const tab = id === null ? null : (tabs.find((t) => t.id === id) ?? undefined);
@@ -564,7 +570,7 @@ export function mount(): void {
     },
     tearOff: (id, at) => {
       const tab = tabs.find((t) => t.id === id);
-      if (tab) void moveTabs([tab], { at });
+      return tab ? moveTabs([tab], { at }) : undefined;
     },
     menu: (id, at) => {
       const tab = tabs.find((t) => t.id === id);

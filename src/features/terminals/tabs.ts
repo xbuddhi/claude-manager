@@ -10,7 +10,7 @@
 import { html, setHtml } from "../../core/dom";
 import { plural } from "../../core/format";
 import { icon } from "../../core/icons";
-import { animate, Spring } from "../../core/motion";
+import { animate, reduceMotion, Spring } from "../../core/motion";
 import { showMenu } from "../../ui/menu";
 import { layoutTabs, TAB_GAP } from "./logic";
 
@@ -30,7 +30,7 @@ export interface StripHandlers {
   /** Dragged along the strip: put it before tab `before` (null = at the end). */
   reorder(id: number, before: number | null): void;
   /** Dragged off the strip and dropped at screen point `at` (CSS screen pixels). */
-  tearOff(id: number, at: { x: number; y: number }): void;
+  tearOff(id: number, at: { x: number; y: number }): Promise<unknown> | undefined;
   menu(id: number, at: { x: number; y: number }): void;
 }
 
@@ -40,6 +40,8 @@ const HOME_GAP = 10;
 const DRAG_START = 6;
 /** How far above or below the strip a dragged tab must go to leave it (for another window). */
 const TEAR_DISTANCE = 48;
+/** How long tabs take to glide to new places. */
+const SLIDE_MS = 220;
 
 interface Drag {
   id: number;
@@ -47,9 +49,16 @@ interface Drag {
   node: HTMLElement;
   startX: number;
   startY: number;
+  /** Where in the tab it was grabbed. */
+  grabX: number;
+  grabY: number;
   dragging: boolean;
+  /** Let go; waiting for the tab to leave for another window. */
+  released: boolean;
   /** Off the strip: dropping it moves the tab to another window. */
   torn: boolean;
+  /** The floating copy that follows the pointer while it is off the strip. */
+  ghost: HTMLElement | null;
   /** Left edges and widths of the shown tabs (ids in order) when the drag started. */
   slots: Array<{ id: number; left: number; width: number }>;
   /** Where it would land: before this tab id, null = at the end. */
@@ -102,8 +111,12 @@ export class Strip {
     this.root.addEventListener("pointerdown", (e) => this.onDown(e));
     this.root.addEventListener("pointermove", (e) => this.onMove(e));
     this.root.addEventListener("pointerup", (e) => this.onUp(e));
-    this.root.addEventListener("pointercancel", () => this.endDrag());
-    this.root.addEventListener("lostpointercapture", () => this.endDrag());
+    // a drag let go off the strip ends when its tab has moved, not when the capture goes with the release
+    const cancel = () => {
+      if (!this.drag?.released) this.endDrag();
+    };
+    this.root.addEventListener("pointercancel", cancel);
+    this.root.addEventListener("lostpointercapture", cancel);
     new ResizeObserver(() => {
       // a different width can change how many tabs fit
       if (this.layoutKey() !== this.lastLayout) this.render(this.tabs, this.active);
@@ -113,6 +126,7 @@ export class Strip {
 
   /** Redraws the strip; hidden while there are no terminals. */
   render(tabs: StripTab[], active: number | null): void {
+    const from = this.lefts();
     this.endDrag();
     this.tabs = tabs;
     this.active = active;
@@ -150,6 +164,7 @@ export class Strip {
       if (!this.seen.has(t.id)) this.enter(t.id);
     }
     this.seen = new Set(tabs.map((t) => t.id));
+    this.slide(from);
     this.placePill(true);
   }
 
@@ -227,14 +242,19 @@ export class Strip {
     const id = this.tabId(target);
     const node = id === null ? null : this.node(id);
     if (id === null || !node) return;
+    const r = node.getBoundingClientRect();
     this.drag = {
       id,
       pointer: e.pointerId,
       node,
       startX: e.clientX,
       startY: e.clientY,
+      grabX: e.clientX - r.left,
+      grabY: e.clientY - r.top,
       dragging: false,
+      released: false,
       torn: false,
+      ghost: null,
       slots: [],
       before: null,
     };
@@ -242,7 +262,7 @@ export class Strip {
 
   private onMove(e: PointerEvent) {
     const d = this.drag;
-    if (!d || e.pointerId !== d.pointer) return;
+    if (!d || d.released || e.pointerId !== d.pointer) return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     if (!d.dragging) {
@@ -261,6 +281,7 @@ export class Strip {
       }));
       d.node.classList.add("dragging");
       this.root.classList.add("dragging-tab");
+      for (const s of d.slots) if (s.id !== d.id) this.node(s.id)?.classList.add("making-room");
     }
     const strip = this.root.getBoundingClientRect();
     const off =
@@ -269,13 +290,13 @@ export class Strip {
       e.clientX < 0 ||
       e.clientX > window.innerWidth;
     // only a tab that can move (a running terminal) leaves the strip
-    d.torn = off && !this.tabs.find((t) => t.id === d.id)?.exited;
-    d.node.classList.toggle("torn", d.torn);
-    if (d.torn) {
-      this.shiftOthers(d, null);
-      d.node.style.transform = `translate(${dx}px, ${dy}px)`;
-      return;
+    const torn = off && !this.tabs.find((t) => t.id === d.id)?.exited;
+    if (torn !== d.torn) this.setTorn(d, torn);
+    if (d.ghost) {
+      // the strip clips what leaves it: a floating copy follows the pointer instead
+      d.ghost.style.transform = `translate(${e.clientX - d.grabX}px, ${e.clientY - d.grabY}px)`;
     }
+    if (d.torn) return;
     // along the strip: kept inside it, the others make room
     const me = d.slots.find((s) => s.id === d.id);
     if (!me) return;
@@ -285,54 +306,153 @@ export class Strip {
     const max = (last ? last.left + last.width : me.left + me.width) - (me.left + me.width);
     const x = Math.max(min, Math.min(max, dx));
     d.node.style.transform = `translateX(${x}px)`;
+    if (d.id === this.active) this.pillAt(me.left + x, false);
     const center = me.left + x + me.width / 2;
     const others = d.slots.filter((s) => s.id !== d.id);
     const next = others.find((s) => center < s.left + s.width / 2);
     this.shiftOthers(d, next?.id ?? null);
   }
 
-  /** Slides the tabs between the dragged tab's place and `before` aside, to show where it lands. */
+  /** Off the strip (a floating copy follows the pointer, the gap closes) or back on it. */
+  private setTorn(d: Drag, torn: boolean) {
+    d.torn = torn;
+    d.node.classList.toggle("torn", torn);
+    this.root.classList.toggle("tearing-active", torn && d.id === this.active);
+    if (torn && !d.ghost) {
+      const ghost = d.node.cloneNode(true) as HTMLElement;
+      ghost.className = "term-tab term-ghost";
+      ghost.removeAttribute("data-key");
+      ghost.removeAttribute("data-tip");
+      ghost.style.width = `${d.node.offsetWidth}px`;
+      ghost.style.transform = "";
+      document.body.append(ghost);
+      d.ghost = ghost;
+    } else if (!torn && d.ghost) {
+      d.ghost.remove();
+      d.ghost = null;
+    }
+    this.shiftOthers(d, torn ? null : d.before);
+  }
+
+  /**
+   * Slides the other tabs to show where the dragged one lands (before tab `before`, null = at the end);
+   * while it is off the strip, the tabs after it close its gap.
+   */
   private shiftOthers(d: Drag, before: number | null) {
     d.before = before;
     const me = d.slots.findIndex((s) => s.id === d.id);
     const width = (d.slots[me]?.width ?? 0) + TAB_GAP;
     const others = d.slots.filter((s) => s.id !== d.id);
-    const landing = before === null ? others.length : others.findIndex((s) => s.id === before);
+    const landing = d.torn ? others.length : before === null ? others.length : others.findIndex((s) => s.id === before);
     others.forEach((s, i) => {
       const node = this.node(s.id);
       if (!node) return;
       // index among the others vs. among all: tabs past the dragged one shift left, then back right
       const was = i >= me ? i + 1 : i;
       const now = i >= landing ? i + 1 : i;
-      const shift = d.torn ? 0 : (now - was) * width;
+      const shift = (d.torn ? i - was : now - was) * width;
       node.style.transform = shift ? `translateX(${shift}px)` : "";
-      node.classList.add("making-room");
+      if (s.id === this.active) this.pillAt(s.left + shift, true);
     });
+  }
+
+  /** Moves the pill under the active tab while it (or the tabs around it) slide during a drag. */
+  private pillAt(x: number, animated: boolean) {
+    const draw = () => {
+      this.pill.style.transform = `translateX(${this.pillX.value}px)`;
+    };
+    if (animated) animate(this.pillX, x, draw);
+    else {
+      this.pillX.snap(x);
+      draw();
+    }
   }
 
   private onUp(e: PointerEvent) {
     const d = this.drag;
-    if (!d || e.pointerId !== d.pointer) return;
+    if (!d || d.released || e.pointerId !== d.pointer) return;
     if (!d.dragging) {
       this.drag = null;
       return;
     }
     this.swallowClick = true;
-    const { id, torn, before } = d;
-    this.endDrag();
-    if (torn) this.h.tearOff(id, { x: e.screenX, y: e.screenY });
-    else this.h.reorder(id, before);
+    d.released = true;
+    const { id, torn, before, ghost } = d;
+    d.ghost = null;
+    // nothing re-rendered (same place, or the move failed): the tabs slide back into place
+    const settle = () => {
+      if (this.drag !== d) return;
+      const from = this.lefts();
+      this.endDrag();
+      this.slide(from);
+      this.placePill(true);
+    };
+    if (torn) {
+      // the strip stays as it is (gap closed, tab hidden) until the tab has gone to the other window
+      this.dropGhost(ghost);
+      if (this.root.hasPointerCapture?.(d.pointer)) this.root.releasePointerCapture(d.pointer);
+      void Promise.resolve(this.h.tearOff(id, { x: e.screenX, y: e.screenY })).finally(settle);
+      return;
+    }
+    ghost?.remove();
+    this.h.reorder(id, before);
+    settle();
+  }
+
+  /** The floating copy of a tab dropped off the strip shrinks and fades where it was let go. */
+  private dropGhost(ghost: HTMLElement | null) {
+    if (!ghost) return;
+    if (reduceMotion.matches) {
+      ghost.remove();
+      return;
+    }
+    ghost.classList.add("dropped");
+    const done = () => ghost.remove();
+    ghost.addEventListener("transitionend", done, { once: true });
+    setTimeout(done, 400);
   }
 
   private endDrag() {
     const d = this.drag;
     if (!d) return;
     this.drag = null;
+    d.ghost?.remove();
     if (this.root.hasPointerCapture?.(d.pointer)) this.root.releasePointerCapture(d.pointer);
-    this.root.classList.remove("dragging-tab");
+    this.root.classList.remove("dragging-tab", "tearing-active");
     for (const n of this.list.querySelectorAll<HTMLElement>(".term-tab")) {
       n.classList.remove("dragging", "torn", "making-room");
       n.style.transform = "";
+    }
+  }
+
+  /** Where each tab is on screen now (left edge, transforms included), by id. */
+  private lefts(): Map<number, number> {
+    const out = new Map<number, number>();
+    for (const n of this.list.querySelectorAll<HTMLElement>(".term-tab:not(.term-home)")) {
+      out.set(Number(n.dataset.key), n.getBoundingClientRect().left);
+    }
+    return out;
+  }
+
+  /** Tabs that were on screen at `from` glide to where they are now (a reorder, a close, a tab moved away). */
+  private slide(from: Map<number, number>) {
+    if (reduceMotion.matches || !from.size) return;
+    for (const n of this.list.querySelectorAll<HTMLElement>(".term-tab:not(.term-home)")) {
+      const was = from.get(Number(n.dataset.key));
+      if (was === undefined) continue;
+      const dx = was - n.getBoundingClientRect().left;
+      if (Math.abs(dx) < 1) continue;
+      n.style.transition = "none";
+      n.style.transform = `translateX(${dx}px)`;
+      // the start position must be painted before the transition back to none begins
+      void n.offsetWidth;
+      n.style.transition = `transform ${SLIDE_MS}ms var(--ease)`;
+      n.style.transform = "";
+      const clear = () => {
+        n.style.transition = "";
+      };
+      n.addEventListener("transitionend", clear, { once: true });
+      setTimeout(clear, SLIDE_MS + 60);
     }
   }
 
