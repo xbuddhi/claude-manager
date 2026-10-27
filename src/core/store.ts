@@ -161,6 +161,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarStyle: "classic",
   theme: "system",
   terminalTheme: "app",
+  terminalColors: "default",
   gitSplit: null,
   claudePath: null,
   macOptionIsMeta: true,

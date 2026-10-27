@@ -22,6 +22,7 @@ import { segmented } from "../../ui/segmented";
 import { toggle } from "../../ui/toggle";
 import { setNotifications } from "../profiles/api";
 import { checkNow, type UpdateCheck } from "../updater/api";
+import { colorPicker } from "./colors";
 import "./settings.css";
 
 export const SCROLLBACK_MIN = 1000;
@@ -127,6 +128,8 @@ export function openSettings(): void {
     value: s.terminalTheme,
     onChange: (id) => void updateSettings({ terminalTheme: id }),
   });
+  const terminalColors = colorPicker(s.terminalColors, (id) => void updateSettings({ terminalColors: id }));
+  cleanups.push(terminalColors.dispose);
   const sidebarStyle = segmented<SidebarStyle>({
     label: "Sidebar style",
     items: [
@@ -249,6 +252,12 @@ export function openSettings(): void {
       "Appearance",
       row("Theme", theme.el, "System follows your computer's light or dark mode."),
       row("Terminal theme", terminalTheme.el, "Terminals can be dark with a light app, or the other way round."),
+      h(
+        "div",
+        { class: "set-row set-row-colors" },
+        h("div", { class: "set-text" }, h("span", { class: "set-label" }, "Terminal colours")),
+        terminalColors.el,
+      ),
     ),
     section(
       "General",
@@ -312,6 +321,7 @@ export function openSettings(): void {
         sidebarStyle.set(next.sidebarStyle);
         theme.set(next.theme);
         terminalTheme.set(next.terminalTheme);
+        terminalColors.set(next.terminalColors);
         openIn.set(next.openIn);
         optionMeta?.set(next.macOptionIsMeta);
         if (document.activeElement !== scrollback) scrollback.value = String(next.scrollback);

@@ -1,10 +1,12 @@
 // Light or dark, from settings: the app (theme) and the terminals (terminalTheme) each follow the OS or are
 // set. Resolved into <html data-theme> and <html data-term-theme>, which pick the colour tokens (tokens.css).
+// A terminal colour scheme (terminalColors, core/termColors.ts) overrides the terminal tokens inline.
 
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Settings } from "../bindings/Settings";
 import { store } from "./store";
+import { paletteTokens, termPalette } from "./termColors";
 
 export type Scheme = "light" | "dark";
 
@@ -37,9 +39,15 @@ function apply() {
   const root = document.documentElement;
   const app = appScheme(s);
   const term = termScheme(s);
-  if (root.dataset.theme === app && root.dataset.termTheme === term) return;
+  const colors = s.terminalColors;
+  if (root.dataset.theme === app && root.dataset.termTheme === term && root.dataset.termColors === colors) return;
   root.dataset.theme = app;
   root.dataset.termTheme = term;
+  root.dataset.termColors = colors;
+  for (const [name, value] of paletteTokens(termPalette(colors, term))) {
+    if (value) root.style.setProperty(name, value);
+    else root.style.removeProperty(name);
+  }
   for (const fn of listeners) fn();
 }
 
@@ -50,8 +58,8 @@ apply();
 export function initTheme(): void {
   apply();
   osDark.addEventListener("change", apply);
-  store.select((s) => [s.settings.theme, s.settings.terminalTheme] as const, apply, {
-    equals: (a, b) => a[0] === b[0] && a[1] === b[1],
+  store.select((s) => [s.settings.theme, s.settings.terminalTheme, s.settings.terminalColors] as const, apply, {
+    equals: (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2],
   });
   // the native frame (macOS traffic lights, menus) follows the app's choice
   if (!isTauri()) return;

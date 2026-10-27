@@ -18,37 +18,18 @@ import { reduceMotion } from "../../core/motion";
 import { isMac, isWindows, windowsBuild } from "../../core/platform";
 import { settings } from "../../core/settings";
 import { store } from "../../core/store";
+import { ANSI, ansiToken } from "../../core/termColors";
 import { onThemeChange, termDark } from "../../core/theme";
 import { type MenuItem, showMenu } from "../../ui/menu";
 import { copyText, openUrlHttps } from "../os/api";
 import { chatName, debounce, type Input, InputQueue, throttle, Watermark } from "./logic";
 import type { PtyOutput } from "./pty";
 
-/** The 16 ANSI colours, as ITheme keys; their tokens are `--term-<kebab-case key>`. */
-const ANSI = [
-  "black",
-  "red",
-  "green",
-  "yellow",
-  "blue",
-  "magenta",
-  "cyan",
-  "white",
-  "brightBlack",
-  "brightRed",
-  "brightGreen",
-  "brightYellow",
-  "brightBlue",
-  "brightMagenta",
-  "brightCyan",
-  "brightWhite",
-] as const;
-
 /** ANSI colours from the tokens; a missing token leaves xterm's default. */
 export function ansiColors(v: (name: string) => string): Partial<ITheme> {
   const out: Partial<ITheme> = {};
   for (const key of ANSI) {
-    const value = v(`--term-${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`);
+    const value = v(ansiToken(key));
     if (value) out[key] = value;
   }
   return out;

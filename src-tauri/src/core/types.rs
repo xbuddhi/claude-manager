@@ -126,6 +126,22 @@ pub enum TerminalTheme {
     Dark,
 }
 
+/// Colour scheme for the terminals; each has a dark and a light version (the terminal theme picks one).
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+#[ts(export)]
+pub enum TerminalColors {
+    #[default]
+    Default,
+    One,
+    Catppuccin,
+    TokyoNight,
+    RosePine,
+    Gruvbox,
+    Solarized,
+    Github,
+}
+
 /// A named sidebar group. It only references folders; nothing on disk moves.
 #[derive(Serialize, Deserialize, TS, Clone, Debug, Default, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
@@ -163,6 +179,7 @@ pub struct Settings {
     pub sidebar_style: SidebarStyle,
     pub theme: Theme,
     pub terminal_theme: TerminalTheme,
+    pub terminal_colors: TerminalColors,
     /// Source control split position; null = default layout.
     pub git_split: Option<f64>,
     /// Absolute path to the claude executable, overriding discovery.
@@ -195,6 +212,7 @@ impl Default for Settings {
             sidebar_style: SidebarStyle::Classic,
             theme: Theme::System,
             terminal_theme: TerminalTheme::App,
+            terminal_colors: TerminalColors::Default,
             git_split: None,
             claude_path: None,
             mac_option_is_meta: true,

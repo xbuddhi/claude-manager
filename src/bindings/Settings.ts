@@ -2,6 +2,7 @@
 import type { Group } from "./Group";
 import type { OpenIn } from "./OpenIn";
 import type { SidebarStyle } from "./SidebarStyle";
+import type { TerminalColors } from "./TerminalColors";
 import type { TerminalTheme } from "./TerminalTheme";
 import type { Theme } from "./Theme";
 
@@ -29,7 +30,7 @@ bgTerms: unknown[], sidebarWidth: number,
 /**
  * Sidebar hidden: it slides in over the content while the pointer is at the left edge.
  */
-sidebarHidden: boolean, sidebarStyle: SidebarStyle, theme: Theme, terminalTheme: TerminalTheme, 
+sidebarHidden: boolean, sidebarStyle: SidebarStyle, theme: Theme, terminalTheme: TerminalTheme, terminalColors: TerminalColors, 
 /**
  * Source control split position; null = default layout.
  */
