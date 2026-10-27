@@ -303,14 +303,25 @@ export class TermView {
     // the PTY may still have the size of another window (it moved here, or before a reload)
     this.resize(this.size);
     this.startGl();
+    this.syncScroll();
     this.focus();
+  }
+
+  /**
+   * xterm sizes its scroll area only on a resize or new output. A tab that was behind (opened there, or
+   * its renderer swapped) can keep a stale or zero size: no scrollbar and a wheel that does nothing.
+   * Measured again at the next paint.
+   */
+  private syncScroll() {
+    (this.term as unknown as { _core?: { _viewport?: { queueSync?(): void } } })._core?._viewport?.queueSync?.();
+    this.term.refresh(0, this.term.rows - 1);
   }
 
   /** The app woke (focus, visible again, after sleep): repaint, and bring back a lost WebGL renderer. */
   wake(): void {
     if (this.disposed || !this.active) return;
     this.startGl();
-    this.term.refresh(0, this.term.rows - 1);
+    this.syncScroll();
   }
 
   private startGl() {
