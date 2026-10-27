@@ -34,25 +34,26 @@ pub fn set_parser(app: &AppHandle, parser: impl ArgsParser) {
     receive(app, &args, &cwd);
 }
 
-/// Handles arguments from the command line or a second launch.
-pub fn receive(app: &AppHandle, args: &[String], cwd: &Path) {
+/// Handles arguments from the command line or a second launch. Returns whether they made a request.
+pub fn receive(app: &AppHandle, args: &[String], cwd: &Path) -> bool {
     if args.is_empty() {
-        return;
+        return false;
     }
     let state = app.state::<OpenRequests>();
     let parser = lock(&state.parser).clone();
     let Some(parser) = parser else {
         log::info!("ignoring {} launch argument(s): nothing handles them yet", args.len());
-        return;
+        return false;
     };
     // the parser runs without the lock held: it may take a moment (it checks folders and profiles)
     let Some(request) = parser(app, args, cwd) else {
-        return;
+        return false;
     };
     lock(&state.pending).push(request);
     if let Err(e) = app.emit_to(super::lifecycle::MAIN_WINDOW, events::APP_OPEN_REQUEST, ()) {
         log::error!("could not announce an open request: {e}");
     }
+    true
 }
 
 // ---- commands ----
