@@ -35,6 +35,9 @@ import { mount as mountOs } from "./os";
 // WP10 updater
 import { mount as mountUpdater } from "./updater";
 
+// memory files view
+import { mount as mountMemory } from "./memory";
+
 // ---- end feature imports ----
 
 export function mountFeatures(): void {
@@ -61,5 +64,7 @@ export function mountFeatures(): void {
   mountOs();
   // WP10 updater
   mountUpdater();
+  // memory files view
+  mountMemory();
   // ---- end feature mounts ----
 }

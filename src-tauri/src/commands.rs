@@ -53,6 +53,10 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::actions::trash::trash_sessions,
         crate::actions::trash::trash_path,
         crate::actions::rename::rename_session,
+        // ---- memory files ----
+        crate::memory::memory_files,
+        crate::memory::memory_read,
+        crate::memory::memory_create,
         // ---- profiles UI (WP6) ----
         crate::profiles_cmd::create_profile,
         crate::profiles_cmd::open_profile_folder,
