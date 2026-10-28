@@ -3,4 +3,4 @@
 /**
  * Colour scheme for the terminals; each has a dark and a light version (the terminal theme picks one).
  */
-export type TerminalColors = "default" | "one" | "catppuccin" | "tokyo-night" | "rose-pine" | "gruvbox" | "solarized" | "github";
+export type TerminalColors = "default" | "one" | "catppuccin" | "tokyo-night" | "rose-pine" | "gruvbox" | "solarized" | "github" | "graphite";

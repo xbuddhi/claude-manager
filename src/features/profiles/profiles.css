@@ -153,18 +153,19 @@ html.prof-picker-open #tb-profile-slot {
 }
 
 /* ---------- avatar button ---------- */
-/* the profile chip in the title bar */
+/* the profile chip in the title bar: avatar, name and an up/down chevron on the bar itself; a soft fill
+   only on hover or while its popover is open */
 .prof-avatar-btn {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 7px;
-  height: 30px;
-  max-width: 220px;
+  gap: 9px;
+  height: 34px;
+  max-width: 240px;
   padding: 0 8px 0 4px;
-  border: 1px solid var(--border);
-  border-radius: 15px;
-  background: var(--ctrl);
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
   color: var(--text);
   font: inherit;
   transition:
@@ -173,7 +174,7 @@ html.prof-picker-open #tb-profile-slot {
 }
 .prof-avatar-btn:hover,
 .prof-avatar-btn[aria-expanded="true"] {
-  background: var(--ctrl-hover);
+  background: var(--hover);
 }
 /* press: darkens at once and eases back, like every button (a class too: the title bar's drag handler can
    stop :active) */
@@ -192,7 +193,10 @@ html.prof-picker-open #tb-profile-slot {
 }
 .prof-chip-name {
   min-width: 0;
+  font-size: 15px;
   font-weight: 600;
+  line-height: 1; /* centred on the avatar, not on a taller line box */
+  letter-spacing: -0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -202,8 +206,8 @@ html.prof-picker-open #tb-profile-slot {
   color: var(--muted);
 }
 .prof-chip-chev svg {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.6;

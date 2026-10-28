@@ -20,7 +20,7 @@ tauri-build = { version = "2", features = [] }
 # file or Cargo.lock. The owner of each group is noted; a crate nobody uses yet costs only build time.
 [dependencies]
 # tray-icon + image-png: tray / menu bar icon (WP9)
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-log = "2"
 tauri-plugin-window-state = "2"

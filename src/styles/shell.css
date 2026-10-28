@@ -15,9 +15,10 @@ body {
   align-items: center;
   padding: 0 14px;
 }
-/* macOS: room for the native traffic lights (titleBarStyle Overlay), except in full screen */
+/* macOS: room for the native traffic lights (titleBarStyle Overlay, centred on this bar by
+   trafficLightPosition), except in full screen. They end at x 75; the profile chip keeps clear of them. */
 html.os-macos:not(.fullscreen) #titlebar {
-  padding-left: 80px;
+  padding-left: 92px;
 }
 /* Windows caption buttons, flush with the top-right corner */
 #tb-caption {
@@ -216,6 +217,14 @@ html.sidebar-hidden.sidebar-peek #sidebar-slot {
   box-shadow: var(--shadow-pop);
   transition: none;
   animation: sb-peek-in 0.32s cubic-bezier(0.22, 0.9, 0.25, 1);
+}
+/* window glass (macOS, settings: windowGlass, core/theme.ts): the system blur shows through the window
+   background and the sidebar; cards, terminals and menus stay solid, and so does the sidebar over the content */
+html[data-glass] body {
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+}
+html[data-glass]:not(.sidebar-hidden) #sidebar-slot {
+  background: color-mix(in srgb, var(--side) 62%, transparent);
 }
 html.sidebar-hidden.sidebar-peek-out #sidebar-slot {
   pointer-events: none;

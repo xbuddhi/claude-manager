@@ -13,6 +13,7 @@ export const icons = {
   group: svg(`<path d="M1.5 4.5h4l1.2 1.2h7.8v6.8a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM3.5 2.5h3.2l1 1"/>`),
   chevron: svg(`<path d="M6 4l4 4-4 4"/>`),
   chevronDown: svg(`<path d="M4 6l4 4 4-4"/>`),
+  chevronUpDown: svg(`<path d="M5 6.5l3-3 3 3M5 9.5l3 3 3-3"/>`),
   chevronLeft: svg(`<path d="M10 4L6 8l4 4"/>`),
   /** Show or hide the sidebar: a window with its left column. */
   sidebar: svg(`<rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M6 2.5v11"/>`),

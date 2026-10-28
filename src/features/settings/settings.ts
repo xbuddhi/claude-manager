@@ -22,7 +22,7 @@ import { segmented } from "../../ui/segmented";
 import { toggle } from "../../ui/toggle";
 import { setNotifications } from "../profiles/api";
 import { checkNow, type UpdateCheck } from "../updater/api";
-import { colorPicker } from "./colors";
+import { colorPicker, skinPicker } from "./colors";
 import "./settings.css";
 
 export const SCROLLBACK_MIN = 1000;
@@ -64,6 +64,16 @@ function row(label: string, control: HTMLElement, hint?: string): HTMLElement {
       hint ? h("span", { class: "set-hint" }, hint) : null,
     ),
     control,
+  );
+}
+
+/** A row with a colour picker under its label. */
+function pickerRow(label: string, picker: HTMLElement, hint: string): HTMLElement {
+  return h(
+    "div",
+    { class: "set-row set-row-colors" },
+    h("div", { class: "set-text" }, h("span", { class: "set-label" }, label), h("span", { class: "set-hint" }, hint)),
+    picker,
   );
 }
 
@@ -130,6 +140,8 @@ export function openSettings(): void {
   });
   const terminalColors = colorPicker(s.terminalColors, (id) => void updateSettings({ terminalColors: id }));
   cleanups.push(terminalColors.dispose);
+  const appColors = skinPicker(s.appColors, (id) => void updateSettings({ appColors: id }));
+  cleanups.push(appColors.dispose);
   const sidebarStyle = segmented<SidebarStyle>({
     label: "Sidebar style",
     items: [
@@ -173,6 +185,13 @@ export function openSettings(): void {
         checked: s.macOptionIsMeta,
         label: "Use Option as Meta key",
         onChange: (on) => void updateSettings({ macOptionIsMeta: on }),
+      })
+    : null;
+  const windowGlass = isMac()
+    ? toggle({
+        checked: s.windowGlass,
+        label: "Window glass",
+        onChange: (on) => void updateSettings({ windowGlass: on }),
       })
     : null;
 
@@ -251,13 +270,12 @@ export function openSettings(): void {
     section(
       "Appearance",
       row("Theme", theme.el, "System follows your computer's light or dark mode."),
+      pickerRow("Interface colours", appColors.el, "Each comes in light and dark, as the theme picks."),
+      windowGlass
+        ? row("Window glass", windowGlass.el, "The desktop shows softly through the title bar and sidebar.")
+        : null,
       row("Terminal theme", terminalTheme.el, "Terminals can be dark with a light app, or the other way round."),
-      h(
-        "div",
-        { class: "set-row set-row-colors" },
-        h("div", { class: "set-text" }, h("span", { class: "set-label" }, "Terminal colours")),
-        terminalColors.el,
-      ),
+      pickerRow("Terminal colours", terminalColors.el, "Default follows the interface colours."),
     ),
     section(
       "General",
@@ -322,6 +340,8 @@ export function openSettings(): void {
         theme.set(next.theme);
         terminalTheme.set(next.terminalTheme);
         terminalColors.set(next.terminalColors);
+        appColors.set(next.appColors);
+        windowGlass?.set(next.windowGlass);
         openIn.set(next.openIn);
         optionMeta?.set(next.macOptionIsMeta);
         if (document.activeElement !== scrollback) scrollback.value = String(next.scrollback);

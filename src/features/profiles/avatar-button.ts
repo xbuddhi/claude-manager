@@ -22,7 +22,7 @@ export function mountAvatarButton(slot: HTMLElement): void {
   const pic = h("span", { class: "prof-chip-pic" });
   const name = h("span", { class: "prof-chip-name" });
   const chev = h("span", { class: "prof-chip-chev" });
-  chev.innerHTML = icons.chevronDown;
+  chev.innerHTML = icons.chevronUpDown;
   btn.append(pic, name, chev);
   const release = () => btn.classList.remove("pressed");
   btn.addEventListener("pointerdown", (e) => {
@@ -37,7 +37,7 @@ export function mountAvatarButton(slot: HTMLElement): void {
     (s) => [s.currentProfile, s.profiles, s.settings.profileCompanions] as const,
     ([dir]) => {
       const tip = avatarTip(dir);
-      pic.replaceChildren(profileAvatar(dir, 22));
+      pic.replaceChildren(profileAvatar(dir, 26));
       name.textContent = profileLabel(dir);
       btn.dataset.tip = tip;
       btn.setAttribute("aria-label", `Profile: ${tip}`);

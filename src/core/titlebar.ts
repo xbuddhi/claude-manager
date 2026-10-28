@@ -2,7 +2,7 @@
 // and fields inside it stay clickable).
 // Windows: no native frame (Windows 10 cannot colour it to match), so we draw Windows-style minimize,
 // maximize/restore and close buttons at the right. macOS: the native lights sit over the bar
-// (titleBarStyle Overlay); we keep 80px free for them, except in full screen where macOS hides them.
+// (titleBarStyle Overlay); we keep 92px free for them, except in full screen where macOS hides them.
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { $, h } from "./dom";

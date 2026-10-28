@@ -1,38 +1,111 @@
-# Claude Manager
+<br>
 
-A desktop app for Windows and macOS that lists your Claude Code projects and sessions from `~/.claude` and
-every `~/.claude-*` profile, and runs `claude` in tabs: start, resume and fork sessions, see which ones are
-working, and review changes with source control. Built with Tauri 2 (Rust) and xterm.js on a real
-terminal (ConPTY on Windows, a pseudo-terminal on macOS).
+<p align="center"><img src="app-icon.png" alt="Claude Manager" width="96"></p>
 
-## Install
+<h1 align="center">Claude Manager</h1>
 
-- **Windows 10 or 11:** download `Claude Manager_<version>_x64-setup.exe` from the release and run it. It
-  installs for the current user only (no admin rights). On Windows 10 without WebView2 the installer
-  downloads it.
-- **macOS 12 or later (Apple Silicon and Intel):** download `Claude Manager_<version>_universal.dmg`, open it
-  and drag Claude Manager to Applications.
+<p align="center">Every Claude Code project, session and profile in one window.<br><strong>Start, resume and fork sessions in tabs</strong>, on Windows and macOS.</p>
 
-**Unsigned builds.** A build made without signing secrets is not code-signed (the release notes say so).
+<p align="center">
+  <a href="https://github.com/xbuddhi/claude-manager/releases/latest"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/pill-download-dark.svg"><img src="docs/readme/pill-download.svg" alt="Download" height="34"></picture></a>
+  <a href="#get-it"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/pill-macos-dark.svg"><img src="docs/readme/pill-macos.svg" alt="macOS" height="34"></picture></a>
+  <a href="#get-it"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/pill-windows-dark.svg"><img src="docs/readme/pill-windows.svg" alt="Windows" height="34"></picture></a>
+  <a href="LICENSE"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/pill-open-source-dark.svg"><img src="docs/readme/pill-open-source.svg" alt="Open source" height="34"></picture></a>
+  <a href="CHANGELOG.md"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/pill-changelog-dark.svg"><img src="docs/readme/pill-changelog.svg" alt="Changelog" height="34"></picture></a>
+</p>
 
-- Windows: SmartScreen may say "Windows protected your PC". Choose **More info > Run anyway**.
-- macOS: right-click > Open no longer works on macOS 15. After the first attempt to open the app, go to
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/mac-dark.png">
+  <img src="docs/readme/mac-light.png" alt="Claude Manager on macOS: projects and folders in the sidebar, a project's sessions, and plan usage in the title bar" width="100%">
+</picture>
+
+## What it does
+
+Claude Manager reads `~/.claude` and every `~/.claude-*` profile and runs `claude` in tabs on a real terminal
+(ConPTY on Windows, a pseudo-terminal on macOS).
+
+- **Every session, sorted by folder.** Projects, folders and sessions from all your profiles, searchable, with
+  pinning, projects (groups) of folders, hidden folders and archived sessions.
+- **Start, resume, fork.** In a tab, in a new window or in Terminal / iTerm / PowerShell. Rename a session like
+  `/rename` does.
+- **See what's working.** Live and busy sessions are marked as they run.
+- **Profiles.** Switch between `~/.claude` and `~/.claude-*` from the title bar, add, rename or hide one; each
+  has its own little companion as an avatar.
+- **Source control.** Changes, coloured diffs (inline or side by side), a compact history graph, branch search,
+  commit messages written by Claude, and the repository page on GitHub one click away.
+- **Files.** Browse and open a folder's files beside the sessions, and side panels next to a terminal.
+- **Memory.** The `CLAUDE.md` files and auto memory Claude Code loads for a folder, as documents.
+- **Usage.** How much of your plan is left, in the title bar.
+- **Native where it counts.** Dock menu and menu bar icon on macOS, Jump List and Explorer menu on Windows,
+  in-app updates on both.
+
+<p align="center">
+  <img src="docs/readme/mac-profiles.png" alt="The profile picker: each profile with its companion, all profiles, or add a profile" width="80%">
+</p>
+
+## Make it yours
+
+Settings > Appearance has a skin for the interface and one for the terminals, each with a dark and a light
+version.
+
+| Interface | Look |
+| --- | --- |
+| **Claude** | The default: warm greys with the Claude orange |
+| **Modern** | Flat editor greys and a clear blue, like VS Code's Modern themes |
+| **Mono** | Black and white only |
+| **Paper** | Warm off-white and soft charcoal |
+| **Linear** | Near-black blue-greys and a violet accent |
+| **Graphite** | Cool greys and a soft indigo |
+
+Terminals: One, Catppuccin, Tokyo Night, Rosé Pine, Gruvbox, Solarized, GitHub and Graphite, or Default to
+follow the interface. On macOS, **Window glass** lets the desktop show softly through the title bar and
+sidebar.
+
+<p align="center">
+  <img src="docs/readme/mac-skins.png" alt="The interface colours in Settings > Appearance" width="80%">
+</p>
+
+| Modern | Linear |
+| --- | --- |
+| <img src="docs/readme/skin-modern.png" alt="The Modern skin, dark" width="100%"> | <img src="docs/readme/skin-linear.png" alt="The Linear skin, dark" width="100%"> |
+| **Mono** | **Paper** |
+| <img src="docs/readme/skin-mono.png" alt="The Mono skin, light" width="100%"> | <img src="docs/readme/skin-paper.png" alt="The Paper skin, light" width="100%"> |
+
+## Get it
+
+| macOS | Windows |
+| --- | --- |
+| macOS 12 or later, Apple Silicon and Intel. Download `Claude Manager_<version>_universal.dmg` and drag it to Applications. | Windows 10 or 11. Download `Claude Manager_<version>_x64-setup.exe` and run it. Installs for you only, no admin rights; adds WebView2 when missing. |
+
+Downloads are on the [latest release](https://github.com/xbuddhi/claude-manager/releases/latest). You also need
+the [Claude Code CLI](https://code.claude.com/docs/en/setup), installed and signed in (the app shows a banner
+when it cannot find `claude`), and optionally `git` on PATH for source control.
+
+<details>
+<summary><strong>Unsigned builds</strong></summary>
+
+A build made without signing secrets is not code-signed (the release notes say so).
+
+- **Windows:** SmartScreen may say "Windows protected your PC". Choose **More info > Run anyway**.
+- **macOS:** right-click > Open no longer works on macOS 15. After the first attempt to open the app, go to
   **System Settings > Privacy & Security** and choose **Open Anyway**, or run
   `xattr -dr com.apple.quarantine "/Applications/Claude Manager.app"`.
 
-Uninstall: Windows **Settings > Apps > Claude Manager > Uninstall** (also removes the Explorer menu entries);
-macOS: move the app to the Bin. Your settings and logs stay; delete the folders below to remove them.
+</details>
 
-## Requirements
+<details>
+<summary><strong>Uninstall</strong></summary>
 
-- **Claude Code CLI** (`claude`), installed and signed in: https://code.claude.com/docs/en/setup. The app shows
-  a banner when it cannot find `claude`.
-- Windows 10 or 11 (WebView2, installed by the installer when missing), or macOS 12 or later.
-- `git` on PATH for the source control view (optional).
+Windows: **Settings > Apps > Claude Manager > Uninstall** (also removes the Explorer menu entries). macOS: move
+the app to the Bin. Your settings and logs stay; delete the folders under [Your data](#your-data) to remove them.
 
-## Where data lives
+</details>
 
-The app only reads `~/.claude` and `~/.claude-*` (it never writes there). Its own files:
+## Your data
+
+The app only reads `~/.claude` and `~/.claude-*`; it never writes there. Its own files:
 
 |                                | Windows                                         | macOS                                                     |
 | ------------------------------ | ----------------------------------------------- | --------------------------------------------------------- |
@@ -40,43 +113,42 @@ The app only reads `~/.claude` and `~/.claude-*` (it never writes there). Its ow
 | Cache                          | `%LOCALAPPDATA%\com.xbuddhi.claudemanager`      | `~/Library/Caches/com.xbuddhi.claudemanager`              |
 | Logs (5 MB, one old file kept) | `%LOCALAPPDATA%\com.xbuddhi.claudemanager\logs` | `~/Library/Logs/com.xbuddhi.claudemanager`                |
 
-On the first run on Windows, settings are imported once from the old
-PowerShell app (`%APPDATA%\ClaudeManager\settings.json`); that file is left as it is.
+On the first run on Windows, settings are imported once from the old PowerShell app
+(`%APPDATA%\ClaudeManager\settings.json`); that file is left as it is.
 
-**macOS privacy.** Claude Code sessions you start run in your project folders, so macOS may ask whether Claude
-Manager may access Documents, Desktop, Downloads or other volumes. The app is not sandboxed and must stay
-that way: the App Sandbox would block reading `~/.claude*` and running `claude`. It uses the hardened runtime
-with one entitlement (`src-tauri/Entitlements.plist`): Apple events, so sessions can open in Terminal or iTerm.
-The first time, macOS asks whether Claude Manager may control Terminal.
+**macOS privacy.** Sessions run in your project folders, so macOS may ask whether Claude Manager may access
+Documents, Desktop, Downloads or other volumes. The app is not sandboxed and must stay that way: the App
+Sandbox would block reading `~/.claude*` and running `claude`. It uses the hardened runtime with one
+entitlement (`src-tauri/Entitlements.plist`), Apple events, so sessions can open in Terminal or iTerm; the
+first time, macOS asks whether Claude Manager may control Terminal.
 
-## Development
+## Build it
 
-Needs Node 22, pnpm (the version in `package.json` `packageManager`) and Rust (the version pinned in
+Needs Node 22, pnpm (the version in `package.json` `packageManager`) and Rust (pinned in
 `src-tauri/rust-toolchain.toml`).
 
-```
+```bash
 pnpm install
 pnpm tauri dev      # dev build with hot reload
 pnpm tauri build    # release build + installer for this OS (unsigned, no updater files)
 ```
 
-Checks (`.github/workflows/ci.yml` runs the first two lines; the release workflow runs the script tests):
+Checks (CI runs the first two lines, the release workflow the script tests):
 
-```
+```bash
 pnpm lint && pnpm typecheck && pnpm test && pnpm build
 cd src-tauri && cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked
 node --test "scripts/*.test.mjs"
 ```
 
 `cargo test` also regenerates the TypeScript bindings in `src/bindings`; commit them. The developer guide is
-`docs/port/FOUNDATION.md`.
-
-Other scripts:
+[`docs/port/FOUNDATION.md`](docs/port/FOUNDATION.md).
 
 - `node scripts/make-icons.mjs` then `pnpm tauri icon app-icon.png`: rebuild the app icon and the macOS tray icon.
 - `node scripts/third-party-notices.mjs`: regenerate `THIRD_PARTY_NOTICES` after changing dependencies.
 
-## Releasing
+<details>
+<summary><strong>Releasing</strong></summary>
 
 The version has one source: `version` in `src-tauri/Cargo.toml`. Versions are plain numbers (`X.Y.Z`).
 
@@ -105,6 +177,11 @@ release runs in), so a release only reaches users once it is published. The app 
 24 hours, shows "Update available", and restarts into the new version. Builds without the updater config
 (local builds, `build.yml`) have updates turned off.
 
-## License
+</details>
 
-See `LICENSE`. Third-party software and its licenses: `THIRD_PARTY_NOTICES`. Changes: `CHANGELOG.md`.
+## Licence
+
+All rights reserved: see [`LICENSE`](LICENSE). Third-party software and its licences:
+[`THIRD_PARTY_NOTICES`](THIRD_PARTY_NOTICES). Changes: [`CHANGELOG.md`](CHANGELOG.md).
+
+Claude Manager is not made by Anthropic. Claude and Claude Code are Anthropic's names.

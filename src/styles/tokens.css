@@ -1,5 +1,6 @@
 /* Every colour the app uses. Light is the default; <html data-theme="dark"> switches the app to dark and
    <html data-term-theme="dark"> the terminals (core/theme.ts sets both from settings and the OS).
+   These are the "Claude" interface colours; other skins (core/appColors.ts) override them inline.
    Palette from the Windows app (MacUI Theme); fixed colours are the same in both themes. */
 :root {
   color-scheme: light;
