@@ -10,6 +10,8 @@ import { type MenuItem, type MenuPosition, showMenu } from "../../ui/menu";
 import { copyText, openFolder, openInCode, reveal, revealLabel, terminalHere } from "../os/api";
 import { profileColor, profileInitial } from "../profiles/api";
 import { deleteSelected, doNew, doResume, startNew } from "./actions";
+import { renameSession } from "./api";
+import { pencilIcon } from "./icons";
 
 /** Delete is Del on Windows and Cmd+Backspace on macOS (a Mac keyboard's delete key is Backspace). */
 export function deleteKeys(mac = isMac()): string {
@@ -23,6 +25,7 @@ export function sessionMenuItems(s: Session): MenuItem[] {
     { label: "Resume inside app", icon: "terminal", run: () => void doResume(s, { mode: "embed" }) },
     { label: "Fork as a new session", icon: "fork", run: () => void doResume(s, { fork: true }) },
     { kind: "separator" },
+    { label: "Rename…", icon: pencilIcon(), run: () => void renameSession(s) },
     { label: "Copy session ID", icon: "copy", run: () => void copyText(s.id) },
     {
       label: "Open folder in VS Code",
