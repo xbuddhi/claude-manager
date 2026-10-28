@@ -2,12 +2,22 @@
 //! dragged out of its strip, "Move to new window", "Move to Window 2"), and bringing an open tab to the
 //! front wherever it is. A window takes moved terminals over with `pty_attach`: a new one when its page
 //! loads (they are already assigned to its label), an open one on the `pty-moved` event.
+//!
+//! While a tab is dragged off its strip, `tab_drag_over` tells the window under the pointer (`tab-drag`,
+//! again on every call: it drops the hint when they stop) where the tab would land, and the window it
+//! left that it is gone.
 
 use super::manager::Terms;
 use super::types::{Point, WindowInfo};
+use crate::core::error::lock;
 use crate::core::error::{AppError, AppResult};
 use crate::core::{events, windows};
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
+
+/// The window a dragged tab is over, told with `tab-drag`.
+#[derive(Default)]
+pub struct DragTarget(Mutex<Option<String>>);
 
 /// Moves the calling window's terminals `ids` to window `to`, else to the window under the logical screen
 /// point `at`, else to a new window (placed at `at` when given). Returns the label of the window they
@@ -100,6 +110,33 @@ pub fn focus(app: &AppHandle, id: u32, label: &str) -> AppResult<bool> {
     app.emit_to(label, events::PTY_FOCUS, id)?;
     windows::raise(&w);
     Ok(true)
+}
+
+/// A tab of the calling window, titled `title`, is dragged off its strip with the pointer at the logical
+/// screen point `at` (`None`: the drag ended). The other app window under it gets `tab-drag` with the
+/// title (each call), the one it left gets `tab-drag` with null. Returns that window's number (`None`: a drop there
+/// opens a new window).
+#[tauri::command]
+pub async fn tab_drag_over(
+    app: AppHandle,
+    window: WebviewWindow,
+    target: State<'_, DragTarget>,
+    at: Option<Point>,
+    title: String,
+) -> AppResult<Option<u32>> {
+    let over = at.and_then(|p| windows::at_point(&app, p.x, p.y, window.label()));
+    let label = over.as_ref().map(|w| w.label().to_string());
+    let mut current = lock(&target.0);
+    if *current != label
+        && let Some(old) = current.take()
+    {
+        let _ = app.emit_to(&old, events::TAB_DRAG, None::<String>);
+    }
+    if let Some(new) = &label {
+        app.emit_to(new, events::TAB_DRAG, Some(&title))?;
+    }
+    current.clone_from(&label);
+    Ok(label.as_deref().map(windows::number))
 }
 
 /// The app windows on screen, the main window first, with how many terminals each shows.

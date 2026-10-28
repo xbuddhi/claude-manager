@@ -9,6 +9,17 @@ export interface DiffLine {
   old: number;
   new: number;
   text: string;
+  /** Changed parts of a removed or added line next to its counterpart: [from, to) offsets in `text`. */
+  marks?: Array<[number, number]>;
+}
+
+/** One row of the side-by-side view: indexes into the lines; `span` = across both sides (file, hunk, meta). */
+export interface SplitRow {
+  span?: number;
+  /** Old side; missing = filler. */
+  left?: number;
+  /** New side; missing = filler. */
+  right?: number;
 }
 
 /** Lines shown at most of a diff, and of a new file. */
@@ -86,4 +97,107 @@ export function widestLine(lines: readonly DiffLine[]): number {
   for (const d of lines)
     max = Math.max(max, displayText(d.text).length + (d.kind === "file" || d.kind === "meta" ? 0 : 1));
   return max;
+}
+
+/** Lines longer than this, or pairs with more words than this between them, get no word marks. */
+const MARK_MAX_CHARS = 1000;
+const MARK_MAX_CELLS = 40_000;
+
+/** Words and single symbols, with their offsets (spaces are not compared). */
+function words(text: string): Array<[string, number]> {
+  return [...text.matchAll(/\w+|[^\w\s]/g)].map((m) => [m[0], m.index ?? 0]);
+}
+
+/**
+ * The parts of `a` and `b` that differ, by words (longest common subsequence), as [from, to) offsets.
+ * Null when the lines are too long to compare or have almost nothing in common: then the whole line is the
+ * change, and marking every word in it says nothing more.
+ */
+export function wordMarks(a: string, b: string): { a: Array<[number, number]>; b: Array<[number, number]> } | null {
+  if (a.length > MARK_MAX_CHARS || b.length > MARK_MAX_CHARS) return null;
+  const wa = words(a);
+  const wb = words(b);
+  const n = wa.length;
+  const m = wb.length;
+  if (n * m > MARK_MAX_CELLS) return null;
+  // lcs[i][j]: common words of wa[i..] and wb[j..]
+  const lcs = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    const row = lcs[i] as Uint16Array;
+    const next = lcs[i + 1] as Uint16Array;
+    for (let j = m - 1; j >= 0; j--) {
+      row[j] =
+        wa[i]?.[0] === wb[j]?.[0] ? (next[j + 1] as number) + 1 : Math.max(next[j] as number, row[j + 1] as number);
+    }
+  }
+  const keptA = new Array<boolean>(n).fill(false);
+  const keptB = new Array<boolean>(m).fill(false);
+  let common = 0;
+  for (let i = 0, j = 0; i < n && j < m; ) {
+    if (wa[i]?.[0] === wb[j]?.[0]) {
+      keptA[i++] = true;
+      keptB[j++] = true;
+      common++;
+    } else if ((lcs[i + 1]?.[j] as number) >= (lcs[i]?.[j + 1] as number)) i++;
+    else j++;
+  }
+  if (common * 3 < Math.min(n, m)) return null;
+  return { a: ranges(a, wa, keptA), b: ranges(b, wb, keptB) };
+}
+
+/** The offsets of the words not kept, joined into ranges; only spaces between two changed words join them. */
+function ranges(text: string, w: Array<[string, number]>, kept: boolean[]): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  w.forEach(([word, at], i) => {
+    if (kept[i]) return;
+    const last = out[out.length - 1];
+    if (last && !text.slice(last[1], at).trim()) last[1] = at + word.length;
+    else out.push([at, at + word.length]);
+  });
+  return out;
+}
+
+/** Marks the changed words of each removed line and the added line in its place (the n-th of each block). */
+export function markWords(lines: DiffLine[]): void {
+  for (let i = 0; i < lines.length; ) {
+    if (lines[i]?.kind !== "del") {
+      i++;
+      continue;
+    }
+    const delStart = i;
+    while (lines[i]?.kind === "del") i++;
+    const addStart = i;
+    while (lines[i]?.kind === "add") i++;
+    const pairs = Math.min(addStart - delStart, i - addStart);
+    for (let k = 0; k < pairs; k++) {
+      const d = lines[delStart + k] as DiffLine;
+      const a = lines[addStart + k] as DiffLine;
+      const marks = wordMarks(d.text, a.text);
+      if (!marks) continue;
+      d.marks = marks.a;
+      a.marks = marks.b;
+    }
+  }
+}
+
+/** The lines as side-by-side rows: removed lines face the added lines that replace them, the rest a filler. */
+export function splitRows(lines: readonly DiffLine[]): SplitRow[] {
+  const rows: SplitRow[] = [];
+  for (let i = 0; i < lines.length; ) {
+    const kind = lines[i]?.kind;
+    if (kind === "context") {
+      rows.push({ left: i, right: i });
+      i++;
+    } else if (kind === "del" || kind === "add") {
+      const dels: number[] = [];
+      const adds: number[] = [];
+      while (lines[i]?.kind === "del") dels.push(i++);
+      while (lines[i]?.kind === "add") adds.push(i++);
+      for (let k = 0; k < Math.max(dels.length, adds.length); k++) rows.push({ left: dels[k], right: adds[k] });
+    } else {
+      rows.push({ span: i });
+      i++;
+    }
+  }
+  return rows;
 }

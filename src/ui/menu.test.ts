@@ -104,3 +104,23 @@ describe("showMenu keyboard", () => {
     expect(rows[1]?.querySelector(".mi-side")?.textContent).toMatch(/^(Ctrl\+W|⌘W)$/);
   });
 });
+
+describe("showMenu from a button", () => {
+  it("closes when its button is pressed again, without the click opening it again", async () => {
+    const btn = document.createElement("button");
+    document.body.append(btn);
+    const reopen = vi.fn();
+    btn.addEventListener("click", reopen);
+    const done = showMenu([{ label: "A" }], { at: { anchor: btn } });
+    expect(document.querySelector(".menu")).not.toBeNull();
+    btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(await done).toBe(false);
+    expect(document.querySelector(".menu")).toBeNull();
+    btn.click();
+    expect(reopen).not.toHaveBeenCalled();
+    // only that one click: the button works normally after it
+    btn.click();
+    expect(reopen).toHaveBeenCalledTimes(1);
+    btn.remove();
+  });
+});

@@ -83,8 +83,11 @@ async function checkEnvironment() {
   });
 }
 
+/** The longest showing waits for a frame: WebKit (macOS) runs no animation frames in a hidden window. */
+const FRAME_WAIT_MS = 100;
+
 async function showWindow() {
-  await nextFrame();
+  await Promise.race([nextFrame(), new Promise((resolve) => setTimeout(resolve, FRAME_WAIT_MS))]);
   document.documentElement.classList.add("ready");
   if (!isTauri()) return;
   try {

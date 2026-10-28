@@ -30,6 +30,8 @@ pub mod git;
 pub mod os;
 // WP10 updater
 pub mod updater;
+// memory files view
+pub mod memory;
 // ---- end feature modules ----
 
 use tauri_plugin_window_state::StateFlags;

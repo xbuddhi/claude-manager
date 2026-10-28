@@ -2,7 +2,11 @@
 //! right-click menu, VS Code, Explorer / Finder, launch arguments and the WebView2 memory target.
 
 pub mod args;
+#[cfg(target_os = "macos")]
+pub mod dock;
 pub mod explorer_menu;
+#[cfg(windows)]
+pub mod jumplist;
 pub mod memory;
 pub mod menu;
 pub mod reveal;
@@ -22,6 +26,12 @@ pub fn init(app: &mut App) -> AppResult<()> {
         log::error!("could not create the tray icon: {e}");
     }
     explorer_menu::keep_current(handle);
+    #[cfg(target_os = "macos")]
+    if let Err(e) = dock::install() {
+        log::error!("could not create the Dock menu: {e}");
+    }
+    #[cfg(windows)]
+    jumplist::install();
     Ok(())
 }
 

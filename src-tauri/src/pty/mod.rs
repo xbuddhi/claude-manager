@@ -24,6 +24,7 @@ use types::{PtyInfo, WriteData};
 pub fn init(app: &mut App) -> AppResult<()> {
     let terms = Terms::default();
     app.manage(terms.clone());
+    app.manage(windows::DragTarget::default());
     term_pids::register(app.handle(), terms.clone());
     lifecycle::register(app.handle(), terms);
     Ok(())

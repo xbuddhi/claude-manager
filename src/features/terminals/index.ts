@@ -154,6 +154,17 @@ async function moveTabs(list: Tab[], where: { to?: string; at?: Point } = {}) {
   if (!tabs.length && !isMainWindow()) void getCurrentWindow().close();
 }
 
+/** The dragging window refreshes `tab-drag` every 400 ms at most; without it the placeholder goes. */
+const INCOMING_TTL_MS = 1200;
+let incomingTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** A tab from another window is dragged over this one (`title`), or left it (null): show where it lands. */
+function showIncoming(title: string | null) {
+  clearTimeout(incomingTimer);
+  strip.setIncoming(title);
+  if (title !== null) incomingTimer = setTimeout(() => strip.setIncoming(null), INCOMING_TTL_MS);
+}
+
 /** "main window", "Window 2", ... */
 function windowName(w: WindowInfo): string {
   return w.label === MAIN_WINDOW ? "main window" : `Window ${w.number}`;
@@ -572,6 +583,11 @@ export function mount(): void {
       const tab = tabs.find((t) => t.id === id);
       return tab ? moveTabs([tab], { at }) : undefined;
     },
+    dragOver: async (id, at) => {
+      const title = tabs.find((t) => t.id === id)?.title ?? "";
+      const res = await call("tab_drag_over", { at: at ?? undefined, title }, { quiet: true });
+      return res.ok ? res.value : null;
+    },
     menu: (id, at) => {
       const tab = tabs.find((t) => t.id === id);
       if (tab) void tabMenu(tab).then((items) => showMenu(items, { at, label: "Terminal tab" }));
@@ -595,7 +611,11 @@ export function mount(): void {
 
   void listen("app:close-requested", ({ terminals }) => void onCloseRequested(terminals));
   void listen("window:close-requested", ({ terminals }) => void onWindowCloseRequested(terminals));
-  void listen("pty-moved", (ids) => void takeMoved(ids));
+  void listen("pty-moved", (ids) => {
+    showIncoming(null);
+    void takeMoved(ids);
+  });
+  void listen("tab-drag", showIncoming);
   void listen("pty-focus", (id) => {
     const tab = tabs.find((t) => t.ptyId === id);
     if (!tab) return;

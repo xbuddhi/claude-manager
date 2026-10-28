@@ -41,6 +41,11 @@ declare module "../../core/api" {
      * window. Returns the label of the window they went to; the caller removes their tabs.
      */
     pty_move: { args: { ids: number[]; to?: string; at?: Point }; result: string };
+    /**
+     * A tab titled `title` is dragged off this window's strip, the pointer at screen point `at` (none: the
+     * drag ended). The window under it shows a hint; returns its number, null for a new window.
+     */
+    tab_drag_over: { args: { at?: Point; title: string }; result: number | null };
     /** Brings terminal `id`'s tab forward in whichever window shows it. */
     pty_focus: { args: { id: number }; result: boolean };
     /** Brings session `sessionId`'s tab forward when another window shows it; false when none does. */
@@ -57,5 +62,7 @@ declare module "../../core/api" {
     "pty-moved": number[];
     /** Bring this terminal's tab forward. */
     "pty-focus": number;
+    /** A tab from another window is dragged over this one (its title), or left it (null). */
+    "tab-drag": string | null;
   }
 }

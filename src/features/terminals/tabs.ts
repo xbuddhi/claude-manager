@@ -7,9 +7,9 @@
 //
 // Everything clickable is a button or has role="tab": the strip is a window drag region (README).
 
-import { html, setHtml } from "../../core/dom";
+import { $, h, html, setHtml } from "../../core/dom";
 import { plural } from "../../core/format";
-import { icon } from "../../core/icons";
+import { icon, iconNode } from "../../core/icons";
 import { animate, reduceMotion, Spring } from "../../core/motion";
 import { showMenu } from "../../ui/menu";
 import { layoutTabs, TAB_GAP } from "./logic";
@@ -31,6 +31,11 @@ export interface StripHandlers {
   reorder(id: number, before: number | null): void;
   /** Dragged off the strip and dropped at screen point `at` (CSS screen pixels). */
   tearOff(id: number, at: { x: number; y: number }): Promise<unknown> | undefined;
+  /**
+   * Dragged off the strip with the pointer at screen point `at` (null: the drag ended). Resolves with the
+   * number of the window a drop there goes to, null for a new window.
+   */
+  dragOver(id: number, at: { x: number; y: number } | null): Promise<number | null>;
   menu(id: number, at: { x: number; y: number }): void;
 }
 
@@ -40,6 +45,9 @@ const HOME_GAP = 10;
 const DRAG_START = 6;
 /** How far above or below the strip a dragged tab must go to leave it (for another window). */
 const TEAR_DISTANCE = 48;
+/** While a torn-off tab rests over another window, its place there is sent again this often (the other
+ * window drops its placeholder when it stops hearing about it). */
+const PROBE_KEEPALIVE_MS = 400;
 /** How long tabs take to glide to new places. */
 const SLIDE_MS = 220;
 
@@ -63,6 +71,10 @@ interface Drag {
   slots: Array<{ id: number; left: number; width: number }>;
   /** Where it would land: before this tab id, null = at the end. */
   before: number | null;
+  /** Pointer screen point waiting to be sent to `dragOver` while one is under way. */
+  probe: { x: number; y: number } | null;
+  probing: boolean;
+  keepAlive: ReturnType<typeof setTimeout> | undefined;
 }
 
 export class Strip {
@@ -77,6 +89,8 @@ export class Strip {
   private pillShown = false;
   private lastLayout = "";
   private drag: Drag | null = null;
+  /** The title of a tab from another window dragged over this one: a placeholder shows where it lands. */
+  private incoming: string | null = null;
   /** The click that ends a drag is not a tab click. */
   private swallowClick = false;
 
@@ -130,13 +144,14 @@ export class Strip {
     this.endDrag();
     this.tabs = tabs;
     this.active = active;
-    this.slot.hidden = tabs.length === 0;
+    this.slot.hidden = tabs.length === 0 && this.incoming === null;
     document.documentElement.classList.toggle("has-tabs", tabs.length > 0);
     if (!tabs.length) {
       this.pillShown = false;
       this.seen.clear();
       this.lastLayout = "";
       setHtml(this.list, html``);
+      this.placeIncoming();
       return;
     }
     const activeIndex = tabs.findIndex((t) => t.id === active);
@@ -164,6 +179,7 @@ export class Strip {
       if (!this.seen.has(t.id)) this.enter(t.id);
     }
     this.seen = new Set(tabs.map((t) => t.id));
+    this.placeIncoming();
     this.slide(from);
     this.placePill(true);
   }
@@ -257,6 +273,9 @@ export class Strip {
       ghost: null,
       slots: [],
       before: null,
+      probe: null,
+      probing: false,
+      keepAlive: undefined,
     };
   }
 
@@ -296,7 +315,10 @@ export class Strip {
       // the strip clips what leaves it: a floating copy follows the pointer instead
       d.ghost.style.transform = `translate(${e.clientX - d.grabX}px, ${e.clientY - d.grabY}px)`;
     }
-    if (d.torn) return;
+    if (d.torn) {
+      this.probeAt(d, { x: e.screenX, y: e.screenY });
+      return;
+    }
     // along the strip: kept inside it, the others make room
     const me = d.slots.find((s) => s.id === d.id);
     if (!me) return;
@@ -325,13 +347,71 @@ export class Strip {
       ghost.removeAttribute("data-tip");
       ghost.style.width = `${d.node.offsetWidth}px`;
       ghost.style.transform = "";
+      ghost.append(h("span", { class: "term-ghost-dest" }, "New window"));
       document.body.append(ghost);
       d.ghost = ghost;
     } else if (!torn && d.ghost) {
       d.ghost.remove();
       d.ghost = null;
+      clearTimeout(d.keepAlive);
+      void this.h.dragOver(d.id, null);
     }
     this.shiftOthers(d, torn ? null : d.before);
+  }
+
+  /** A tab from another window is dragged over this one (its title), or left (null): its landing place. */
+  setIncoming(title: string | null): void {
+    if (title === this.incoming) return;
+    this.incoming = title;
+    if (!this.tabs.length) this.slot.hidden = title === null;
+    this.placeIncoming();
+  }
+
+  /** The placeholder at the end of the strip, where a tab dropped from another window lands. */
+  private placeIncoming() {
+    const title = this.incoming;
+    let node = this.list.querySelector<HTMLElement>(".term-incoming");
+    if (title === null) {
+      node?.remove();
+      return;
+    }
+    if (!node) {
+      const last = this.list.querySelector<HTMLElement>(".term-tab:not(.term-home):last-of-type");
+      node = h(
+        "div",
+        { class: "term-tab term-incoming", attrs: { "aria-hidden": "true" } },
+        iconNode("terminal"),
+        h("span", { class: "term-title" }),
+      );
+      node.style.width = `${last?.offsetWidth || 180}px`;
+      this.list.append(node);
+    }
+    $(".term-title", node).textContent = title;
+  }
+
+  /**
+   * Tells the backend where the torn-off tab is, one call at a time (the latest point wins), and labels the
+   * floating copy with where a drop would send it.
+   */
+  private probeAt(d: Drag, at: { x: number; y: number }) {
+    clearTimeout(d.keepAlive);
+    d.probe = at;
+    if (d.probing) return;
+    const next = d.probe;
+    d.probe = null;
+    d.probing = true;
+    void this.h.dragOver(d.id, next).then((win) => {
+      d.probing = false;
+      if (this.drag !== d || !d.torn || d.released) {
+        // the drag ended or came back while this was under way: the other window must not keep its hint
+        void this.h.dragOver(d.id, null);
+        return;
+      }
+      const dest = d.ghost?.querySelector(".term-ghost-dest");
+      if (dest) dest.textContent = win === null ? "New window" : win === 1 ? "Main window" : `Window ${win}`;
+      if (d.probe) this.probeAt(d, d.probe);
+      else d.keepAlive = setTimeout(() => this.drag === d && d.torn && this.probeAt(d, next), PROBE_KEEPALIVE_MS);
+    });
   }
 
   /**
@@ -416,7 +496,9 @@ export class Strip {
     const d = this.drag;
     if (!d) return;
     this.drag = null;
+    clearTimeout(d.keepAlive);
     d.ghost?.remove();
+    if (d.torn) void this.h.dragOver(d.id, null);
     if (this.root.hasPointerCapture?.(d.pointer)) this.root.releasePointerCapture(d.pointer);
     this.root.classList.remove("dragging-tab", "tearing-active");
     for (const n of this.list.querySelectorAll<HTMLElement>(".term-tab")) {

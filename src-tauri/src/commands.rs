@@ -38,6 +38,7 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::pty::windows::pty_focus,
         crate::pty::windows::pty_focus_session,
         crate::pty::windows::window_list,
+        crate::pty::windows::tab_drag_over,
         crate::launch::launch_external,
         // ---- live + notify (WP3) ----
         crate::live::get_live,
@@ -51,6 +52,11 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         // ---- actions (WP5) ----
         crate::actions::trash::trash_sessions,
         crate::actions::trash::trash_path,
+        crate::actions::rename::rename_session,
+        // ---- memory files ----
+        crate::memory::memory_files,
+        crate::memory::memory_read,
+        crate::memory::memory_create,
         // ---- profiles UI (WP6) ----
         crate::profiles_cmd::create_profile,
         crate::profiles_cmd::open_profile_folder,

@@ -202,9 +202,14 @@ pub fn request_quit(app: &AppHandle) {
 /// tauri-plugin-single-instance callback: a second launch hands over its arguments (an Explorer "open
 /// here" request goes to the main window), or, started without a request (a shortcut, the Start menu),
 /// opens a new window like a browser does; with every window hidden it shows the main window instead.
+/// A taskbar Jump List task (`--task <id>`, Windows) runs like the tray menu item with that id.
 pub fn on_second_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
     // drop the program path
     let args = args.get(1..).unwrap_or_default();
+    if let Some(id) = crate::os::args::task(args) {
+        crate::os::menu::on_menu_event(app, id);
+        return;
+    }
     let request = open_request::receive(app, args, std::path::Path::new(&cwd));
     if request || windows::visible(app).is_empty() {
         show_main(app);

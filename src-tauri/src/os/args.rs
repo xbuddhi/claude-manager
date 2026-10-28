@@ -2,6 +2,7 @@
 //! launch. They are untrusted: the folder must exist and the profile must be a discovered one. Anything
 //! else on the command line is ignored.
 
+use super::menu::{NEW_WINDOW, TRAY_NEW_SESSION};
 use crate::core::paths;
 use crate::core::profiles;
 use crate::core::types::OpenRequest;
@@ -34,6 +35,16 @@ pub fn read(args: &[String]) -> Option<(String, Option<String>)> {
         }
     }
     Some((open?, profile))
+}
+
+/// The flag a taskbar Jump List task starts the app with.
+pub const TASK_FLAG: &str = "--task";
+
+/// The menu id of a taskbar Jump List task (`--task <id>`, Windows): only the ids the Jump List uses.
+pub fn task(args: &[String]) -> Option<&'static str> {
+    let i = args.iter().position(|a| a == TASK_FLAG)?;
+    let id = args.get(i + 1)?;
+    [NEW_WINDOW, TRAY_NEW_SESSION].into_iter().find(|t| t == id)
 }
 
 /// Checks the values: `open` must be an existing folder (relative to `cwd` if not absolute). An unknown
@@ -90,6 +101,15 @@ mod tests {
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn reads_only_the_jump_list_tasks() {
+        assert_eq!(task(&args(&["--task", "window:new"])), Some(NEW_WINDOW));
+        assert_eq!(task(&args(&["--task", "tray:new-session"])), Some(TRAY_NEW_SESSION));
+        assert_eq!(task(&args(&["--task", "app:quit"])), None);
+        assert_eq!(task(&args(&["--task"])), None);
+        assert_eq!(task(&args(&["--open", "D"])), None);
     }
 
     #[test]

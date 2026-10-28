@@ -10,6 +10,7 @@ function setup() {
     moveOut: vi.fn(),
     reorder: vi.fn(),
     tearOff: vi.fn(),
+    dragOver: vi.fn(async () => null),
     menu: vi.fn(),
   };
   return { slot, h, strip: new Strip(slot, h) };

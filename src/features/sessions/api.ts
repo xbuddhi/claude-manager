@@ -9,7 +9,7 @@ import { samePath } from "../../core/paths";
 import { isMac } from "../../core/platform";
 import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
-import { ask } from "../../ui/dialog";
+import { ask, input } from "../../ui/dialog";
 import { toast } from "../../ui/toast";
 import { refreshIndex } from "../index-data/api";
 import "./state";
@@ -24,6 +24,8 @@ declare module "../../core/api" {
     trash_path: { args: { path: string; root: string }; result: null };
     /** Moves sessions (transcript and side folders) to the Recycle Bin / Trash; errors are per session. */
     trash_sessions: { args: { items: TrashItem[] }; result: TrashReport };
+    /** Appends a title line to the session's transcript, like Claude Code's /rename; "" clears the name. */
+    rename_session: { args: { profile: string; sessionId: string; title: string }; result: null };
   }
 }
 
@@ -68,6 +70,18 @@ export async function deleteSessions(sessions: readonly Session[], opts: DeleteO
   }
   if (folder !== undefined) await unpin(folder);
   return true;
+}
+
+/**
+ * Asks for a new name (prefilled with the current one) and renames the session. An emptied field goes back
+ * to the summary or first prompt. Resolves true when renamed.
+ */
+export async function renameSession(s: Session): Promise<boolean> {
+  const title = await input("Rename session", { value: s.label, okLabel: "Rename" });
+  if (title === null || title.trim() === s.label) return false;
+  const res = await call("rename_session", { profile: s.profile, sessionId: s.id, title: title.trim() });
+  if (res.ok) void refreshIndex();
+  return res.ok;
 }
 
 /** Moves `path` (inside the repository folder `root`) to the Recycle Bin / Trash. Resolves true when done. */

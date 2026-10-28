@@ -1,8 +1,9 @@
-// The details pane under the table (92px): the selected session's full prompt and its meta line, or a hint
+// The details pane under the table (as tall as its prompt, at most 3 lines): the selected session's full prompt and its meta line, or a hint
 // for what is selected in the sidebar; Resume / Switch to, Fork and Delete on the right.
 
 import type { Session } from "../../bindings/Session";
 import { h } from "../../core/dom";
+import { leaf } from "../../core/format";
 import { iconNode } from "../../core/icons";
 import { isMac } from "../../core/platform";
 import { button } from "../../ui/button";
@@ -36,8 +37,23 @@ export function detailsFor(
   if (s) return { text: detailText(s.full, level), meta: detailMeta(s, profileName(s.profile)) };
   if (scope?.kind === "folder" && scope.sessions.length === 0) return { text: HINT_NO_SESSIONS, meta: scope.path };
   if (scope?.kind === "group")
-    return { text: groupHint(scope.name, scope.folders.length), meta: scope.folders.join("     ") };
+    return { text: groupHint(scope.name, scope.folders.length), meta: folderList(scope.folders) };
   return { text: hint, meta: scope?.kind === "folder" ? scope.path : "" };
+}
+
+/**
+ * A project's folders on one line: their names, then the parent folder they share once ("a · b  in /code");
+ * full paths when they are in different places.
+ */
+export function folderList(folders: readonly string[]): string {
+  const parent = (path: string) => path.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]*$/, "");
+  const first = folders[0];
+  if (first === undefined) return "";
+  const shared = parent(first);
+  if (shared && folders.every((f) => parent(f) === shared)) {
+    return `${folders.map((f) => leaf(f)).join("  ·  ")}     in ${shared}`;
+  }
+  return folders.join("  ·  ");
 }
 
 export interface DetailsOptions {

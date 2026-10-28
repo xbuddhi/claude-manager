@@ -4,8 +4,10 @@
   overflow-x: hidden;
   min-height: 0;
 }
+/* no ring around the whole list: its selected row already shows focus (below), and WebKit (macOS) would also
+   draw the ring when code focuses the list (after a menu closes, a search pick), not only from the keyboard */
 .list:focus-visible {
-  outline-offset: -2px;
+  outline: none;
 }
 .list-inner {
   position: relative;
