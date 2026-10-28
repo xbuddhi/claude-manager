@@ -50,14 +50,14 @@ Claude Manager reads `~/.claude` and every `~/.claude-*` profile and runs `claud
 Settings > Appearance has a skin for the interface and one for the terminals, each with a dark and a light
 version.
 
-| Interface | Look |
-| --- | --- |
-| **Claude** | The default: warm greys with the Claude orange |
-| **Modern** | Flat editor greys and a clear blue, like VS Code's Modern themes |
-| **Mono** | Black and white only |
-| **Paper** | Warm off-white and soft charcoal |
-| **Linear** | Near-black blue-greys and a violet accent |
-| **Graphite** | Cool greys and a soft indigo |
+| Interface    | Look                                                             |
+| ------------ | ---------------------------------------------------------------- |
+| **Claude**   | The default: warm greys with the Claude orange                   |
+| **Modern**   | Flat editor greys and a clear blue, like VS Code's Modern themes |
+| **Mono**     | Black and white only                                             |
+| **Paper**    | Warm off-white and soft charcoal                                 |
+| **Linear**   | Near-black blue-greys and a violet accent                        |
+| **Graphite** | Cool greys and a soft indigo                                     |
 
 Terminals: One, Catppuccin, Tokyo Night, Rosé Pine, Gruvbox, Solarized, GitHub and Graphite, or Default to
 follow the interface. On macOS, **Window glass** lets the desktop show softly through the title bar and
@@ -67,16 +67,16 @@ sidebar.
   <img src="docs/readme/mac-skins.png" alt="The interface colours in Settings > Appearance" width="80%">
 </p>
 
-| Modern | Linear |
-| --- | --- |
+| Modern                                                                           | Linear                                                                           |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | <img src="docs/readme/skin-modern.png" alt="The Modern skin, dark" width="100%"> | <img src="docs/readme/skin-linear.png" alt="The Linear skin, dark" width="100%"> |
-| **Mono** | **Paper** |
-| <img src="docs/readme/skin-mono.png" alt="The Mono skin, light" width="100%"> | <img src="docs/readme/skin-paper.png" alt="The Paper skin, light" width="100%"> |
+| **Mono**                                                                         | **Paper**                                                                        |
+| <img src="docs/readme/skin-mono.png" alt="The Mono skin, light" width="100%">    | <img src="docs/readme/skin-paper.png" alt="The Paper skin, light" width="100%">  |
 
 ## Get it
 
-| macOS | Windows |
-| --- | --- |
+| macOS                                                                                                                      | Windows                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | macOS 12 or later, Apple Silicon and Intel. Download `Claude Manager_<version>_universal.dmg` and drag it to Applications. | Windows 10 or 11. Download `Claude Manager_<version>_x64-setup.exe` and run it. Installs for you only, no admin rights; adds WebView2 when missing. |
 
 Downloads are on the [latest release](https://github.com/xbuddhi/claude-manager/releases/latest). You also need
