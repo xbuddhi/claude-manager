@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "../../bindings/Project";
 import type { Session } from "../../bindings/Session";
 import { DEFAULT_SETTINGS, store } from "../../core/store";
-import { detailsFor } from "./details";
+import { detailsFor, folderList } from "./details";
 import { buildScope, sessionDir } from "./model";
 import {
   countText,
@@ -147,12 +147,20 @@ describe("scope and details pane", () => {
     );
     expect(detailsFor(group, [], 0, name)).toEqual({
       text: "Web has 2 folders. Drag folders onto it in the sidebar to add more; folders on disk are never moved.",
-      meta: "C:\\code\\a     C:\\code\\b",
+      meta: "a  ·  b     in C:\\code",
     });
     expect(detailsFor(null, [], 0, name).text).toBe(
       "Double-click a project to start a session, or a session to resume it. Drop a folder on the window to start there. Right-click for more.",
     );
     expect(detailsFor(folder, [], 0, name).meta).toBe("C:\\code\\a");
+  });
+
+  it("lists a project's folders by name under their shared parent, else in full", () => {
+    expect(folderList(["/Users/me/CeyPay/CeyFi", "/Users/me/CeyPay/CeyPay-BE/"])).toBe(
+      "CeyFi  ·  CeyPay-BE     in /Users/me/CeyPay",
+    );
+    expect(folderList(["/a/x", "/b/y"])).toBe("/a/x  ·  /b/y");
+    expect(folderList([])).toBe("");
   });
 });
 
