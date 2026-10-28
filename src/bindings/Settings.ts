@@ -20,6 +20,10 @@ pinned: Array<string>,
  */
 hidden: Array<string>, 
 /**
+ * Ids of archived sessions: left out of the sessions list (shown again from its "Archived" button).
+ */
+archived: Array<string>, 
+/**
  * Profile folder of the account last used for new sessions.
  */
 account: string | null, openIn: OpenIn, showPicker: boolean, 

@@ -162,6 +162,8 @@ pub struct Settings {
     pub pinned: Vec<String>,
     /// Folders hidden from the sidebar's FOLDERS list (shown again from its "Show N hidden" row).
     pub hidden: Vec<String>,
+    /// Ids of archived sessions: left out of the sessions list (shown again from its "Archived" button).
+    pub archived: Vec<String>,
     /// Profile folder of the account last used for new sessions.
     pub account: Option<String>,
     pub open_in: OpenIn,
@@ -201,6 +203,7 @@ impl Default for Settings {
         Self {
             pinned: Vec::new(),
             hidden: Vec::new(),
+            archived: Vec::new(),
             account: None,
             open_in: OpenIn::External,
             show_picker: true,

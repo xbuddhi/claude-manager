@@ -11,7 +11,9 @@ declare module "../../core/store" {
     sessionsSelected: string[];
     /** A session to select once the table lists it (set by selectSession, e.g. a search pick). */
     sessionsWanted: string | null;
+    /** The list shows the archived sessions of the scope (session only; reset on another sidebar pick). */
+    sessionsShowArchived: boolean;
   }
 }
 
-defineState({ sessionsScope: null, sessionsSelected: [], sessionsWanted: null });
+defineState({ sessionsScope: null, sessionsSelected: [], sessionsWanted: null, sessionsShowArchived: false });

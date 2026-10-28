@@ -148,6 +148,7 @@ export interface AppState extends CoreState {}
 export const DEFAULT_SETTINGS: Settings = {
   pinned: [],
   hidden: [],
+  archived: [],
   account: null,
   openIn: "external",
   showPicker: true,

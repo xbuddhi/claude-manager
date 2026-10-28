@@ -7,6 +7,7 @@ const svg = (body: string) => raw(`<svg viewBox="0 0 16 16" aria-hidden="true">$
 const CHAT = svg(`<path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/>`);
 const PLAY = svg(`<path d="M5 3.2v9.6L12.5 8z"/>`);
 const PENCIL = svg(`<path d="M10.5 2.8l2.7 2.7-7.6 7.6H2.9v-2.7zM9 4.3l2.7 2.7"/>`);
+const ARCHIVE = svg(`<path d="M2 3h12v3H2zM3 6v7h10V6M6.5 8.5h3"/>`);
 
 /** A session row's icon (a speech bubble). */
 export const chatIcon = (): Element => fragment(CHAT);
@@ -14,3 +15,5 @@ export const chatIcon = (): Element => fragment(CHAT);
 export const playIcon = (): Element => fragment(PLAY);
 /** Rename. */
 export const pencilIcon = (): Element => fragment(PENCIL);
+/** Archive / Unarchive. */
+export const archiveIcon = (): Element => fragment(ARCHIVE);

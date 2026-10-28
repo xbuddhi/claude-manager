@@ -43,13 +43,22 @@ function renderDetails() {
 function recomputeScope() {
   const s = store.get();
   const projects = projectsFor(s.currentProfile, s.index.projects);
-  store.set({ sessionsScope: buildScope(s.sidebarSelection, projects, s.platform.os) });
+  const archived = new Set(s.settings.archived);
+  store.set({
+    sessionsScope: buildScope(s.sidebarSelection, projects, s.platform.os, archived, s.sessionsShowArchived),
+  });
 }
 
 /** Selects the row asked for by sessionsWanted (search picked a session) once the table lists it. */
 function applyWanted() {
-  const id = store.get().sessionsWanted;
-  if (!id || !table.list.rows().some((r) => r.id === id)) return;
+  const { sessionsWanted: id, sessionsScope, sessionsShowArchived, settings } = store.get();
+  if (!id) return;
+  if (!table.list.rows().some((r) => r.id === id)) {
+    // an archived session (e.g. picked in search): list the archived ones; the scope change calls back here
+    const archived = settings.archived.includes(id);
+    if (sessionsScope && archived !== sessionsShowArchived) store.set({ sessionsShowArchived: archived });
+    return;
+  }
   table.list.select([id]);
   table.list.scrollToKey(id);
   store.set({ sessionsWanted: null, sessionsSelected: [id] });
@@ -97,9 +106,19 @@ export function mount(): void {
     },
     { immediate: true },
   );
-  store.select((s) => [s.index, s.currentProfile, s.sidebarSelection, s.platform.os] as const, recomputeScope, {
-    equals: (a, b) => a.every((v, i) => v === b[i]),
-  });
+  store.select(
+    (s) =>
+      [
+        s.index,
+        s.currentProfile,
+        s.sidebarSelection,
+        s.platform.os,
+        s.settings.archived,
+        s.sessionsShowArchived,
+      ] as const,
+    recomputeScope,
+    { equals: (a, b) => a.every((v, i) => v === b[i]) },
+  );
   recomputeScope();
   store.select((s) => s.sessionsWanted, applyWanted);
   store.select((s) => s.sessionsSelected, renderDetails);
@@ -121,7 +140,10 @@ export function mount(): void {
   // another folder, or back from a terminal: the content settles in
   store.select(
     (s) => s.sidebarSelection?.key ?? null,
-    () => settleIn(page),
+    () => {
+      store.set({ sessionsShowArchived: false });
+      settleIn(page);
+    },
   );
   store.select(
     (s) => s.activeTerminal === null,

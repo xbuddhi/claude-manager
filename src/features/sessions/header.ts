@@ -4,12 +4,12 @@
 import { h } from "../../core/dom";
 import { iconNode } from "../../core/icons";
 import { store } from "../../core/store";
-import { button } from "../../ui/button";
+import { button, setButtonLabel } from "../../ui/button";
 import { showMenu } from "../../ui/menu";
 import { splitButton } from "../../ui/splitbutton";
 import { doNew } from "./actions";
 import { newSessionMenuItems, openMenuItems } from "./menus";
-import { countText, TIP_NEW } from "./strings";
+import { archivedText, countText, TIP_ARCHIVED, TIP_ARCHIVED_BACK, TIP_NEW } from "./strings";
 
 export interface Header {
   /** The New Session button, as the anchor for the folder picker. */
@@ -36,12 +36,22 @@ export function mountHeader(el: HTMLElement): Header {
   openBtn.setAttribute("aria-haspopup", "menu");
   openBtn.append(iconNode("chevronDown"));
   openBtn.classList.add("ses-open");
-  el.append(count, newBtn.el, openBtn);
+  const archBtn = button({
+    label: archivedText(0),
+    kind: "plain",
+    onClick: () => store.set({ sessionsShowArchived: !store.get().sessionsShowArchived }),
+  });
+  archBtn.classList.add("ses-arch");
+  el.append(count, archBtn, newBtn.el, openBtn);
 
   store.select(
     (s) => s.sessionsScope,
     (scope) => {
-      count.textContent = scope ? countText(scope.sessions.length, scope.name) : "";
+      count.textContent = scope ? countText(scope.sessions.length, scope.name, scope.showingArchived) : "";
+      archBtn.hidden = !scope?.archived;
+      setButtonLabel(archBtn, archivedText(scope?.archived ?? 0));
+      archBtn.setAttribute("aria-pressed", String(!!scope?.showingArchived));
+      archBtn.dataset.tip = scope?.showingArchived ? TIP_ARCHIVED_BACK : TIP_ARCHIVED;
       newBtn.setDisabled(!scope);
       openBtn.disabled = !scope;
     },

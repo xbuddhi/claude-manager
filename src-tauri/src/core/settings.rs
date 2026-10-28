@@ -204,6 +204,7 @@ fn sanitize(mut s: Settings) -> Settings {
     s.claude_path = s.claude_path.filter(|p| !p.trim().is_empty());
     s.pinned.retain(|p| !p.trim().is_empty());
     s.hidden.retain(|p| !p.trim().is_empty());
+    s.archived.retain(|id| !id.trim().is_empty());
     for g in &mut s.groups {
         g.folders.retain(|f| !f.trim().is_empty());
     }

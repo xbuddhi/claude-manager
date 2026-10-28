@@ -20,6 +20,14 @@
   max-width: 220px;
   margin-right: 4px;
 }
+.ses-arch {
+  color: var(--muted);
+  font-size: 12px;
+}
+.ses-arch[aria-pressed="true"] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
 .ses-open svg:last-child {
   width: 11px;
   height: 11px;

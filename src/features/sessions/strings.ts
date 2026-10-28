@@ -25,10 +25,17 @@ export function groupHint(name: string, folders: number): string {
   return `${name} has ${folders} folder${folders === 1 ? "" : "s"}. Drag folders onto it in the sidebar to add more; folders on disk are never moved.`;
 }
 
-/** The muted count beside the view title: "12 sessions in app". */
-export function countText(n: number, name: string): string {
-  return `${n} session${n === 1 ? "" : "s"} in ${name}`;
+/** The muted count beside the view title: "12 sessions in app" ("2 archived sessions in app"). */
+export function countText(n: number, name: string, archived = false): string {
+  return `${n} ${archived ? "archived " : ""}session${n === 1 ? "" : "s"} in ${name}`;
 }
+
+/** The header's toggle: "Archived · 3". */
+export function archivedText(n: number): string {
+  return `Archived  ·  ${n}`;
+}
+export const TIP_ARCHIVED = "Show the archived sessions";
+export const TIP_ARCHIVED_BACK = "Back to the sessions that are not archived";
 
 /** "Working..." / "Open now" while the session runs (live level 2 / 1), else how long ago it was used. */
 export function lastActive(level: number, modified: number, now = Date.now()): string {

@@ -129,6 +129,19 @@ describe("scope and details pane", () => {
     expect(sessionDir(a1, projects, null)).toBe("C:\\code\\a");
   });
 
+  it("leaves archived sessions out of the list, or lists only them while they are shown", () => {
+    const sel = { kind: "folder", key: "f", path: "C:\\code\\a" } as const;
+    const archived = new Set([a1.id]);
+    const active = buildScope(sel, projects, "windows", archived);
+    expect(active?.sessions.map((s) => s.id)).not.toContain(a1.id);
+    expect(active).toMatchObject({ archived: 1, showingArchived: false });
+    const shown = buildScope(sel, projects, "windows", archived, true);
+    expect(shown?.sessions.map((s) => s.id)).toEqual([a1.id]);
+    expect(shown?.showingArchived).toBe(true);
+    // nothing archived here: the active list, whatever the toggle says
+    expect(buildScope(sel, projects, "windows", new Set(), true)?.showingArchived).toBe(false);
+  });
+
   it("shows the selected session, else a hint for what is selected", () => {
     const folder = buildScope({ kind: "folder", key: "f", path: "C:\\code\\a" }, projects, "windows");
     expect(detailsFor(folder, [a1], 1, name).text).toBe(

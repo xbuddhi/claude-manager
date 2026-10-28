@@ -9,9 +9,9 @@ import { avatar } from "../../ui/avatar";
 import { type MenuItem, type MenuPosition, showMenu } from "../../ui/menu";
 import { copyText, openFolder, openInCode, reveal, revealLabel, terminalHere } from "../os/api";
 import { profileColor, profileInitial } from "../profiles/api";
-import { deleteSelected, doNew, doResume, startNew } from "./actions";
+import { archiveSelected, deleteSelected, doNew, doResume, isArchived, startNew } from "./actions";
 import { renameSession } from "./api";
-import { pencilIcon } from "./icons";
+import { archiveIcon, pencilIcon } from "./icons";
 
 /** Delete is Del on Windows and Cmd+Backspace on macOS (a Mac keyboard's delete key is Backspace). */
 export function deleteKeys(mac = isMac()): string {
@@ -19,6 +19,7 @@ export function deleteKeys(mac = isMac()): string {
 }
 
 export function sessionMenuItems(s: Session): MenuItem[] {
+  const archived = isArchived(s.id);
   return [
     { label: "Resume", icon: "history", shortcut: "Enter", run: () => void doResume(s) },
     { label: "Resume in new window", icon: "popout", run: () => void doResume(s, { mode: "external" }) },
@@ -35,6 +36,7 @@ export function sessionMenuItems(s: Session): MenuItem[] {
     },
     { label: revealLabel(), icon: "folder", run: () => void reveal(s.file) },
     { kind: "separator" },
+    { label: archived ? "Unarchive" : "Archive", icon: archiveIcon(), run: () => archiveSelected(!archived) },
     { label: "Delete", icon: "trash", danger: true, shortcut: deleteKeys(), run: deleteSelected },
   ];
 }
