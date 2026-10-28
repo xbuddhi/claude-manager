@@ -15,10 +15,30 @@ import { focusLive } from "./focus";
 import "./ipc";
 import { closeOrphans } from "./orphans";
 
+function sameFlat(a: object, b: object): boolean {
+  const ka = Object.keys(a);
+  if (ka.length !== Object.keys(b).length) return false;
+  return ka.every((k) => k in b && Object.is((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
+/**
+ * Publishes a scan. Entries and maps that did not change keep their objects, so the sidebar, table and search
+ * (which compare by reference) only redraw for a real change.
+ */
 export function applyLive(live: LiveChanged): void {
+  const held = store.get();
   const byId: Record<string, LiveSession> = {};
-  for (const s of live.sessions) byId[s.sessionId] = s;
-  store.set({ live: byId, liveCwd: live.liveCwd });
+  let same = live.sessions.length === Object.keys(held.live).length;
+  for (const s of live.sessions) {
+    const old = held.live[s.sessionId];
+    const keep = old !== undefined && sameFlat(old, s);
+    byId[s.sessionId] = keep ? old : s;
+    if (!keep) same = false;
+  }
+  store.set({
+    live: same ? held.live : byId,
+    liveCwd: sameFlat(held.liveCwd, live.liveCwd) ? held.liveCwd : live.liveCwd,
+  });
 }
 
 /** The process of the terminal tab in front; null on Home or while it is not known. */

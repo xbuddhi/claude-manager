@@ -60,3 +60,21 @@ export function panelHtml(d: PanelData, now = Date.now()): SafeHtml {
     ${plans}
     ${footer(d.local)}`;
 }
+
+/**
+ * Brings the parts that change with the clock alone up to `now` in a panel drawn by panelHtml from the same
+ * `d`: the status line and each limit's reset countdown. True when any text changed.
+ */
+export function tickPanel(root: ParentNode, d: PanelData, now = Date.now()): boolean {
+  let changed = false;
+  const put = (el: Element | null | undefined, text: string | undefined) => {
+    if (!el || text === undefined || el.textContent === text) return;
+    el.textContent = text;
+    changed = true;
+  };
+  put(root.querySelector(".use-status"), statusLine(d.plans, d.plansBusy, now));
+  const resets = d.plans.flatMap((p) => (p.error !== null ? [] : p.limits.map((l) => resetText(l.resets, now))));
+  let i = 0;
+  for (const el of root.querySelectorAll(".use-reset")) put(el, resets[i++]);
+  return changed;
+}

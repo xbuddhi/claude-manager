@@ -228,11 +228,15 @@ export function companionSvg(c: Companion, size: number, moving: boolean): strin
     <path d="M50 31 C71 31 82 45 82 61 C82 77 70 85 50 85 C30 85 18 77 18 61 C18 45 29 31 50 31 Z" fill="url(#${id}g)"/>
     <ellipse cx="31.5" cy="66" rx="4.6" ry="2.6" fill="${BLUSH}" opacity="0.6"/><ellipse cx="68.5" cy="66" rx="4.6" ry="2.6" fill="${BLUSH}" opacity="0.6"/>
     ${eyes}<path d="M47.5 67 Q50 69.4 52.5 67" stroke="${INK}" stroke-width="1.9" fill="none" stroke-linecap="round"/>${front}`;
-  const alive = moving ? `<g class="pc-breath">${wrap ? `<g class="${wrap}">${figure}</g>` : figure}</g>` : figure;
+  const alive = moving && wrap ? `<g class="${wrap}">${figure}</g>` : figure;
   // no backdrop: the companion stands on its own. Small ones are framed on the body, so the face fills them.
-  const view = size <= 24 ? "18 26 64 64" : "10 18 80 80";
+  const small = size <= 24;
+  const view = small ? "18 26 64 64" : "10 18 80 80";
+  // breathing scales the whole svg box (an element transform the compositor runs), from between its feet:
+  // (50, 86) of the view box
+  const breath = moving ? `;transform-origin:50% ${small ? "93.75%" : "85%"}` : "";
   // its own size (base.css sizes every svg as a 16px icon)
-  return `<svg class="pc" width="${size}" height="${size}" style="width:${size}px;height:${size}px" viewBox="${view}" aria-hidden="true">
+  return `<svg class="pc${moving ? " pc-breath" : ""}" width="${size}" height="${size}" style="width:${size}px;height:${size}px${breath}" viewBox="${view}" aria-hidden="true">
     <defs><linearGradient id="${id}g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${top}"/><stop offset="1" stop-color="${bottom}"/></linearGradient></defs>
     ${size > 24 ? `<ellipse cx="50" cy="89" rx="24" ry="3" fill="${INK}" opacity="0.12"/>` : ""}${alive}</svg>`;
 }

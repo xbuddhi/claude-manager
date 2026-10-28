@@ -15,10 +15,25 @@ gen: number,
  */
 ready: boolean, 
 /**
- * Every project; null when `gen` equals the `sinceGen` asked with (nothing changed).
+ * Every project; null when `gen` equals the `sinceGen` asked with (nothing changed), or when only
+ * the changes are sent (`base` is set).
  */
 projects: Array<Project> | null, 
 /**
  * Listed sessions per profile folder, for every profile that has any.
  */
-counts: Array<ProfileCount>, };
+counts: Array<ProfileCount>, 
+/**
+ * Set when only the changes since generation `base` (the `sinceGen` asked with) are sent: `changed`
+ * and `order` replace `projects`.
+ */
+base: number | null, 
+/**
+ * With `base`: the projects that are new or differ from generation `base`.
+ */
+changed: Array<Project> | null, 
+/**
+ * With `base`: the path of every project, in display order. A path of generation `base` that is not
+ * here was removed; one not in `changed` is unchanged.
+ */
+order: Array<string> | null, };

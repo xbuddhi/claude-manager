@@ -47,7 +47,8 @@ function profileRow(dir: string | null, pick: (run: () => void) => void): HTMLEl
       attrs: { role: "menuitem" },
       onclick: () => pick(() => enterProfile(dir)),
     },
-    profileAvatar(dir, 32, undefined, true),
+    // still: a row is too small for the movement to show, and the menu lists every profile
+    profileAvatar(dir, 32),
     h(
       "span",
       { class: "prof-pop-text" },

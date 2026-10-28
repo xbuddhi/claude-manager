@@ -3,7 +3,7 @@ import type { Project } from "../../bindings/Project";
 import type { Session } from "../../bindings/Session";
 import { DEFAULT_SETTINGS, store } from "../../core/store";
 import { detailsFor, folderList } from "./details";
-import { buildScope, sessionDir } from "./model";
+import { buildScope, sameScope, sessionDir } from "./model";
 import {
   countText,
   deleteConfirm,
@@ -34,7 +34,6 @@ function session(label: string, modified: number, cwd: string | null = "C:\\code
     file: `${PROFILE}\\projects\\C--code-app\\${id}.jsonl`,
     cwd,
     label,
-    full: `${label} (full text)`,
     count: 12,
     modified,
     sizeKb: 1536,
@@ -129,6 +128,19 @@ describe("scope and details pane", () => {
     expect(sessionDir(a1, projects, null)).toBe("C:\\code\\a");
   });
 
+  it("a rebuilt scope with the same sessions counts as the same; a changed session does not", () => {
+    const sel = { kind: "folder" as const, key: "f:c:\\code\\a", path: "C:\\code\\a" };
+    const before = buildScope(sel, projects, "windows");
+    expect(sameScope(before, buildScope(sel, projects, "windows"))).toBe(true);
+    const grown = { ...a1, count: a1.count + 1 };
+    const next = [{ ...projects[0], sessions: [grown, a2] } as Project, ...projects.slice(1)];
+    expect(sameScope(before, buildScope(sel, next, "windows"))).toBe(false);
+    expect(sameScope(before, null)).toBe(false);
+    const group = { kind: "group" as const, key: "g:web", name: "Web", folders: ["C:\\code\\a", "C:\\code\\b"] };
+    expect(sameScope(buildScope(group, projects, "windows"), buildScope(group, projects, "windows"))).toBe(true);
+    expect(sameScope(buildScope(group, projects, "windows"), before)).toBe(false);
+  });
+
   it("leaves archived sessions out of the list, or lists only them while they are shown", () => {
     const sel = { kind: "folder", key: "f", path: "C:\\code\\a" } as const;
     const archived = new Set([a1.id]);
@@ -144,9 +156,9 @@ describe("scope and details pane", () => {
 
   it("shows the selected session, else a hint for what is selected", () => {
     const folder = buildScope({ kind: "folder", key: "f", path: "C:\\code\\a" }, projects, "windows");
-    expect(detailsFor(folder, [a1], 1, name).text).toBe(
-      "This session is open. Double-click to switch to it.\na1 (full text)",
-    );
+    // the label until the full text is fetched, then that
+    expect(detailsFor(folder, [a1], 1, name).text).toBe("This session is open. Double-click to switch to it.\na1");
+    expect(detailsFor(folder, [a1], 0, name, undefined, "a1 (full text)").text).toBe("a1 (full text)");
     expect(detailsFor(folder, [a1], 0, name).meta).toContain("12 messages     profile: work     ");
     const empty = buildScope({ kind: "folder", key: "f", path: "C:\\code\\empty" }, projects, "windows");
     expect(detailsFor(empty, [], 0, name)).toEqual({

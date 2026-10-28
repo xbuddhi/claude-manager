@@ -10,7 +10,8 @@ publish = false
 [lib]
 # The `_lib` suffix keeps the lib name distinct from the bin name (https://github.com/rust-lang/cargo/issues/8519).
 name = "claude_manager_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop only: the binary links the rlib. staticlib/cdylib are for mobile targets and only add build output.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

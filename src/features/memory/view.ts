@@ -50,6 +50,8 @@ let bar: HTMLElement;
 let list: HTMLElement;
 let head: HTMLElement;
 let content: HTMLElement;
+/** The document on screen and what it was drawn from, to skip drawing it again unchanged. */
+let shown: { path: string; text: string; el: HTMLElement } | null = null;
 
 function selectionFolders(): string[] {
   const sel = store.get().sidebarSelection;
@@ -286,8 +288,11 @@ async function select(path: string) {
     return;
   }
   const text = res.value.trim() ? res.value : "(empty)";
+  // read again unchanged: the document stays as it is
+  if (shown?.path === f.path && shown.text === text && content.firstElementChild === shown.el) return;
   const el = await renderMarkdown(text, (href) => openLink(href, f.path));
   if (seq !== st.seq) return;
+  shown = { path: f.path, text, el };
   content.replaceChildren(el);
   content.scrollTop = keepScroll;
 }

@@ -9,11 +9,15 @@ pub mod types;
 
 use crate::core::error::{AppError, AppResult, blocking, lock};
 use crate::core::{events, paths, profiles};
+use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use tauri::{App, AppHandle, Emitter, Manager};
 use types::{PlanReport, PlansUpdate, UsageReport};
+
+/// Plan fetches running at once: offline, each one can wait for the whole request timeout.
+const PARALLEL_FETCHES: usize = 3;
 
 /// Plan state shared by every window: what is shown, and whether a refresh runs.
 pub struct Usage {
@@ -80,7 +84,8 @@ pub async fn usage_cached(app: AppHandle, profiles: Vec<String>) -> AppResult<Ve
     .await
 }
 
-/// Refreshes the plan limits of `profiles` (one after another) and returns them; `usage-plans` reports
+/// Refreshes the plan limits of `profiles` (up to three at a time; a 429 pauses the ones not started yet)
+/// and returns them, in the order asked for; `usage-plans` reports
 /// the start and the end. Skipped while a refresh runs, and, unless `force`, when the same profiles were
 /// fetched under 5 minutes ago and nothing needs a retry.
 #[tauri::command]
@@ -110,13 +115,41 @@ pub async fn usage_plans(app: AppHandle, profiles: Vec<String>, force: Option<bo
     }
     publish(&app, &snapshot(&usage));
 
+    // every sign-in read in one blocking call, then the fetches share a queue
+    let read = dirs.clone();
+    let all_creds = blocking(move || Ok(read.iter().map(|d| creds::read(d)).collect::<Vec<_>>())).await?;
+    let jobs: VecDeque<_> = dirs
+        .iter()
+        .zip(&wanted)
+        .zip(all_creds)
+        .enumerate()
+        .map(|(i, ((dir, profile), creds))| (i, paths::key(profile), profile.clone(), profiles::name(dir), creds))
+        .collect();
+    let queue = Arc::new(Mutex::new(jobs));
+    let workers: Vec<_> = (0..PARALLEL_FETCHES.min(dirs.len()))
+        .map(|_| {
+            let app = app.clone();
+            let queue = queue.clone();
+            tauri::async_runtime::spawn(async move {
+                let usage = app.state::<Usage>();
+                let mut done = Vec::new();
+                loop {
+                    let next = lock(&queue).pop_front();
+                    let Some((i, key, profile, name, creds)) = next else {
+                        break;
+                    };
+                    done.push((i, usage.fetcher.fetch(&key, &profile, &name, creds).await));
+                }
+                done
+            })
+        })
+        .collect();
     let mut fresh = Vec::with_capacity(dirs.len());
-    for (dir, profile) in dirs.into_iter().zip(&wanted) {
-        let key = paths::key(profile);
-        let name = profiles::name(&dir);
-        let creds = blocking(move || Ok(creds::read(&dir))).await?;
-        fresh.push(usage.fetcher.fetch(&key, profile, &name, creds).await);
+    for worker in workers {
+        fresh.extend(worker.await?);
     }
+    fresh.sort_by_key(|(i, _)| *i);
+    let fresh: Vec<PlanReport> = fresh.into_iter().map(|(_, rep)| rep).collect();
     let merged = plan::merge(&old, fresh);
     let file = usage.cache_file.clone();
     let to_save = merged.clone();

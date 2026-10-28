@@ -23,6 +23,7 @@ const COALESCE: Duration = Duration::from_millis(8);
 const BATCH_BYTES: usize = 64 * 1024;
 /// Chunks queued between the reader and the pump (each at most one read).
 const QUEUE: usize = 16;
+/// How often the pump looks again while it waits out the exit grace or for the exit.
 const IDLE: Duration = Duration::from_millis(50);
 /// How long the exit message waits for the PTY to close after the child exited. A process the child left
 /// behind can hold it open; its output after that is drained but not shown.
@@ -52,6 +53,9 @@ struct State {
     exit: Option<PtyExit>,
     exit_sent: bool,
     send_failed: bool,
+    /// A sender into the pump's queue. The idle pump blocks on the queue, so the exit sends an empty chunk
+    /// to wake it; then this is dropped, so the queue closes once the reader ends too.
+    wake: Option<SyncSender<Vec<u8>>>,
 }
 
 impl Output {
@@ -66,6 +70,7 @@ impl Output {
                 exit: None,
                 exit_sent: false,
                 send_failed: false,
+                wake: None,
             }),
             changed: Condvar::new(),
         })
@@ -110,8 +115,23 @@ impl Output {
 
     /// The terminal is going away: the pump finishes without waiting for a resume.
     pub fn close(&self) {
-        self.state().closing = true;
+        let mut st = self.state();
+        st.closing = true;
+        // wake an idle pump so it goes back to waiting with a timeout: the exit can no longer wake it (the
+        // sender is dropped here), and a child's leftover process may keep the PTY open
+        if let Some(wake) = st.wake.take() {
+            let _ = wake.try_send(Vec::new());
+        }
+        drop(st);
         self.changed.notify_all();
+    }
+
+    /// Keeps `tx` to wake the pump with when the exit comes.
+    fn set_wake(&self, tx: SyncSender<Vec<u8>>) {
+        let mut st = self.state();
+        if !st.closing {
+            st.wake = Some(tx);
+        }
     }
 
     /// Called by the waiter once the child has exited.
@@ -119,6 +139,11 @@ impl Output {
         let mut st = self.state();
         st.exit = Some(PtyExit { code });
         st.closing = true;
+        // a full queue needs no wake-up: the pump is not waiting on it
+        if let Some(wake) = st.wake.take() {
+            let _ = wake.try_send(Vec::new());
+        }
+        drop(st);
         self.changed.notify_all();
     }
 
@@ -144,6 +169,11 @@ impl Output {
         self.state().exit.is_some()
     }
 
+    /// Closed, or the child exited: nothing will wake an idle pump any more.
+    fn closing(&self) -> bool {
+        self.state().closing
+    }
+
     fn wait_while_paused(&self) {
         let st = self.state();
         let _st = self
@@ -164,6 +194,7 @@ impl Output {
 /// Starts the reader and pump threads of terminal `id`.
 pub fn start(id: u32, reader: Box<dyn Read + Send>, out: Arc<Output>) -> std::io::Result<()> {
     let (tx, rx) = sync_channel(QUEUE);
+    out.set_wake(tx.clone());
     std::thread::Builder::new()
         .name(format!("pty-{id}-pump"))
         .spawn(move || pump(rx, out))?;
@@ -192,31 +223,42 @@ fn read_loop(mut reader: Box<dyn Read + Send>, tx: SyncSender<Vec<u8>>) {
 }
 
 fn pump(rx: Receiver<Vec<u8>>, out: Arc<Output>) {
-    let mut pending: Vec<u8> = Vec::new();
+    let mut pending: Vec<u8> = Vec::with_capacity(BATCH_BYTES);
     let mut first = Instant::now();
     let mut eof = false;
     let mut exited_at: Option<Instant> = None;
     loop {
         out.wait_while_paused();
         if !eof {
-            let wait = if pending.is_empty() {
-                IDLE
+            let got = if pending.is_empty() && exited_at.is_none() && !out.closing() {
+                // idle: sleep until output comes, the PTY closes, or the exit wakes this up
+                rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
+            } else if pending.is_empty() {
+                rx.recv_timeout(IDLE)
             } else {
-                COALESCE.saturating_sub(first.elapsed())
+                rx.recv_timeout(COALESCE.saturating_sub(first.elapsed()))
             };
-            match rx.recv_timeout(wait) {
+            match got {
+                Ok(chunk) if chunk.is_empty() => {} // the exit's wake-up
                 Ok(chunk) => {
                     if pending.is_empty() {
                         first = Instant::now();
+                        if chunk.len() >= BATCH_BYTES {
+                            // a full batch on its own: sent as it is, not copied
+                            pending = chunk;
+                        } else {
+                            pending.extend_from_slice(&chunk);
+                        }
+                    } else {
+                        pending.extend_from_slice(&chunk);
                     }
-                    pending.extend_from_slice(&chunk);
                 }
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => eof = true,
             }
         }
         if !pending.is_empty() && (eof || pending.len() >= BATCH_BYTES || first.elapsed() >= COALESCE) {
-            out.send_data(std::mem::take(&mut pending));
+            out.send_data(std::mem::replace(&mut pending, Vec::with_capacity(BATCH_BYTES)));
         }
         if out.exited() {
             let at = *exited_at.get_or_insert_with(Instant::now);
@@ -297,6 +339,7 @@ pub mod tests {
         let rec = Recorder::default();
         let out = Output::new(rec.sink());
         let (tx, rx) = sync_channel(QUEUE);
+        out.set_wake(tx.clone());
         let o = out.clone();
         std::thread::spawn(move || pump(rx, o));
         (tx, out, rec)
@@ -360,5 +403,57 @@ pub mod tests {
         assert_eq!(first.text(), "line one\r\n");
         drop(tx);
         out.close();
+    }
+
+    #[test]
+    fn idle_pump_sleeps_until_output_or_the_exit() {
+        let (tx, out, rec) = pumped();
+        std::thread::sleep(Duration::from_millis(100)); // the pump is blocked on the queue now
+        tx.send(b"a".to_vec()).unwrap();
+        assert!(rec.wait(5, |r| r.text() == "a"));
+        std::thread::sleep(Duration::from_millis(100));
+        // the PTY stays open (tx kept): the exit alone wakes the pump
+        let started = Instant::now();
+        out.set_exit(Some(1));
+        assert!(rec.wait(5, |r| r.exit() == Some(Some(1))));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(!rec.late());
+        drop(tx);
+    }
+
+    #[test]
+    fn sends_a_large_chunk_whole() {
+        let (tx, out, rec) = pumped();
+        let big = vec![b'x'; BATCH_BYTES + 10];
+        tx.send(big.clone()).unwrap();
+        tx.send(b"y".to_vec()).unwrap();
+        assert!(rec.wait(5, |r| lock(&r.data).len() == big.len() + 1));
+        assert!(rec.text().ends_with("xy"));
+        out.set_exit(None);
+        drop(tx);
+        assert!(rec.wait(5, |r| r.exit() == Some(None)));
+    }
+
+    #[test]
+    fn a_closed_pump_still_ends_while_the_pty_stays_open() {
+        let (tx, out, rec) = pumped();
+        std::thread::sleep(Duration::from_millis(100)); // the pump is blocked on the queue now
+        out.close();
+        // a leftover process keeps the PTY open (tx kept): the exit must still end the pump
+        std::thread::sleep(Duration::from_millis(100));
+        out.set_exit(Some(0));
+        assert!(rec.wait(5, |r| r.exit() == Some(Some(0))));
+        drop(tx);
+    }
+
+    #[test]
+    fn the_queue_closes_after_close_once_the_reader_ends() {
+        let (tx, out, rec) = pumped();
+        out.close();
+        drop(tx);
+        // eof first; the exit still comes and ends the pump
+        std::thread::sleep(Duration::from_millis(100));
+        out.set_exit(Some(0));
+        assert!(rec.wait(5, |r| r.exit() == Some(Some(0))));
     }
 }

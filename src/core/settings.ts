@@ -2,10 +2,21 @@
 
 import type { Settings } from "../bindings/Settings";
 import { call, listen } from "./api";
+import { keepEqual } from "./equal";
 import { store } from "./store";
 
 export function settings(): Settings {
   return store.get().settings;
+}
+
+/**
+ * Puts settings in the mirror. Keys whose value did not change keep their old object, and nothing is
+ * published when no key changed: a save comes back twice (the answer and the `settings-changed` echo), and
+ * selectors on settings.groups and the like should not fire for either.
+ */
+export function applySettings(next: Settings): void {
+  const merged = keepEqual(settings(), next);
+  if (merged !== settings()) store.set({ settings: merged });
 }
 
 /**
@@ -15,27 +26,35 @@ export function settings(): Settings {
  */
 export async function updateSettings(patch: Partial<Settings> & Record<string, unknown>): Promise<boolean> {
   const before = settings();
-  store.set({ settings: { ...before, ...patch } });
+  applySettings({ ...before, ...patch });
   const res = await call("update_settings", { patch });
   if (res.ok) {
-    store.set({ settings: res.value });
+    applySettings(res.value);
     return true;
   }
   const current = await call("get_settings", undefined, { quiet: true });
   if (current.ok) {
-    store.set({ settings: current.value });
+    applySettings(current.value);
   } else {
     // undo only this patch's keys
     type Loose = Settings & Record<string, unknown>;
     const undone: Loose = { ...settings() };
     for (const key of Object.keys(patch)) undone[key] = (before as Loose)[key];
-    store.set({ settings: undone });
+    applySettings(undone);
   }
   return false;
 }
 
 export async function initSettings(): Promise<void> {
-  await listen("settings-changed", (s) => store.set({ settings: s }));
-  const res = await call("get_settings", undefined, { quiet: true });
-  if (res.ok) store.set({ settings: res.value });
+  let heard = false;
+  // both requests go out together; the listener is registered before the answer is applied
+  const [, res] = await Promise.all([
+    listen("settings-changed", (s) => {
+      heard = true;
+      applySettings(s);
+    }),
+    call("get_settings", undefined, { quiet: true }),
+  ]);
+  // an event that arrived meanwhile is newer than this answer
+  if (res.ok && !heard) applySettings(res.value);
 }

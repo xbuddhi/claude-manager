@@ -28,6 +28,8 @@ const st = {
   /** The file in the preview. */
   file: null as string | null,
   fileSeq: 0,
+  /** The markdown text shown as a document, to skip drawing it again unchanged. */
+  doc: null as string | null,
 };
 
 let explorer: Explorer;
@@ -46,6 +48,7 @@ function selectionFolders(): string[] {
 function closeFile() {
   st.file = null;
   st.fileSeq++;
+  st.doc = null;
   head.replaceChildren();
   code.clear();
   content.replaceChildren(h("div", { class: "fm-empty" }, "Select a file to see it here."));
@@ -107,23 +110,31 @@ async function openFile(rel: string) {
   st.file = rel;
   const seq = ++st.fileSeq;
   const abs = absPath(root, rel);
-  renderHead(rel, abs);
+  // read again (the app came back to the front): the bar stays
+  if (!same || !head.firstChild) renderHead(rel, abs);
   const res = await call("files_read", { root, path: rel }, { quiet: true });
   if (seq !== st.fileSeq) return;
-  const msg = (text: string) => content.replaceChildren(h("div", { class: "fm-empty" }, text));
+  const msg = (text: string) => {
+    st.doc = null;
+    content.replaceChildren(h("div", { class: "fm-empty" }, text));
+  };
   if (!res.ok) return msg(res.error.message);
   const f = res.value;
   if (f.kind === "missing") return msg("This file no longer exists.");
   if (f.kind === "binary") return msg("Binary file: no preview.");
   if (f.kind === "large") return msg(`Too large to preview (${size(f.size / 1024)}). Open it in an editor.`);
   if (isMarkdown(rel) && st.mdMode === "preview") {
+    // the same document, unchanged: nothing to draw
+    if (same && st.doc === f.text && content.firstElementChild?.classList.contains("fm-doc-scroll")) return;
     code.clear();
     const doc = await renderMarkdown(f.text.trim() ? f.text : "(empty)", (href) => openLink(href, rel));
     if (seq !== st.fileSeq) return;
+    st.doc = f.text;
     content.replaceChildren(h("div", { class: "fm-doc-scroll" }, doc));
     (content.firstElementChild as HTMLElement).scrollTop = scroll;
     return;
   }
+  st.doc = null;
   if (content.firstElementChild !== code.el) content.replaceChildren(code.el);
   code.show(rel, f.text);
 }

@@ -76,7 +76,9 @@ fn header(line: &str, out: &mut GitStatus) {
 /// Parses NUL-separated porcelain v1 output.
 pub fn parse(out: &str) -> GitStatus {
     let mut status = GitStatus::default();
-    let mut entries = out.split('\0');
+    // every record ends with a NUL: text after the last one is a record cut off by the output cap
+    let complete = out.rsplit_once('\0').map_or("", |(head, _)| head);
+    let mut entries = complete.split('\0');
     while let Some(e) = entries.next() {
         if e.len() < 3 || !e.is_char_boundary(2) || !e.is_char_boundary(3) {
             continue;
@@ -204,6 +206,15 @@ mod tests {
             names(&s.changes),
             pairs(&[("both.txt", "M"), ("removed.txt", "D"), ("added-then-edited", "M")])
         );
+    }
+
+    #[test]
+    fn a_record_cut_off_by_the_output_cap_is_dropped() {
+        let s = parse("## main\0?? done.txt\0?? half/writ");
+        assert_eq!(names(&s.changes), pairs(&[("done.txt", "U")]));
+        // even with a note after it, as non-NUL output gets
+        let s = parse("## main\0 M a.rs\0?? cut\n\\ Output cut: git printed more than 8 MB.\n");
+        assert_eq!(names(&s.changes), pairs(&[("a.rs", "M")]));
     }
 
     #[test]

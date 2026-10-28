@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { SelectionModel, type SelRow } from "./list";
+import { describe, expect, it, vi } from "vitest";
+import { createList, SelectionModel, type SelRow } from "./list";
 
 // a heading row ("h") between selectable rows, like the sidebar's section labels
 const rows = (...keys: string[]): SelRow[] => keys.map((key) => ({ key, selectable: key !== "h" }));
@@ -138,5 +138,50 @@ describe("SelectionModel across refreshes", () => {
       ]),
     ).toBe(true);
     expect(m.selected).toEqual([]);
+  });
+});
+
+describe("list view", () => {
+  const make = () => {
+    const update = vi.fn();
+    const list = createList<{ k: string }>({
+      label: "Test",
+      key: (r) => r.k,
+      height: () => 20,
+      create: () => document.createElement("div"),
+      update,
+    });
+    document.body.append(list.el);
+    list.setRows(["a", "b", "c"].map((k) => ({ k })));
+    return { list, update };
+  };
+
+  it("looks rows up by key", () => {
+    const { list } = make();
+    expect(list.indexOfKey("b")).toBe(1);
+    expect(list.indexOfKey("x")).toBe(-1);
+    expect(list.rowByKey("c")).toEqual({ k: "c" });
+    expect(list.rowByKey("x")).toBeUndefined();
+  });
+
+  it("does nothing when given the very same rows", () => {
+    const { list, update } = make();
+    const rows = list.rows();
+    update.mockClear();
+    list.setRows([...rows]);
+    expect(update).not.toHaveBeenCalled();
+    list.setRows([...rows.slice(0, 2), { k: "c" }]);
+    expect(update).toHaveBeenCalled();
+  });
+
+  it("only places rows on scroll and updates their content on refresh", async () => {
+    const { list, update } = make();
+    expect(update).toHaveBeenCalledTimes(3);
+    list.el.dispatchEvent(new Event("scroll"));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(update).toHaveBeenCalledTimes(3);
+    list.refresh();
+    expect(update).toHaveBeenCalledTimes(6);
   });
 });

@@ -14,6 +14,8 @@ export type LiveLevel = 0 | 1 | 2;
 /** One folder of the sidebar: a folder sessions ran in, a pinned folder, or a folder a group references. */
 export interface FolderInfo {
   path: string;
+  /** pathKey() of the path, computed once. */
+  key: string;
   name: string;
   /** Newest session time (ms); 0 without sessions. */
   last: number;
@@ -82,8 +84,6 @@ export interface TreeInput extends FolderInput {
   showHidden?: boolean;
   /** Lower-cased names of groups showing all their folders (session only). */
   showAll: ReadonlySet<string>;
-  /** Search text; '' in the sidebar (search shows its results in its own dropdown). */
-  query: string;
   /** Highest live level per folder, by pathKey (store.liveCwd). */
   liveCwd: Readonly<Record<string, 1 | 2>>;
   /** `ago()` of a time; a parameter so tests can fix the clock. */
@@ -126,6 +126,7 @@ export function folderList(input: FolderInput): FolderInfo[] {
     }
     map.set(key, {
       path: normPath(p.path),
+      key,
       name: p.name || leaf(p.path),
       last,
       pinned: p.pinned,
@@ -140,7 +141,15 @@ export function folderList(input: FolderInput): FolderInfo[] {
     if (known) known.pinned = true;
     else {
       const path = normPath(raw);
-      map.set(key, { path, name: leaf(path), last: 0, pinned: true, missing: missingKind(kinds[key]), sessions: [] });
+      map.set(key, {
+        path,
+        key,
+        name: leaf(path),
+        last: 0,
+        pinned: true,
+        missing: missingKind(kinds[key]),
+        sessions: [],
+      });
     }
   }
   return [...map.values()].sort((a, b) => (a.pinned !== b.pinned ? (a.pinned ? -1 : 1) : b.last - a.last));
@@ -166,19 +175,12 @@ export function unlistedPaths(
   return [...out.values()];
 }
 
-const has = (text: string | null | undefined, q: string) => !!text && text.toLowerCase().includes(q.toLowerCase());
-
-function matches(f: FolderInfo, q: string): boolean {
-  if (!q || has(f.name, q)) return true;
-  return f.sessions.some((s) => s.label !== "(no prompt)" && has(s.full, q));
-}
-
 const maxLive = (a: LiveLevel, b: LiveLevel): LiveLevel => (a > b ? a : b);
 
 function folderRow(f: FolderInfo, input: TreeInput, group: string | undefined, indent: number): TreeRow {
   return {
     kind: "folder",
-    key: folderKey(f.path, input.os),
+    key: `f:${f.key}`,
     title: f.name,
     height: 32,
     indent,
@@ -189,7 +191,7 @@ function folderRow(f: FolderInfo, input: TreeInput, group: string | undefined, i
     acceptsDrop: false,
     draggable: true,
     dim: f.missing,
-    live: input.liveCwd[pathKey(f.path, input.os)] ?? 0,
+    live: input.liveCwd[f.key] ?? 0,
     lastChild: false,
   };
 }
@@ -210,14 +212,11 @@ function plain(kind: RowKind, key: string, title: string, height: number, indent
   };
 }
 
-/** The rows of the sidebar. */
-export function buildTree(input: TreeInput): TreeRow[] {
-  const { os, query } = input;
-  const list = folderList(input);
-  const byPath = new Map(list.map((f) => [pathKey(f.path, os), f]));
+/** The rows of the sidebar. `list` is folderList(input), when the caller has it already. */
+export function buildTree(input: TreeInput, list: readonly FolderInfo[] = folderList(input)): TreeRow[] {
+  const { os } = input;
+  const byPath = new Map(list.map((f) => [f.key, f]));
   const used = new Set<string>();
-  const searching = query.trim() !== "";
-  const q = query.trim();
   const rows: TreeRow[] = [];
 
   rows.push(plain("section", PROJECTS_KEY, S.projects, 30));
@@ -232,6 +231,7 @@ export function buildTree(input: TreeInput): TreeRow[] {
       const path = normPath(raw);
       const f = byPath.get(key) ?? {
         path,
+        key,
         name: leaf(path),
         last: 0,
         pinned: false,
@@ -243,10 +243,9 @@ export function buildTree(input: TreeInput): TreeRow[] {
       info.last = Math.max(info.last, f.last);
     }
     info.sessions.sort((a, b) => b.modified - a.modified);
-    const shown = info.folders.filter((f) => !searching || has(g.name, q) || matches(f, q));
-    if (searching && shown.length === 0 && !has(g.name, q)) continue;
-    const open = searching || !g.collapsed;
-    const live = info.folders.reduce<LiveLevel>((m, f) => maxLive(m, input.liveCwd[pathKey(f.path, os)] ?? 0), 0);
+    const shown = info.folders;
+    const open = !g.collapsed;
+    const live = info.folders.reduce<LiveLevel>((m, f) => maxLive(m, input.liveCwd[f.key] ?? 0), 0);
     rows.push({
       ...plain("group", groupKey(g.name), g.name, 34),
       info,
@@ -259,31 +258,29 @@ export function buildTree(input: TreeInput): TreeRow[] {
     shownGroups++;
     if (!open) continue;
     // long projects show their first few folders and a "Show N more" row
-    const all = searching || input.showAll.has(g.name.toLowerCase()) || shown.length <= FOLDER_LIMIT;
+    const all = input.showAll.has(g.name.toLowerCase()) || shown.length <= FOLDER_LIMIT;
     const limit = all ? shown.length : FOLDER_SHOWN;
     for (const f of shown.slice(0, limit)) rows.push(folderRow(f, input, g.name, 1));
     if (limit < shown.length)
       rows.push(plain("more", moreKey(g.name), S.showMore(shown.length - limit), 28, 1, g.name));
-    else if (!searching && shown.length > FOLDER_LIMIT)
-      rows.push(plain("more", moreKey(g.name), S.showLess, 28, 1, g.name));
+    else if (shown.length > FOLDER_LIMIT) rows.push(plain("more", moreKey(g.name), S.showLess, 28, 1, g.name));
     if (shown.length === 0) rows.push(plain("hint", `h:${g.name.toLowerCase()}`, S.dragHere, 28, 1, g.name));
   }
-  if (shownGroups === 0) rows.push(plain("hint", "h:projects", searching ? S.noMatches : S.noProjects, 30));
+  if (shownGroups === 0) rows.push(plain("hint", "h:projects", S.noProjects, 30));
 
   const hidden = new Set((input.hidden ?? []).map((p) => pathKey(p, os)));
-  const ungrouped = list.filter((f) => !used.has(pathKey(f.path, os)) && matches(f, q));
-  const rest = ungrouped.filter((f) => !hidden.has(pathKey(f.path, os))).map((f) => folderRow(f, input, undefined, 0));
+  const ungrouped = list.filter((f) => !used.has(f.key));
+  const rest = ungrouped.filter((f) => !hidden.has(f.key)).map((f) => folderRow(f, input, undefined, 0));
   const out = ungrouped
-    .filter((f) => hidden.has(pathKey(f.path, os)))
+    .filter((f) => hidden.has(f.key))
     .map((f) => ({ ...folderRow(f, input, undefined, 0), dim: true }));
-  const openRest = searching || !input.foldersCollapsed;
+  const openRest = !input.foldersCollapsed;
   rows.push({ ...plain("section", FOLDERS_KEY, S.folders(rest.length), 30), open: openRest, acceptsDrop: true });
   if (openRest) {
     rows.push(...rest);
-    // listed under their own divider, which also folds them away; searching lists them anyway (a hidden
-    // folder can still be found)
-    const showHidden = searching || !!input.showHidden;
-    if (out.length && !searching) {
+    // listed under their own divider, which also folds them away
+    const showHidden = !!input.showHidden;
+    if (out.length) {
       const title = showHidden ? S.hiddenHeading(out.length) : S.showHidden(out.length);
       rows.push({ ...plain("more", HIDDEN_KEY, title, 28), open: showHidden });
     }

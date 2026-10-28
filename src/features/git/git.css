@@ -565,30 +565,7 @@ html.os-macos .git-diff {
   width: 38px;
   text-align: right;
 }
-/* syntax colours (highlight.ts: syn-* classes, in diffs and any .syn-code element): Monokai Pro, the Spectrum filter in the dark theme and
-   Monokai Pro Light in the light one */
-:root {
-  --syn-red: #e14775;
-  --syn-orange: #e16032;
-  --syn-yellow: #cc7a0a;
-  --syn-green: #269d69;
-  --syn-cyan: #1c8ca8;
-  --syn-purple: #7058be;
-  --syn-comment: #a59fa0;
-  --syn-comment-strong: #6e686b;
-  --syn-punct: #706b6e;
-}
-:root[data-theme="dark"] {
-  --syn-red: #fc618d;
-  --syn-orange: #fd9353;
-  --syn-yellow: #fce566;
-  --syn-green: #7bd88f;
-  --syn-cyan: #5ad4e6;
-  --syn-purple: #948ae3;
-  --syn-comment: #69676c;
-  --syn-comment-strong: #a8a5ad;
-  --syn-punct: #8b888f;
-}
+/* syntax colours (highlight.ts: syn-* classes, in diffs and any .syn-code element); the --syn-* colours are in tokens.css */
 :is(.git-dl, .syn-code) .syn-keyword,
 :is(.git-dl, .syn-code) .syn-operator,
 :is(.git-dl, .syn-code) .syn-tag {
@@ -813,10 +790,5 @@ html.os-macos .git-diff {
 
 /* Refresh: the icon turns while it runs */
 .git-hbtn.spinning svg {
-  animation: git-spin 0.6s linear infinite;
-}
-@keyframes git-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: spin 0.6s linear infinite;
 }

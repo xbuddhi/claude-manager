@@ -23,7 +23,14 @@ pub fn load(path: &Path) -> HashMap<PathBuf, ParseState> {
         return HashMap::new();
     };
     match serde_json::from_slice::<CacheFile>(&bytes) {
-        Ok(c) if c.version == VERSION => c.entries,
+        Ok(c) if c.version == VERSION => c
+            .entries
+            .into_iter()
+            .map(|(path, mut st)| {
+                st.shrink(); // files written before the shrink hold texts that are never shown
+                (path, st)
+            })
+            .collect(),
         Ok(_) => HashMap::new(),
         Err(e) => {
             log::warn!("the session cache could not be read and is rebuilt: {e}");
@@ -38,7 +45,8 @@ pub fn save(path: &Path, states: Vec<(PathBuf, ParseState)>) -> AppResult<()> {
         entries: states.into_iter().collect(),
     };
     let bytes = serde_json::to_vec(&file).map_err(|e| AppError::Internal(format!("session cache: {e}")))?;
-    fsio::write_atomic(path, &bytes)
+    // no flush to disk: a torn file after a power loss is read as unreadable and the index is rebuilt
+    fsio::write_atomic_unsynced(path, &bytes)
 }
 
 #[cfg(test)]

@@ -3,10 +3,11 @@
 //! The states survive restarts in the cache file (see `cache.rs`), so a warm start only stats files.
 
 use super::cache;
+use super::group::Folder;
 use super::parse::{self, ParseState};
 use crate::core::error::{AppResult, lock};
-use crate::core::profiles;
 use crate::core::types::Session;
+use crate::core::{paths, profiles};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs::{File, Metadata};
@@ -112,6 +113,11 @@ struct Entry {
     state: ParseState,
     /// Built from `state` the last time the file was looked at; None for states loaded from the cache.
     session: Option<Session>,
+    /// The shown text when it differs from `state.text()`: a last line without a newline yet changed it.
+    /// Rare and short-lived (the line gets its newline and is read into the state).
+    tail_text: Option<String>,
+    /// The session's working folder, keyed once here instead of on every regroup.
+    folder: Option<Folder>,
 }
 
 /// The parse states and sessions of every transcript seen. No globals: tests make their own.
@@ -142,7 +148,15 @@ impl Scanner {
         let states = cache_path.as_deref().map(cache::load).unwrap_or_default();
         let entries = states
             .into_iter()
-            .map(|(path, state)| (path, Entry { state, session: None }))
+            .map(|(path, state)| {
+                let entry = Entry {
+                    state,
+                    session: None,
+                    tail_text: None,
+                    folder: None,
+                };
+                (path, entry)
+            })
             .collect();
         Self {
             cache_path,
@@ -214,18 +228,24 @@ impl Scanner {
     }
 
     fn update_one(&self, t: &Transcript, budget: Option<u64>) -> Outcome {
-        let (mut st, old) = match lock(&self.entries).get(&t.path) {
-            Some(e) => (e.state.clone(), e.session.clone()),
-            None => (ParseState::default(), None),
+        // the common case (nothing changed) is decided under the lock, before anything is copied
+        let mut st = match lock(&self.entries).get(&t.path) {
+            Some(e) => {
+                let s = &e.state;
+                let unchanged = s.len == t.len && s.mtime_ms == t.mtime_ms && s.len > 0;
+                if unchanged && e.session.as_ref().is_some_and(|s| s.profile == t.profile) {
+                    return Outcome::Unchanged;
+                }
+                s.clone()
+            }
+            None => ParseState::default(),
         };
         let unchanged = st.len == t.len && st.mtime_ms == t.mtime_ms && st.len > 0;
-        if unchanged && old.as_ref().is_some_and(|s| s.profile == t.profile) {
-            return Outcome::Unchanged;
-        }
         let mut opened = false;
         let mut bytes = 0;
         let mut at_end = true;
-        let mut view = st.clone();
+        // what the read saw; None when the file was not read (the state itself is the view)
+        let mut view: Option<ParseState> = None;
         // a last line without newline is not in the state: an unchanged file is opened only to read it
         if !(unchanged && st.offset == st.len) {
             if t.len < st.offset {
@@ -242,7 +262,7 @@ impl Scanner {
                     opened = true;
                     bytes = end.saturating_sub(start);
                     at_end = r.at_end;
-                    view = r.view;
+                    view = Some(r.view);
                     // the length read up to: if the file grew since it was listed, the next scan reads on
                     (st.len, st.mtime_ms) = if at_end { (end, t.mtime_ms) } else { (0, 0) };
                 }
@@ -259,23 +279,30 @@ impl Scanner {
                 }
             }
         }
-        let session = parse::session(&t.path, &t.profile, &view, t.len, t.mtime_ms, !at_end);
-        // only sessions with user messages are listed
-        let changed = match (old.as_ref().filter(|o| o.count > 0), session.count > 0) {
-            (None, listed) => listed,
-            (Some(o), true) => !same(o, &session),
-            (Some(_), false) => true,
-        };
+        let view = view.as_ref().unwrap_or(&st);
+        let session = parse::session(&t.path, &t.profile, view, t.len, t.mtime_ms, !at_end);
+        let tail_text = (view.text() != st.text()).then(|| view.text().to_string());
+        let folder = Folder::of(session.cwd.as_deref());
         let mut entries = lock(&self.entries);
         let e = entries.entry(t.path.clone()).or_insert_with(|| Entry {
             state: ParseState::default(),
             session: None,
+            tail_text: None,
+            folder: None,
         });
+        // only sessions with user messages are listed
+        let changed = match (e.session.as_ref().filter(|o| o.count > 0), session.count > 0) {
+            (None, listed) => listed,
+            (Some(o), true) => !same(o, &session),
+            (Some(_), false) => true,
+        };
         if e.state != st {
             e.state = st;
             self.dirty.store(true, Ordering::Relaxed);
         }
         e.session = Some(session);
+        e.tail_text = tail_text;
+        e.folder = folder;
         Outcome::Updated {
             opened,
             bytes,
@@ -312,6 +339,16 @@ impl Scanner {
             .collect()
     }
 
+    /// Every session with at least one user message, with its working folder (for grouping).
+    pub fn sessions_with_folders(&self) -> Vec<(Session, Option<Folder>)> {
+        lock(&self.entries)
+            .values()
+            .filter_map(|e| Some((e.session.as_ref()?, &e.folder)))
+            .filter(|(s, _)| s.count > 0)
+            .map(|(s, f)| (s.clone(), f.clone()))
+            .collect()
+    }
+
     /// Calls `f` with every listed session, without copying them.
     pub fn for_each(&self, mut f: impl FnMut(&Session)) {
         for s in lock(&self.entries).values().filter_map(|e| e.session.as_ref()) {
@@ -319,6 +356,26 @@ impl Scanner {
                 f(s);
             }
         }
+    }
+
+    /// Calls `f` with every listed session and its shown text (the label is its first 140 characters).
+    pub fn for_each_text(&self, mut f: impl FnMut(&Session, &str)) {
+        for e in lock(&self.entries).values() {
+            if let Some(s) = e.session.as_ref().filter(|s| s.count > 0) {
+                f(s, e.tail_text.as_deref().unwrap_or_else(|| e.state.text()));
+            }
+        }
+    }
+
+    /// The shown text (at most 600 characters) of the listed session `id` in `profile`.
+    pub fn text_of(&self, profile: &Path, id: &str) -> Option<String> {
+        let mut found = None;
+        self.for_each_text(|s, text| {
+            if found.is_none() && s.id.eq_ignore_ascii_case(id) && paths::same(Path::new(&s.profile), profile) {
+                found = Some(parse::truncate(text, 600));
+            }
+        });
+        found
     }
 
     /// Writes the states to the cache file when they changed since the last save.
@@ -343,7 +400,6 @@ fn same(a: &Session, b: &Session) -> bool {
         && a.size_kb == b.size_kb
         && a.partial == b.partial
         && a.label == b.label
-        && a.full == b.full
         && a.cwd == b.cwd
         && a.profile == b.profile
 }
@@ -500,6 +556,29 @@ pub(crate) mod tests {
         let s = scanner.sessions().remove(0);
         assert!(!s.partial);
         assert_eq!(s.count, lines);
+    }
+
+    #[test]
+    fn gives_the_text_of_one_session_and_of_a_last_line_without_newline() {
+        let home = tempfile::tempdir().unwrap();
+        let long = "word ".repeat(200);
+        let (profile, file) = transcript(home.path(), "a", ID, &user_line(&long, "/a"));
+        let scanner = Scanner::new(None);
+        scanner.scan(std::slice::from_ref(&profile), None);
+        let text = scanner.text_of(&profile, ID).unwrap();
+        assert!(text.ends_with("...") && text.chars().count() <= 603);
+        assert!(text.starts_with(scanner.sessions()[0].label.trim_end_matches("...")));
+        assert_eq!(scanner.text_of(&profile, ID2), None);
+        assert_eq!(scanner.text_of(&home.path().join("other"), ID), None);
+        // a title line that has no newline yet is shown, like the label
+        let title = r#"{"type":"custom-title","customTitle":"Named"}"#;
+        append(&file, title);
+        scanner.scan(std::slice::from_ref(&profile), None);
+        assert_eq!(scanner.sessions()[0].label, "Named");
+        assert_eq!(scanner.text_of(&profile, ID).as_deref(), Some("Named"));
+        let mut texts = Vec::new();
+        scanner.for_each_text(|s, t| texts.push((s.id.clone(), t.to_string())));
+        assert_eq!(texts, [(ID.to_string(), "Named".to_string())]);
     }
 
     #[test]

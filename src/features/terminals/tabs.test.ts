@@ -77,6 +77,25 @@ describe("tab strip", () => {
     expect(h.select).not.toHaveBeenCalled();
   });
 
+  it("moves the active marks without drawing the tabs again when only the active tab changes", () => {
+    const { slot, strip } = setup();
+    const one = [{ ...tabs[0], title: "Only" } as (typeof tabs)[number]];
+    strip.render(one, null);
+    const home = slot.querySelector<HTMLElement>(".term-home");
+    const node = slot.querySelector<HTMLElement>('.term-tab[data-key="1"]');
+    strip.render(one, 1);
+    expect(slot.querySelector('.term-tab[data-key="1"]')).toBe(node);
+    expect(node?.getAttribute("aria-selected")).toBe("true");
+    expect(node?.classList.contains("active")).toBe(true);
+    expect(node?.tabIndex).toBe(0);
+    expect(home?.getAttribute("aria-selected")).toBe("false");
+    expect(home?.tabIndex).toBe(-1);
+    // a changed tab draws the strip again
+    strip.render([{ ...one[0], exited: true } as (typeof tabs)[number]], 1);
+    expect(slot.querySelector('.term-tab[data-key="1"]')).not.toBe(node);
+    expect(slot.querySelector('.term-tab[data-key="1"]')?.classList.contains("exited")).toBe(true);
+  });
+
   it("renames a tab in place", () => {
     const { slot, strip } = setup();
     strip.render(tabs, 1);

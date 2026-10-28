@@ -11,6 +11,8 @@ import { errorText } from "./strings";
 
 /** Syntax colours for a whole file; the pieces' `syn-*` classes take colour inside a `.syn-code` element. */
 export { highlightFile, type Token } from "./highlight";
+/** Rows of a virtualized view kept by index, so a scroll frame only builds the rows coming into view. */
+export { createRowWindow, type RowWindow } from "./rowwindow";
 /** Source control of one folder in a narrow column (beside a terminal). */
 export { createSourceControlPanel, type SourceControlPanel } from "./view";
 

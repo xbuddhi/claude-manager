@@ -12,7 +12,6 @@ function session(modified: number, label = "a prompt"): Session {
     file: `f${seq}.jsonl`,
     cwd: null,
     label,
-    full: label,
     count: 1,
     modified,
     sizeKb: 1,
@@ -46,7 +45,6 @@ function input(over: Partial<TreeInput> = {}): TreeInput {
     groups: [],
     foldersCollapsed: false,
     showAll: new Set(),
-    query: "",
     liveCwd: {},
     ago: (ms) => `t${ms}`,
     ...over,
@@ -115,8 +113,6 @@ describe("buildTree", () => {
     const shown = buildTree({ ...base, showHidden: true });
     expect(titles(shown).slice(-3)).toEqual(["a", "HIDDEN  ·  1", "b"]);
     expect(shown.find((r) => r.title === "b")?.dim).toBe(true);
-
-    expect(titles(buildTree({ ...base, query: "b" })).slice(-1)).toEqual(["b"]);
   });
 
   it("shows 5 of more than 6 folders with 'Show N more', all of them with 'Show less'", () => {
@@ -222,28 +218,6 @@ describe("buildTree", () => {
     const live = Object.fromEntries(rows.map((r) => [r.title, r.live]));
     expect(live).toMatchObject({ G: 2, a: 1, b: 2, c: 1, PROJECTS: 0 });
   });
-
-  it("filters by a search text: group names, folder names and session text", () => {
-    const web = project("C:\\src\\web");
-    const api = project("C:\\src\\api");
-    if (api.sessions[0]) api.sessions[0].full = "fix the LOGIN form";
-    const base = input({
-      projects: [web, api, project("C:\\src\\docs")],
-      groups: [group("Shop", ["C:\\src\\web"]), group("Backend", ["C:\\src\\api"], true)],
-    });
-    const rows = buildTree({ ...base, query: "login" });
-    expect(titles(rows)).toEqual(["PROJECTS", "Backend", "api", "FOLDERS  ·  0"]);
-    // searching opens collapsed groups and lists all their folders
-    expect(rows[1]?.open).toBe(true);
-    expect(titles(buildTree({ ...base, query: "shop" }))).toEqual(["PROJECTS", "Shop", "web", "FOLDERS  ·  0"]);
-    expect(titles(buildTree({ ...base, query: "zzz" }))).toEqual(["PROJECTS", "No matching projects", "FOLDERS  ·  0"]);
-  });
-
-  it("does not match the '(no prompt)' placeholder", () => {
-    const p = project("C:\\x");
-    if (p.sessions[0]) p.sessions[0].label = p.sessions[0].full = "(no prompt)";
-    expect(buildTree(input({ projects: [p], query: "prompt" })).filter((r) => r.kind === "folder")).toHaveLength(0);
-  });
 });
 
 describe("folderList and counts", () => {
@@ -258,6 +232,10 @@ describe("folderList and counts", () => {
       ["C:\\A", 7, 2, false],
     ]);
     expect(counts(list)).toEqual({ sessions: 2, folders: 2 });
+    // each folder carries its comparison key; the tree takes a list made beforehand
+    expect(list.map((f) => f.key)).toEqual(["c:\\new", "c:\\a"]);
+    const tree = input({ projects: [project("C:\\A", [1])], pinned: ["C:\\b"] });
+    expect(keys(buildTree(tree, folderList(tree)))).toEqual(keys(buildTree(tree)));
   });
 
   it("names the pinned and grouped folders the index does not list", () => {

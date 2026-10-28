@@ -480,7 +480,7 @@ mod unix {
 
 #[tauri::command]
 pub async fn env_status(app: tauri::AppHandle) -> AppResult<EnvStatus> {
-    let override_path = super::settings::get(&app).claude_path;
+    let override_path = super::settings::with(&app, |s| s.claude_path.clone());
     super::error::blocking(move || {
         let env = wait_env();
         let shown = |p: &Option<PathBuf>| p.as_ref().map(|p| p.to_string_lossy().into_owned());

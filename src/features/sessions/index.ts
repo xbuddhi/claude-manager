@@ -13,7 +13,7 @@ import { deleteSelected, doNew, doResume, resumeSelected, selectedSessions } fro
 import { createDetails, type Details } from "./details";
 import { type Header, mountHeader } from "./header";
 import { showSessionMenu } from "./menus";
-import { buildScope } from "./model";
+import { buildScope, sameScope } from "./model";
 import "./sessions.css";
 import "./state";
 import { countText } from "./strings";
@@ -26,7 +26,18 @@ let details: Details;
 let page: HTMLElement;
 let header: Header | null = null;
 
+// several store changes in one round (a new index changes the scope, then the selection) render the pane once
+let detailsQueued = false;
 function renderDetails() {
+  if (detailsQueued) return;
+  detailsQueued = true;
+  queueMicrotask(() => {
+    detailsQueued = false;
+    renderDetailsNow();
+  });
+}
+
+function renderDetailsNow() {
   const s = store.get();
   const selected = selectedSessions();
   const first = selected[0];
@@ -45,16 +56,16 @@ function recomputeScope() {
   const s = store.get();
   const projects = projectsFor(s.currentProfile, s.index.projects);
   const archived = new Set(s.settings.archived);
-  store.set({
-    sessionsScope: buildScope(s.sidebarSelection, projects, s.platform.os, archived, s.sessionsShowArchived),
-  });
+  const next = buildScope(s.sidebarSelection, projects, s.platform.os, archived, s.sessionsShowArchived);
+  // an index update elsewhere leaves this scope as it was: keep it, so the table and pane are not redrawn
+  if (!sameScope(next, s.sessionsScope)) store.set({ sessionsScope: next });
 }
 
 /** Selects the row asked for by sessionsWanted (search picked a session) once the table lists it. */
 function applyWanted() {
   const { sessionsWanted: id, sessionsScope, sessionsShowArchived, settings } = store.get();
   if (!id) return;
-  if (!table.list.rows().some((r) => r.id === id)) {
+  if (table.list.indexOfKey(id) < 0) {
     // an archived session (e.g. picked in search): list the archived ones; the scope change calls back here
     const archived = settings.archived.includes(id);
     if (sessionsScope && archived !== sessionsShowArchived) store.set({ sessionsShowArchived: archived });

@@ -67,7 +67,7 @@ fn check(dir: &str, need_repo: bool, home: &Path, profile_dirs: &[PathBuf]) -> A
 /// An existing folder git may run in. `need_repo`: it must also be a repository root (holds `.git`).
 pub fn folder(dir: &str, need_repo: bool) -> AppResult<PathBuf> {
     let home = paths::home()?;
-    let profile_dirs = profiles::discover(&home, profiles::launch_config_dir().as_deref());
+    let profile_dirs = profiles::discover_cached(&home, profiles::launch_config_dir().as_deref());
     check(dir, need_repo, &home, &profile_dirs)
 }
 

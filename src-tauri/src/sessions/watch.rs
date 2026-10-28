@@ -59,6 +59,7 @@ pub fn start(app: AppHandle) -> Watcher {
         let mut watched = HashMap::new();
         sync(&mut debouncer, &mut watched, home.as_deref(), &profiles);
         let index = app.state::<Index>();
+        index.set_watching(true);
         let changed = |g| notify(&app, g);
         for msg in rx {
             let plan = match msg {
@@ -97,6 +98,7 @@ pub fn start(app: AppHandle) -> Watcher {
                 log::warn!("could not refresh profiles: {e}");
             }
         }
+        index.set_watching(false);
     });
     if let Err(e) = spawned {
         log::error!("could not start the file watcher: {e}");

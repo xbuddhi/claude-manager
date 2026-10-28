@@ -9,13 +9,10 @@ export type Session = {
  */
 id: string, file: string, cwd: string | null, 
 /**
- * Title, summary or first prompt, whitespace collapsed, at most 140 characters.
+ * Title, summary or first prompt, whitespace collapsed, at most 140 characters. The same text at up
+ * to 600 characters is fetched on demand (`session_text`), not sent with the index.
  */
 label: string, 
-/**
- * The same text at most 600 characters, for tooltips and the details pane.
- */
-full: string, 
 /**
  * User messages (tool results excluded).
  */

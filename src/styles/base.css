@@ -120,13 +120,20 @@ input::-webkit-search-cancel-button {
   }
 }
 
-/* Endless animations (live dots, loading pulses) stop while the window is in the background or hidden:
-   each one keeps the GPU drawing frames. */
-html.window-inactive *,
-html.window-inactive *::before,
-html.window-inactive *::after,
-html.page-hidden *,
-html.page-hidden *::before,
-html.page-hidden *::after {
+/* Turning: spinners and the refresh icon (usage.css, git.css). */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Endless animations stop while the window is in the background or hidden: each one keeps the GPU drawing
+   frames. Listed one by one (a rule on every element costs a style pass over the whole page each time the
+   window changes focus); a new endless animation goes here too. One-off ones (menus, the sidebar peek) finish.
+   Pseudo-elements cannot go inside :is(), so they are listed on their own. */
+:is(html.window-inactive, html.page-hidden) :is(.use-spinner, .use-skel i, .git-gen, .git-hbtn svg, svg.pc, svg.pc *),
+:is(html.window-inactive, html.page-hidden) .use-ring[data-state="loading"]::before,
+:is(html.window-inactive, html.page-hidden) .live-dot::after {
+  /* biome-ignore lint/complexity/noImportantStyles: a paused animation must win over each component's rule */
   animation-play-state: paused !important;
 }

@@ -5,8 +5,12 @@ use super::error::AppResult;
 use super::{env, procs};
 use std::ffi::OsStr;
 use std::io::Read;
-use std::process::{Command, Output, Stdio};
-use std::time::{Duration, Instant};
+use std::process::{Child, Command, ExitStatus, Output, Stdio};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::time::Duration;
+
+/// How long a timed-out process is given to be reaped after its tree was ended.
+const REAP_WAIT: Duration = Duration::from_secs(5);
 
 /// A `Command` for a helper process. Pass an absolute program path from `core::env` rather than a bare
 /// name. Blocks while startup environment resolution runs, so build it off the UI thread.
@@ -20,6 +24,26 @@ pub fn hidden_command(program: impl AsRef<OsStr>) -> Command {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     cmd
+}
+
+/// Waits for `child` to exit, at most `limit`, on a waiting thread (no polling). On a timeout its whole
+/// process tree is ended (a hung git may be waiting on an ssh it started) and `Ok(None)` is returned.
+pub fn wait_or_kill(mut child: Child, limit: Duration) -> std::io::Result<Option<ExitStatus>> {
+    let pid = child.id();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait());
+    });
+    match rx.recv_timeout(limit) {
+        Ok(status) => status.map(Some),
+        Err(RecvTimeoutError::Disconnected) => Err(std::io::Error::other("waiting for a process failed")),
+        Err(RecvTimeoutError::Timeout) => {
+            // kill_tree ends the child itself too; the waiting thread then reaps it
+            procs::kill_tree(pid);
+            let _ = rx.recv_timeout(REAP_WAIT);
+            Ok(None)
+        }
+    }
 }
 
 /// Runs `cmd` with no input and collects its output, like `Command::output`, but ends it after `limit`.
@@ -42,24 +66,13 @@ pub fn output_with_timeout(cmd: &mut Command, limit: Duration) -> AppResult<Outp
     };
     let stdout = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
-    let started = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if started.elapsed() >= limit {
-            // the whole tree: a hung git may be waiting on an ssh it started
-            procs::kill_tree(child.id());
-            let _ = child.kill();
-            let _ = child.wait();
-            let program = cmd.get_program().to_string_lossy().into_owned();
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                format!("{program} did not finish within {} s", limit.as_secs_f32()),
-            )
-            .into());
-        }
-        std::thread::sleep(Duration::from_millis(10));
+    let Some(status) = wait_or_kill(child, limit)? else {
+        let program = cmd.get_program().to_string_lossy().into_owned();
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!("{program} did not finish within {} s", limit.as_secs_f32()),
+        )
+        .into());
     };
     Ok(Output {
         status,
@@ -72,6 +85,7 @@ pub fn output_with_timeout(cmd: &mut Command, limit: Duration) -> AppResult<Outp
 mod tests {
     use super::*;
     use crate::core::error::AppError;
+    use std::time::Instant;
 
     fn shell(script: &str) -> Command {
         let mut cmd = if cfg!(windows) {

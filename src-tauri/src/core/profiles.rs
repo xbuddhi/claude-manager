@@ -9,7 +9,11 @@ use super::types::Profile;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
+
+/// How long `discover_cached` reuses a discovery.
+const DISCOVER_TTL: Duration = Duration::from_secs(2);
 
 /// Files or folders that make a `~/.claude-*` folder a profile.
 const MARKERS: &[&str] = &["projects", ".credentials.json", "settings.json", ".claude.json"];
@@ -29,6 +33,7 @@ impl Profiles {
     /// Forgets cached emails; the next `list` reads them again.
     pub fn invalidate(&self) {
         lock(&self.emails).clear();
+        forget_discovered();
     }
 
     /// Installs the source of `Profile::signed_in` (see [`SignedInFn`]).
@@ -39,7 +44,9 @@ impl Profiles {
     /// Discovered profiles with names, emails and, when known, whether they are signed in.
     pub fn list(&self) -> AppResult<Vec<Profile>> {
         let home = paths::home()?;
-        let dirs = discover(&home, launch_config_dir().as_deref());
+        let config_dir = launch_config_dir();
+        let dirs = discover(&home, config_dir.as_deref());
+        remember(&DISCOVERED, &home, config_dir.as_deref(), &dirs);
         let emails: Vec<Option<String>> = {
             let mut cache = lock(&self.emails);
             dirs.iter()
@@ -121,6 +128,55 @@ pub fn discover(home: &Path, config_dir_env: Option<&Path>) -> Vec<PathBuf> {
     unique.into_iter().map(|(_, dir)| dir).collect()
 }
 
+/// One discovery: when, for which home and `CLAUDE_CONFIG_DIR`, and what was found.
+struct Discovered {
+    at: Instant,
+    home: PathBuf,
+    config_dir: Option<PathBuf>,
+    dirs: Vec<PathBuf>,
+}
+
+static DISCOVERED: Mutex<Option<Discovered>> = Mutex::new(None);
+
+/// `discover`, reused for a short while: commands check every profile path they get against it, and
+/// each discovery reads the home folder. `refresh` (anything that learns profiles changed) forgets it.
+/// The index watcher keeps calling `discover` itself, so it always sees the folders as they are.
+pub fn discover_cached(home: &Path, config_dir_env: Option<&Path>) -> Vec<PathBuf> {
+    cached_in(&DISCOVERED, home, config_dir_env, DISCOVER_TTL)
+}
+
+fn cached_in(
+    cache: &Mutex<Option<Discovered>>,
+    home: &Path,
+    config_dir_env: Option<&Path>,
+    ttl: Duration,
+) -> Vec<PathBuf> {
+    if let Some(d) = lock(cache).as_ref()
+        && d.at.elapsed() < ttl
+        && d.home == home
+        && d.config_dir.as_deref() == config_dir_env
+    {
+        return d.dirs.clone();
+    }
+    let dirs = discover(home, config_dir_env);
+    remember(cache, home, config_dir_env, &dirs);
+    dirs
+}
+
+fn remember(cache: &Mutex<Option<Discovered>>, home: &Path, config_dir_env: Option<&Path>, dirs: &[PathBuf]) {
+    *lock(cache) = Some(Discovered {
+        at: Instant::now(),
+        home: home.to_path_buf(),
+        config_dir: config_dir_env.map(Path::to_path_buf),
+        dirs: dirs.to_vec(),
+    });
+}
+
+/// Drops the discovery `discover_cached` reuses.
+pub fn forget_discovered() {
+    *lock(&DISCOVERED) = None;
+}
+
 /// "default" for `~/.claude`, else the folder name without a leading `.claude-` or `claude-`.
 pub fn name(dir: &Path) -> String {
     let leaf = dir
@@ -161,12 +217,17 @@ fn email_by_scan(text: &str) -> Option<String> {
 /// Accepts `dir` only when it names a discovered profile, and returns that profile's folder.
 /// Every command that receives a profile from the webview goes through this.
 pub fn resolve_profile(dir: &str) -> AppResult<PathBuf> {
-    resolve_profile_in(dir, &paths::home()?, launch_config_dir().as_deref())
+    let home = paths::home()?;
+    resolve_among(dir, discover_cached(&home, launch_config_dir().as_deref()))
 }
 
 pub fn resolve_profile_in(dir: &str, home: &Path, config_dir_env: Option<&Path>) -> AppResult<PathBuf> {
+    resolve_among(dir, discover(home, config_dir_env))
+}
+
+fn resolve_among(dir: &str, discovered: Vec<PathBuf>) -> AppResult<PathBuf> {
     let wanted = paths::key(dir);
-    discover(home, config_dir_env)
+    discovered
         .into_iter()
         .find(|d| paths::key(&d.to_string_lossy()) == wanted)
         .ok_or_else(|| AppError::InvalidInput(format!("Unknown profile: {dir}")))
@@ -338,5 +399,24 @@ mod tests {
                 Err(AppError::InvalidInput(_))
             ));
         }
+    }
+
+    #[test]
+    fn reuses_a_discovery_for_a_short_while() {
+        let cache = Mutex::new(None);
+        let home = home_with(&[]);
+        let h = home.path();
+        let ttl = Duration::from_secs(60);
+        assert_eq!(cached_in(&cache, h, None, ttl).len(), 1);
+        fs::create_dir_all(h.join(".claude-new").join("projects")).unwrap();
+        assert_eq!(cached_in(&cache, h, None, ttl).len(), 1);
+        // another CLAUDE_CONFIG_DIR or home is discovered again
+        let elsewhere = tempfile::tempdir().unwrap();
+        assert_eq!(cached_in(&cache, h, Some(elsewhere.path()), ttl).len(), 3);
+        let other = home_with(&[]);
+        assert_eq!(cached_in(&cache, other.path(), None, ttl).len(), 1);
+        assert_eq!(cached_in(&cache, h, None, Duration::ZERO).len(), 2);
+        *lock(&cache) = None;
+        assert_eq!(cached_in(&cache, h, None, ttl), discover(h, None));
     }
 }

@@ -63,17 +63,15 @@ describe("enterProfile", () => {
       settings: DEFAULT_SETTINGS,
       screen: "picker",
       currentProfile: null,
-      searchQuery: "old query",
     });
   });
   afterEach(() => store.set(initial));
 
-  it("enters a profile: shows main, clears search, remembers it as account and last profile", () => {
+  it("enters a profile: shows main, remembers it as account and last profile", () => {
     enterProfile(`${home}\\.CLAUDE-work`, { focus: false });
     const s = store.get();
     expect(s.currentProfile).toBe(`${home}\\.claude-work`);
     expect(s.screen).toBe("main");
-    expect(s.searchQuery).toBe("");
     expect(saved).toEqual([{ account: `${home}\\.claude-work`, lastProfile: `${home}\\.claude-work` }]);
   });
 

@@ -12,12 +12,11 @@ import { shortcutLabel } from "../../core/platform";
 import { profileName } from "../../core/profiles";
 import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
-import { projectsFor } from "../index-data/api";
+import { projectsFor, searchSessions } from "../index-data/api";
 import { liveDot } from "../live/api";
 import { chatIcon, resumeSession, selectSession } from "../sessions/api";
 import { nextPick, type PickItem, pickable, type SearchItem, searchItems } from "./rank";
 import "./search.css";
-import "./state";
 
 const DEBOUNCE_MS = 120;
 const BLUR_MS = 150;
@@ -70,6 +69,10 @@ export function mountSearch(slot: HTMLElement): void {
   let items: SearchItem[] = [];
   let nodes: Array<HTMLElement | null> = [];
   let sel = -1;
+  // sessions whose full text matches, from the backend: asked once per query text, an older answer is ignored
+  let textFor = "";
+  let textMatches: ReadonlySet<string> = new Set();
+  let textSeq = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let blurTimer: ReturnType<typeof setTimeout> | undefined;
   const fade = new Spring(0.16, 1, 0.003, 0);
@@ -153,16 +156,13 @@ export function mountSearch(slot: HTMLElement): void {
       liveCwd: s.liveCwd,
       os: s.platform.os,
       profileName,
+      unfiltered: s.currentProfile === null && s.settings.hiddenProfiles.length === 0,
+      textMatches,
     };
   }
 
-  /** Recomputes the results for the text in the box. */
-  function update() {
-    clearTimeout(timer);
-    timer = undefined;
-    const q = input.value.trim();
-    store.set({ searchQuery: input.value });
-    if (!q) return hide();
+  /** Lists the results for `q` with what is known now. */
+  function render(q: string) {
     items = searchItems(q, data());
     nodes = items.map((it, i) => (it.kind === "section" || it.kind === "empty" ? null : rowFor(it, i)));
     rows.replaceChildren(...items.map((it, i) => nodes[i] ?? rowFor(it, i)));
@@ -171,12 +171,32 @@ export function mountSearch(slot: HTMLElement): void {
     show();
   }
 
+  /** Recomputes the results for the text in the box; the full-text matches follow when the backend answers. */
+  function update() {
+    clearTimeout(timer);
+    timer = undefined;
+    const q = input.value.trim();
+    if (!q) return hide();
+    if (q !== textFor) {
+      textFor = q;
+      textMatches = new Set();
+      const seq = ++textSeq;
+      void searchSessions(q, store.get().currentProfile).then((ids) => {
+        if (seq !== textSeq || !ids.length) return;
+        textMatches = new Set(ids);
+        if (isOpen() && input.value.trim() === q) render(q);
+      });
+    }
+    render(q);
+  }
+
   /** Closes the dropdown and empties the box. */
   function reset() {
     hide();
     input.value = "";
     clear.hidden = true;
-    store.set({ searchQuery: "" });
+    textFor = "";
+    textMatches = new Set();
   }
 
   function focusSidebar() {

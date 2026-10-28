@@ -6,7 +6,6 @@ use crate::core::types::Session;
 use memchr::memmem::Finder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::cell::RefCell;
 use std::io::{self, Read};
 use std::path::Path;
 use std::sync::LazyLock;
@@ -25,10 +24,6 @@ static TOOL_RESULT: LazyLock<Finder<'static>> = LazyLock::new(|| Finder::new(br#
 static CWD: LazyLock<Finder<'static>> = LazyLock::new(|| Finder::new(br#""cwd":""#));
 static IS_META: LazyLock<Finder<'static>> = LazyLock::new(|| Finder::new(br#""isMeta":true"#));
 
-thread_local! {
-    static BUF: RefCell<Vec<u8>> = RefCell::new(vec![0; READ_BUF]);
-}
-
 /// What has been read so far from one transcript. Persisted in the index cache.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
@@ -40,13 +35,17 @@ pub struct ParseState {
     /// End of the last complete line: the next read starts here.
     pub offset: u64,
     pub cwd: Option<String>,
-    pub prompt: Option<String>,
-    /// `customTitle` of the last `custom-title` line.
+    /// `customTitle` of the last `custom-title` line. An empty title clears it, so the texts below stay
+    /// as its fallback.
     pub title: Option<String>,
-    /// The first `summary` line.
+    /// At most one of `summary`, `ai_title` and `prompt` is set: the one that `text()` would show without
+    /// a title. A summary (the first one) is final and drops the other two; an AI title drops the prompt; a
+    /// prompt is only kept while there is neither. Older cache files may hold several; `shrink` fixes that.
     pub summary: Option<String>,
     /// `aiTitle` of the last `ai-title` line.
     pub ai_title: Option<String>,
+    /// The first real user prompt.
+    pub prompt: Option<String>,
     pub count: u32,
 }
 
@@ -57,6 +56,48 @@ impl ParseState {
             .into_iter()
             .find_map(|t| t.as_deref())
             .unwrap_or("(no prompt)")
+    }
+
+    /// The text without a title: what `text()` falls back to when the title is cleared.
+    fn base(&self) -> Option<&str> {
+        [&self.summary, &self.ai_title, &self.prompt]
+            .into_iter()
+            .find_map(|t| t.as_deref())
+    }
+
+    /// The first summary is final: nothing below it can be shown again.
+    fn set_summary(&mut self, text: Option<String>) {
+        if text.is_some() {
+            self.summary = text;
+            self.ai_title = None;
+            self.prompt = None;
+        }
+    }
+
+    /// Replaces an earlier AI title; the prompt can no longer be shown. Ignored under a summary, and when
+    /// empty (an AI title is never cleared on purpose).
+    fn set_ai_title(&mut self, text: Option<String>) {
+        if text.is_some() && self.summary.is_none() {
+            self.ai_title = text;
+            self.prompt = None;
+        }
+    }
+
+    /// Only the first prompt counts, and only while nothing better was seen.
+    fn set_prompt(&mut self, text: Option<String>) {
+        if text.is_some() && self.base().is_none() {
+            self.prompt = text;
+        }
+    }
+
+    /// Drops the texts that `text()` can never show again (for states from an older cache file).
+    pub fn shrink(&mut self) {
+        if self.summary.is_some() {
+            self.ai_title = None;
+        }
+        if self.summary.is_some() || self.ai_title.is_some() {
+            self.prompt = None;
+        }
     }
 }
 
@@ -72,8 +113,11 @@ pub struct ReadResult {
 /// also holds a last line without a newline. With a `budget`, stops after that many bytes, leaving a line
 /// cut by the budget unread. Lines over [`MAX_LINE`] are not buffered and only get the cheap checks.
 pub fn read_on(file: &mut impl Read, st: &mut ParseState, budget: Option<u64>) -> io::Result<ReadResult> {
-    BUF.with(|cell| {
-        let buf = &mut *cell.borrow_mut();
+    // one buffer per read, freed when it is done: a buffer per worker thread would stay resident for the
+    // app's life (256 KB on every core) for work that happens in bursts
+    let mut owned = vec![0u8; READ_BUF];
+    {
+        let buf = &mut owned;
         let end = budget.map(|b| st.offset.saturating_add(b));
         let mut pos = st.offset;
         let mut line = Line::default();
@@ -109,7 +153,7 @@ pub fn read_on(file: &mut impl Read, st: &mut ParseState, budget: Option<u64>) -
             line.parse_into(&mut view);
         }
         Ok(ReadResult { view, at_end })
-    })
+    }
 }
 
 /// A line that spans reads. Past [`MAX_LINE`] only its head is kept.
@@ -158,10 +202,10 @@ pub fn parse_line(st: &mut ParseState, raw: &[u8], complete: bool) {
         return;
     }
     let want_cwd = st.cwd.is_none() && CWD.find(line).is_some();
-    let want_prompt = st.prompt.is_none() && user && IS_META.find(line).is_none();
+    let want_prompt = st.base().is_none() && user && IS_META.find(line).is_none();
     let title = line.starts_with(br#"{"type":"custom-title""#);
     let summary = st.summary.is_none() && line.starts_with(br#"{"type":"summary""#);
-    let ai_title = line.starts_with(br#"{"type":"ai-title""#);
+    let ai_title = st.summary.is_none() && line.starts_with(br#"{"type":"ai-title""#);
     if !(want_cwd || want_prompt || title || summary || ai_title) {
         return;
     }
@@ -177,7 +221,7 @@ pub fn parse_line(st: &mut ParseState, raw: &[u8], complete: bool) {
         && let Some(t) = prompt_text(&v)
         && !t.trim_start().starts_with('<')
     {
-        st.prompt = clip(t);
+        st.set_prompt(clip(t));
     }
     if title {
         // last wins; an empty title clears it
@@ -185,9 +229,9 @@ pub fn parse_line(st: &mut ParseState, raw: &[u8], complete: bool) {
             st.title = clip(t);
         }
     } else if summary {
-        st.summary = v.get("summary").and_then(Value::as_str).and_then(clip);
-    } else if ai_title && let Some(t) = v.get("aiTitle").and_then(Value::as_str) {
-        st.ai_title = clip(t);
+        st.set_summary(v.get("summary").and_then(Value::as_str).and_then(clip));
+    } else if ai_title {
+        st.set_ai_title(v.get("aiTitle").and_then(Value::as_str).and_then(clip));
     }
 }
 
@@ -253,7 +297,6 @@ pub fn session(path: &Path, profile: &str, st: &ParseState, len: u64, mtime_ms: 
         file: path.to_string_lossy().into_owned(),
         cwd: st.cwd.clone(),
         label: truncate(text, 140),
-        full: truncate(text, 600),
         count: st.count,
         modified: mtime_ms,
         size_kb: len.div_ceil(1024),
@@ -351,8 +394,8 @@ mod tests {
         );
         let (st, v) = read_all(text.as_bytes());
         assert_eq!(v.count, 1);
-        assert_eq!(v.prompt.as_deref(), Some("hello"));
         assert_eq!(v.summary.as_deref(), Some("S"));
+        assert_eq!(v.prompt, None, "the summary is shown instead, so the prompt is dropped");
         assert_eq!(st.offset, text.len() as u64);
     }
 
@@ -427,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn labels_are_cut_at_140_and_600_characters() {
+    fn labels_are_cut_at_140_characters_and_the_text_at_600() {
         let st = ParseState {
             prompt: clip(&"word ".repeat(200)),
             ..Default::default()
@@ -435,7 +478,8 @@ mod tests {
         let s = session(Path::new("p/slug/id.jsonl"), "prof", &st, 1025, 7, false);
         assert_eq!(s.label.chars().count(), 140 + 3);
         assert!(s.label.ends_with("..."));
-        assert!(s.full.ends_with("...") && s.full.chars().count() <= 603);
+        let full = truncate(st.text(), 600);
+        assert!(full.ends_with("...") && full.chars().count() <= 603);
         assert_eq!(
             (s.size_kb, s.modified, s.slug.as_str(), s.id.as_str()),
             (2, 7, "slug", "id")
@@ -445,8 +489,105 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            session(Path::new("a.jsonl"), "p", &short, 0, 0, false).full,
+            session(Path::new("a.jsonl"), "p", &short, 0, 0, false).label,
             "Short title"
         );
+    }
+
+    /// Every arrival order of the four texts: `text()` is what the full four-field state would show, and
+    /// only one of summary / AI title / prompt is kept.
+    #[test]
+    fn keeps_only_the_text_that_can_still_be_shown() {
+        const P: &str = "the prompt";
+        const A: &str = "the ai title";
+        const S: &str = "the summary";
+        const T: &str = "the title";
+        let line = |kind: &str| -> String {
+            match kind {
+                "p" => user(P),
+                "p2" => user("second prompt"),
+                "a" => format!(r#"{{"type":"ai-title","aiTitle":"{A}"}}"#),
+                "a2" => r#"{"type":"ai-title","aiTitle":"newer ai title"}"#.into(),
+                "s" => format!(r#"{{"type":"summary","summary":"{S}"}}"#),
+                "s2" => r#"{"type":"summary","summary":"second summary"}"#.into(),
+                "t" => format!(r#"{{"type":"custom-title","customTitle":"{T}"}}"#),
+                "t0" => r#"{"type":"custom-title","customTitle":"  "}"#.into(),
+                _ => unreachable!(),
+            }
+        };
+        /// Kept lower texts: (summary, ai_title, prompt).
+        type Kept = (Option<&'static str>, Option<&'static str>, Option<&'static str>);
+        // (order, shown text, kept lower texts)
+        let cases: &[(&[&str], &str, Kept)] = &[
+            (&["p"], P, (None, None, Some(P))),
+            (&["p", "p2"], P, (None, None, Some(P))),
+            (&["p", "t"], T, (None, None, Some(P))),
+            (&["t", "p"], T, (None, None, Some(P))),
+            (&["t", "p", "t0"], P, (None, None, Some(P))),
+            (&["p", "t", "t0"], P, (None, None, Some(P))),
+            (&["p", "a"], A, (None, Some(A), None)),
+            (&["a", "p"], A, (None, Some(A), None)),
+            (&["a", "a2"], "newer ai title", (None, Some("newer ai title"), None)),
+            (&["s"], S, (Some(S), None, None)),
+            (&["s", "p", "a"], S, (Some(S), None, None)),
+            (&["p", "a", "s"], S, (Some(S), None, None)),
+            (&["a", "s", "a2"], S, (Some(S), None, None)),
+            (&["s", "s2"], S, (Some(S), None, None)),
+            (&["p", "a", "s", "t"], T, (Some(S), None, None)),
+            (&["t", "s", "a", "p", "t0"], S, (Some(S), None, None)),
+            (&["t", "a", "t0"], A, (None, Some(A), None)),
+            (&["t0"], "(no prompt)", (None, None, None)),
+        ];
+        for (order, shown, kept) in cases {
+            let lines: Vec<String> = order.iter().map(|k| line(k)).collect();
+            let (_, v) = read_all((lines.join("\n") + "\n").as_bytes());
+            assert_eq!(v.text(), *shown, "{order:?}");
+            assert_eq!(
+                (v.summary.as_deref(), v.ai_title.as_deref(), v.prompt.as_deref()),
+                *kept,
+                "{order:?}"
+            );
+            // the same lines read one at a time (as the watcher does) give the same state
+            let mut st = ParseState::default();
+            for l in &lines {
+                parse_line(&mut st, l.as_bytes(), true);
+            }
+            let texts = |s: &ParseState| (s.title.clone(), s.summary.clone(), s.ai_title.clone(), s.prompt.clone());
+            assert_eq!(texts(&st), texts(&v), "{order:?}");
+        }
+    }
+
+    #[test]
+    fn shrink_drops_what_an_older_cache_kept_without_changing_the_text() {
+        let full = ParseState {
+            title: Some("t".into()),
+            summary: Some("s".into()),
+            ai_title: Some("a".into()),
+            prompt: Some("p".into()),
+            ..Default::default()
+        };
+        let mut st = full.clone();
+        st.shrink();
+        assert_eq!(st.text(), full.text());
+        assert_eq!(
+            (st.summary.as_deref(), st.ai_title.as_deref(), st.prompt.as_deref()),
+            (Some("s"), None, None)
+        );
+        let mut st = ParseState {
+            summary: None,
+            ..full.clone()
+        };
+        st.shrink();
+        assert_eq!(
+            (st.text(), st.ai_title.as_deref(), st.prompt.as_deref()),
+            ("t", Some("a"), None)
+        );
+        let mut st = ParseState {
+            summary: None,
+            ai_title: None,
+            ..full
+        };
+        st.shrink();
+        assert_eq!((st.text(), st.prompt.as_deref()), ("t", Some("p")));
     }
 }

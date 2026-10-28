@@ -70,7 +70,7 @@ fn check_root(dir: &str, home: &Path, profile_dirs: &[PathBuf]) -> AppResult<Pat
 /// The folder the webview asked for, when it may be shown.
 fn root(dir: &str) -> AppResult<PathBuf> {
     let home = paths::home()?;
-    let profile_dirs = profiles::discover(&home, profiles::launch_config_dir().as_deref());
+    let profile_dirs = profiles::discover_cached(&home, profiles::launch_config_dir().as_deref());
     check_root(dir, &home, &profile_dirs)
 }
 
@@ -162,9 +162,14 @@ pub fn list(root: &Path, rel: &str, show_ignored: bool) -> AppResult<FolderListi
             if ignored && !show_ignored {
                 return None;
             }
-            let link = e.file_type().is_ok_and(|t| t.is_symlink());
-            // follows a link, so a link to a folder opens like one
-            let meta = fs::metadata(e.path()).ok();
+            let kind = e.file_type().ok();
+            let link = kind.is_some_and(|t| t.is_symlink());
+            // a link is followed, so a link to a folder opens like one; anything else uses the entry's own data
+            let meta = if kind.is_none() || link {
+                fs::metadata(e.path()).ok()
+            } else {
+                e.metadata().ok()
+            };
             let dir = meta.as_ref().is_some_and(|m| m.is_dir());
             Some(FileEntry {
                 name: e.file_name().to_string_lossy().into_owned(),
@@ -175,12 +180,8 @@ pub fn list(root: &Path, rel: &str, show_ignored: bool) -> AppResult<FolderListi
             })
         })
         .collect();
-    entries.sort_by(|a, b| {
-        b.dir
-            .cmp(&a.dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-            .then_with(|| a.name.cmp(&b.name))
-    });
+    // folders first, then by name ignoring case (each name lowered once)
+    entries.sort_by_cached_key(|e| (!e.dir, e.name.to_lowercase(), e.name.clone()));
     let more = entries.len().saturating_sub(MAX_ENTRIES) as u32;
     entries.truncate(MAX_ENTRIES);
     Ok(FolderListing { entries, more })

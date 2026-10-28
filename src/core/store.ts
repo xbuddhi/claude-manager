@@ -3,8 +3,8 @@
 // AppState holds the shared core fields below. A feature adds its own fields by declaration merging in its
 // `features/<x>/state.ts` and gives them defaults with defineState():
 //
-//   declare module "../../core/store" { interface AppState { searchQuery: string } }
-//   defineState({ searchQuery: "" });
+//   declare module "../../core/store" { interface AppState { sessionFilter: string } }
+//   defineState({ sessionFilter: "" });
 
 import type { LiveSession } from "../bindings/LiveSession";
 import type { PlatformInfo } from "../bindings/PlatformInfo";
@@ -173,7 +173,7 @@ export const DEFAULT_SETTINGS: Settings = {
   gitSplit: null,
   claudePath: null,
   macOptionIsMeta: true,
-  scrollback: 5000,
+  scrollback: 2000,
   keepRunningOnClose: null,
 };
 

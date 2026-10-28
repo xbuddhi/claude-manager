@@ -8,12 +8,12 @@
 
 use super::guard;
 use crate::core::error::{AppError, AppResult};
-use crate::core::{env, procs, spawn};
+use crate::core::{env, spawn};
 use serde::Serialize;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use ts_rs::TS;
 
 /// What git printed and how it ended. `code` is -1 when git could not run (`stderr` says why).
@@ -73,8 +73,11 @@ const REV_PARSE: &[&str] = &["--show-toplevel", "--is-inside-work-tree", "--abbr
 const NETWORK: &[&str] = &["push", "pull", "fetch"];
 const LOCAL_LIMIT: Duration = Duration::from_secs(120);
 const NETWORK_LIMIT: Duration = Duration::from_secs(300);
-/// More output than this is dropped (a `git show` of a huge commit); the diff view shows far less.
-const MAX_OUTPUT: u64 = 64 * 1024 * 1024;
+/// More output than this is dropped (a `git show` of a huge commit); the diff view shows far less, and
+/// all of it goes to the webview as JSON.
+const MAX_OUTPUT: u64 = 8 * 1024 * 1024;
+/// Ends output that was cut. A `\` line is a note in a diff, so the diff view shows it as one.
+const CUT_NOTE: &str = "\n\\ Output cut: git printed more than 8 MB.\n";
 
 /// True for an argument that names a place outside the repository: an absolute path, a drive or UNC
 /// path, or one with a `..` part. (git diff compares any two files when a path lies outside the work
@@ -283,36 +286,37 @@ pub(super) fn execute(cmd: &mut Command, stdin: Option<&str>, limit: Duration) -
                 let _ = pipe.write_all(text.as_bytes());
             })
         });
-    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+    // `note`: what to add when the output was cut
+    let drain = |pipe: Option<Box<dyn Read + Send>>, note: &'static str| {
         std::thread::spawn(move || {
             let mut buf = Vec::new();
+            let mut cut = false;
             if let Some(mut p) = pipe {
                 let _ = (&mut p).take(MAX_OUTPUT).read_to_end(&mut buf);
                 // keep reading past the cap so git never blocks on a full pipe
-                let _ = std::io::copy(&mut p, &mut std::io::sink());
+                cut = std::io::copy(&mut p, &mut std::io::sink()).is_ok_and(|n| n > 0);
             }
-            String::from_utf8_lossy(&buf).into_owned()
+            let mut text = String::from_utf8_lossy(&buf).into_owned();
+            if cut {
+                text.push_str(note);
+            }
+            text
         })
     };
-    let stdout = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
-    let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
-    let started = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if started.elapsed() >= limit {
-            // the whole tree: git may be waiting on an ssh or credential helper it started
-            procs::kill_tree(child.id());
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                format!("git did not finish within {} s and was stopped.", limit.as_secs()),
-            )
-            .into());
-        }
-        std::thread::sleep(Duration::from_millis(10));
+    // NUL-separated output (`-z`) is parsed record by record: a note would read as one more record
+    let nul = cmd.get_args().any(|a| a == "-z");
+    let stdout = drain(
+        child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>),
+        if nul { "" } else { CUT_NOTE },
+    );
+    let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>), "");
+    // on a timeout the whole tree is ended: git may be waiting on an ssh or credential helper it started
+    let Some(status) = spawn::wait_or_kill(child, limit)? else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!("git did not finish within {} s and was stopped.", limit.as_secs()),
+        )
+        .into());
     };
     if let Some(w) = writer {
         let _ = w.join();
@@ -505,5 +509,40 @@ mod tests {
             run(sub, &args(&["status"]), None, false),
             Err(AppError::InvalidInput(_))
         ));
+    }
+
+    #[cfg(unix)]
+    fn sh(script: &str) -> Command {
+        let mut cmd = spawn::hidden_command("sh");
+        cmd.args(["-c", script]);
+        cmd
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cuts_long_output_with_a_note() {
+        let script = format!("head -c {} /dev/zero | tr '\\0' x; echo err 1>&2", MAX_OUTPUT + 10);
+        let out = execute(&mut sh(&script), None, Duration::from_secs(60)).unwrap();
+        assert_eq!(out.code, 0);
+        assert_eq!(out.stdout.len(), MAX_OUTPUT as usize + CUT_NOTE.len());
+        assert!(out.stdout.ends_with(CUT_NOTE));
+        assert_eq!(out.stderr.trim(), "err");
+        // NUL-separated output gets no note: it would read as one more record
+        let mut z = sh(&format!("head -c {} /dev/zero | tr '\\0' x", MAX_OUTPUT + 10));
+        z.arg("-z");
+        let out = execute(&mut z, None, Duration::from_secs(60)).unwrap();
+        assert_eq!(out.stdout.len(), MAX_OUTPUT as usize);
+        let exact = format!("head -c {MAX_OUTPUT} /dev/zero | tr '\\0' x");
+        let out = execute(&mut sh(&exact), None, Duration::from_secs(60)).unwrap();
+        assert_eq!(out.stdout.len(), MAX_OUTPUT as usize);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stops_git_that_runs_too_long() {
+        let started = std::time::Instant::now();
+        let err = execute(&mut sh("sleep 30"), Some("x"), Duration::from_millis(300)).unwrap_err();
+        assert!(matches!(err, AppError::Io(ref e) if e.kind() == std::io::ErrorKind::TimedOut));
+        assert!(started.elapsed() < Duration::from_secs(10));
     }
 }
