@@ -378,10 +378,24 @@
 }
 
 /* ---------- diff ---------- */
+.git-diff-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.git-diff-bar {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
 .git-diff {
   position: relative;
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow: auto;
   font:
     12px / 18px "Cascadia Mono",
@@ -397,6 +411,19 @@ html.os-macos .git-diff {
 }
 .git-diff:focus-visible {
   outline-offset: -2px;
+}
+/* measures one character's width (diff.ts) */
+.git-diff-ruler {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  white-space: pre;
+  pointer-events: none;
+}
+/* side by side: the page does not scroll sideways, the two sides do together (--sx) */
+.git-diff.split {
+  overflow-x: hidden;
 }
 .git-diff-inner {
   position: relative;
@@ -462,6 +489,129 @@ html.os-macos .git-diff {
 .git-dl-gutter > span {
   width: 38px;
   text-align: right;
+}
+/* syntax colours (highlight.ts: syn-* classes): Monokai Pro, the Spectrum filter in the dark theme and
+   Monokai Pro Light in the light one */
+:root {
+  --syn-red: #e14775;
+  --syn-orange: #e16032;
+  --syn-yellow: #cc7a0a;
+  --syn-green: #269d69;
+  --syn-cyan: #1c8ca8;
+  --syn-purple: #7058be;
+  --syn-comment: #a59fa0;
+  --syn-comment-strong: #6e686b;
+  --syn-punct: #706b6e;
+}
+:root[data-theme="dark"] {
+  --syn-red: #fc618d;
+  --syn-orange: #fd9353;
+  --syn-yellow: #fce566;
+  --syn-green: #7bd88f;
+  --syn-cyan: #5ad4e6;
+  --syn-purple: #948ae3;
+  --syn-comment: #69676c;
+  --syn-comment-strong: #a8a5ad;
+  --syn-punct: #8b888f;
+}
+.git-dl .syn-keyword,
+.git-dl .syn-operator,
+.git-dl .syn-tag {
+  color: var(--syn-red);
+}
+.git-dl .syn-storage,
+.git-dl .syn-type,
+.git-dl .syn-attribute,
+.git-dl .syn-link {
+  color: var(--syn-cyan);
+  font-style: italic;
+}
+.git-dl .syn-type {
+  font-style: normal;
+}
+.git-dl .syn-string,
+.git-dl .syn-heading {
+  color: var(--syn-yellow);
+}
+.git-dl .syn-constant,
+.git-dl .syn-escape,
+.git-dl .syn-meta {
+  color: var(--syn-purple);
+}
+.git-dl .syn-function {
+  color: var(--syn-green);
+}
+.git-dl .syn-comment {
+  color: var(--syn-comment);
+  font-style: italic;
+}
+.git-dl .syn-punct {
+  color: var(--syn-punct);
+}
+.git-dl .syn-heading,
+.git-dl .syn-strong {
+  font-weight: 600;
+}
+.git-dl .syn-emphasis {
+  font-style: italic;
+}
+.git-dl .syn-param {
+  color: var(--syn-orange);
+  font-style: italic;
+}
+.git-dl .syn-member {
+  color: var(--syn-purple);
+}
+/* the words that changed inside a replaced line */
+.git-dl-del .git-chg,
+.git-half-del .git-chg {
+  background: color-mix(in srgb, var(--git-deleted) 26%, transparent);
+  border-radius: 2px;
+}
+.git-dl-add .git-chg,
+.git-half-add .git-chg {
+  background: color-mix(in srgb, var(--git-added) 24%, transparent);
+  border-radius: 2px;
+}
+/* Monokai's dim comment grey disappears on the changed-word tint: brighter there */
+.git-dl .git-chg.syn-comment {
+  color: var(--syn-comment-strong);
+}
+/* ---- side by side ---- */
+.git-half {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  overflow: hidden;
+  --tint: transparent;
+  background: var(--tint);
+}
+.git-half + .git-half {
+  border-left: 1px solid var(--border);
+}
+.git-half-add {
+  --tint: color-mix(in srgb, var(--git-added) 16%, transparent);
+}
+.git-half-del {
+  --tint: color-mix(in srgb, var(--git-deleted) 14%, transparent);
+}
+/* a side with no line facing the other's */
+.git-half-filler {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--border) 80%, transparent) 0 1px,
+    transparent 1px 7px
+  );
+}
+.git-half .git-dl-gutter {
+  position: relative;
+  width: 50px;
+}
+.git-half .git-dl-text {
+  transform: translateX(calc(-1 * var(--sx, 0px)));
+}
+.git-half-context .git-dl-text {
+  opacity: 0.85;
 }
 .git-diff-empty {
   position: absolute;

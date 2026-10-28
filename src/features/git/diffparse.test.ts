@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { diffToText, displayText, MAX_NEW_FILE_LINES, newFileLines, parseDiff, widestLine } from "./diffparse";
+import {
+  type DiffLine,
+  diffToText,
+  displayText,
+  MAX_NEW_FILE_LINES,
+  markWords,
+  newFileLines,
+  parseDiff,
+  splitRows,
+  widestLine,
+  wordMarks,
+} from "./diffparse";
 
 const DIFF = [
   "diff --git a/src/app.ts b/src/app.ts",
@@ -92,5 +103,49 @@ describe("new files and copying", () => {
     );
     expect(displayText("\tx")).toBe("    x");
     expect(widestLine(newFileLines("p", "\tabc"))).toBe(Math.max("p  (new file)".length, 8));
+  });
+});
+
+describe("word marks", () => {
+  const cut = (text: string, marks: Array<[number, number]> | undefined) =>
+    (marks ?? []).map(([a, b]) => text.slice(a, b));
+
+  it("marks only the words that changed", () => {
+    const a = "// from Privy. Telegram shows once the Privy dashboard has it";
+    const b = "// from Privy. Apple and Telegram show when their flags say so";
+    const m = wordMarks(a, b);
+    expect(m).not.toBeNull();
+    expect(cut(a, m?.a)).toEqual(["shows once the Privy dashboard has it"]);
+    expect(cut(b, m?.b)).toEqual(["Apple and", "show when their flags say so"]);
+  });
+
+  it("leaves lines with almost nothing in common unmarked", () => {
+    expect(wordMarks("const a = 1;", "return fetchEverything(now)")).toBeNull();
+  });
+
+  it("pairs removed and added lines in a block and marks them", () => {
+    const lines = parseDiff(
+      [
+        "diff --git a/x.ts b/x.ts",
+        "@@ -1,2 +1,3 @@",
+        "-let a = 1;",
+        "-gone();",
+        "+let a = 2;",
+        "+kept();",
+        "+extra();",
+      ].join("\n"),
+    );
+    markWords(lines);
+    const del = lines[2] as DiffLine;
+    const add = lines[4] as DiffLine;
+    expect(cut(del.text, del.marks)).toEqual(["1"]);
+    expect(cut(add.text, add.marks)).toEqual(["2"]);
+    expect(splitRows(lines)).toEqual([
+      { span: 0 },
+      { span: 1 },
+      { left: 2, right: 4 },
+      { left: 3, right: 5 },
+      { left: undefined, right: 6 },
+    ]);
   });
 });
