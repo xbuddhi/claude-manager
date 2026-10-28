@@ -9,14 +9,15 @@ PowerShell app (`../ClaudeManager.ps1`, `../MacUI.cs`), which are read-only refe
 
 ## Commands
 
-Setup in a fresh worktree (`tauri::generate_context!` needs `../dist`, so build before any cargo command):
+Setup in a fresh worktree (`tauri::generate_context!` needs `../dist`, so build before any cargo command; for
+cargo checks alone an empty `dist/index.html` is enough):
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm build
 ```
 
-On this workstation every cargo command needs (the pinned 1.94.1 is installed under the name `stable`):
+On the Windows workstation every cargo command needs (the pinned 1.94.1 is installed under the name `stable`):
 
 ```powershell
 $env:RUSTUP_TOOLCHAIN='stable-x86_64-pc-windows-msvc'; $env:RUSTUP_AUTO_INSTALL='0'
@@ -67,9 +68,13 @@ hidden until `beforeShow()` finishes.
 - Features import each other only through `api.ts`. Render only into the shell slots or a `registerView` view.
 - Styles: one css file per feature with a class prefix (`ses-`, `git-`, `term-`, …). Colours only from `styles/tokens.css`.
 - `src/bindings/` is generated. Never edit it by hand.
+- Selectors, lists and caches compare by reference: keep unchanged values as the same object (helpers like
+  `projectsFor()` must not return fresh copies).
 
 **Data flow**: sessions come from `<profile>/projects/*/*.jsonl` (file watcher → index). Live/busy state comes
-from `<profile>/sessions/<pid>.json` or `<pid>.<hash>.key`, matched against the process table.
+from `<profile>/sessions/<pid>.json` or `<pid>.<hash>.key`, matched against the process table. `get_index(sinceGen)`
+sends only changed projects. Sessions carry a short `label`; full text comes from `session_text`, text search
+from `search_sessions`.
 
 ## Rules
 
@@ -83,3 +88,6 @@ from `<profile>/sessions/<pid>.json` or `<pid>.<hash>.key`, matched against the 
 - Command/menu ids are `<area>:<action>` (contract in `src-tauri/src/os/menu.rs`).
 - macOS-only code is not compiled on this Windows machine; the macOS CI job is the first to build it.
 - The app must stay unsandboxed on macOS.
+- Commits: `<type>: <description>` (Conventional Commits, no scope, imperative, lowercase, no period, ≤72 chars);
+  body only when needed, 1-4 short `- ` bullets; breaking change: `!` + `BREAKING CHANGE:` footer; no other
+  trailers (no Co-Authored-By).
