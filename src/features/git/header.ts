@@ -5,7 +5,7 @@ import { h } from "../../core/dom";
 import type { IconName } from "../../core/icons";
 import { button, setButtonLabel } from "../../ui/button";
 import { setTip } from "../../ui/tooltip";
-import { pullTip, pushTip, type Sync, syncLabel } from "./strings";
+import { NOT_PUBLISHED_TIP, pullTip, pushTip, type Sync, syncLabel } from "./strings";
 
 export interface HeaderOptions {
   onRepoMenu(anchor: HTMLElement): void;
@@ -13,7 +13,8 @@ export interface HeaderOptions {
   onFetch(): void;
   onPull(): void;
   onPush(): void;
-  onRefresh(): void;
+  /** Resolves when the refresh is done: the icon spins until then. */
+  onRefresh(): Promise<void> | void;
 }
 
 export interface Header {
@@ -32,9 +33,36 @@ function iconButton(icon: IconName, title: string, onClick: () => void): HTMLBut
   return b;
 }
 
+/** "Not published": a cloud with a slash, in place of the words (they took too much of the head). */
+function unpublishedIcon(): Element {
+  const t = document.createElement("template");
+  t.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 12.5h7a2.75 2.75 0 0 0 .6-5.43A4 4 0 0 0 4.6 6 3.25 3.25 0 0 0 4.5 12.5zM2.5 2.5l11 11"/></svg>`;
+  return t.content.firstElementChild as Element;
+}
+
+/** The longest the icon goes on turning after the refresh is done (to finish its turn; no animation: at once). */
+const SPIN_END_MS = 700;
+
+/** Spins the button's icon while `work` runs, then lets it finish the turn it is in. */
+function spinWhile(b: HTMLButtonElement, work: Promise<void> | void) {
+  b.classList.add("spinning");
+  void Promise.resolve(work).finally(() => {
+    const stop = () => {
+      clearTimeout(timer);
+      b.removeEventListener("animationiteration", stop);
+      b.classList.remove("spinning");
+    };
+    const timer = setTimeout(stop, SPIN_END_MS);
+    b.addEventListener("animationiteration", stop);
+  });
+}
+
+/** Sets a button's count and tip, touching the DOM only when they change (the status is read every few seconds). */
 function setCount(b: HTMLButtonElement, n: number, tip: string) {
   const num = b.querySelector(".git-num");
-  if (num) num.textContent = n ? String(n) : "";
+  const text = n ? String(n) : "";
+  if (num && num.textContent !== text) num.textContent = text;
+  if (b.getAttribute("aria-label") === tip) return;
   setTip(b, tip);
   b.setAttribute("aria-label", tip);
 }
@@ -52,7 +80,9 @@ export function createHeader(el: HTMLElement, opts: HeaderOptions): Header {
   const fetch = iconButton("fetch", "Fetch from remote", opts.onFetch);
   const pull = iconButton("pull", "Pull", opts.onPull);
   const push = iconButton("push", "Push", opts.onPush);
-  const refresh = iconButton("refresh", "Refresh", opts.onRefresh);
+  const refresh = iconButton("refresh", "Refresh", () => {
+    if (!refresh.classList.contains("spinning")) spinWhile(refresh, opts.onRefresh());
+  });
   repo.hidden = branch.hidden = true;
   el.append(count, repo, branch, sync, h("span", { class: "git-hbtns" }, fetch, pull, push, refresh));
 
@@ -67,8 +97,17 @@ export function createHeader(el: HTMLElement, opts: HeaderOptions): Header {
     },
     setBranch(name, s) {
       branch.hidden = name === null;
-      setButtonLabel(branch, name ?? "");
-      sync.textContent = name !== null && s ? syncLabel(s) : "";
+      if (branch.textContent !== (name ?? "")) setButtonLabel(branch, name ?? "");
+      const label = name !== null && s ? syncLabel(s) : "";
+      const unpublished = name !== null && !!s && !s.hasUpstream;
+      if (unpublished !== sync.classList.contains("unpublished")) {
+        sync.classList.toggle("unpublished", unpublished);
+        sync.replaceChildren(...(unpublished ? [unpublishedIcon()] : []));
+        setTip(sync, unpublished ? NOT_PUBLISHED_TIP : null);
+        if (unpublished) sync.setAttribute("aria-label", label);
+        else sync.removeAttribute("aria-label");
+      }
+      if (!unpublished && sync.textContent !== label) sync.textContent = label;
       const state = s ?? { hasUpstream: true, ahead: 0, behind: 0 };
       setCount(push, name !== null ? state.ahead : 0, name !== null ? pushTip(state) : "Push");
       setCount(pull, name !== null ? state.behind : 0, name !== null ? pullTip(state) : "Pull");

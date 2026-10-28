@@ -39,6 +39,7 @@ import {
   stashMessage,
   successText,
   TEXT,
+  unpublishedCount,
 } from "./strings";
 import "./git.css";
 
@@ -182,11 +183,20 @@ async function loadStatus(poll = false) {
     message(res.error.message, true);
     return;
   }
-  applyStatus(res.value);
+  // a branch not published yet has no upstream to count against: count the commits no remote has, before
+  // anything is drawn (drawing first and the count after made the push button blink on every refresh)
+  let unpublished = 0;
+  if (res.value.upstream === null && !res.value.branch.startsWith("HEAD")) {
+    const out = await git(repo, ["log", "--format=%h", "--max-count=999", "HEAD", "--not", "--remotes"], { poll });
+    if (seq !== statusSeq || repo !== st.repo) return;
+    if (out.code === 0) unpublished = unpublishedCount(out.stdout);
+  }
+  applyStatus(res.value, unpublished);
 }
 
-function applyStatus(s: GitStatus) {
-  st.sync = { hasUpstream: s.upstream !== null, ahead: s.ahead, behind: s.behind };
+/** `unpublished`: commits of a branch without upstream that no remote has (its push count). */
+function applyStatus(s: GitStatus, unpublished = 0) {
+  st.sync = { hasUpstream: s.upstream !== null, ahead: s.upstream === null ? unpublished : s.ahead, behind: s.behind };
   st.staged = s.staged.length;
   st.changes = s.changes.length;
   const total = st.staged + st.changes;
@@ -479,7 +489,7 @@ function headerActions(el: HTMLElement) {
     onFetch: () => void runOp(["fetch", "--prune"], "Fetching..."),
     onPull: () => void runOp(["pull"], "Pulling..."),
     onPush: push,
-    onRefresh: () => void refresh(),
+    onRefresh: () => refresh(),
   });
 }
 

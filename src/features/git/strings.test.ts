@@ -16,6 +16,7 @@ import {
   successText,
   switchAsk,
   syncLabel,
+  unpublishedCount,
 } from "./strings";
 
 describe("ref pills", () => {
@@ -62,7 +63,10 @@ describe("labels and messages", () => {
     expect(syncLabel({ hasUpstream: false, ahead: 0, behind: 0 })).toBe("not published");
     expect(syncLabel({ hasUpstream: true, ahead: 2, behind: 1 })).toBe("↑2  ↓1");
     expect(syncLabel({ hasUpstream: true, ahead: 0, behind: 0 })).toBe("up to date");
-    expect(pushTip({ hasUpstream: false, ahead: 3, behind: 0 })).toBe("Publish branch");
+    expect(pushTip({ hasUpstream: false, ahead: 3, behind: 0 })).toBe("Publish branch with 3 commit(s)");
+    expect(pushTip({ hasUpstream: false, ahead: 0, behind: 0 })).toBe("Publish branch");
+    expect(unpublishedCount("a1b2c3d\ne4f5a6b\n")).toBe(2);
+    expect(unpublishedCount("")).toBe(0);
     expect(pushTip({ hasUpstream: true, ahead: 3, behind: 0 })).toBe("Push 3 commit(s)");
     expect(pushTip({ hasUpstream: true, ahead: 0, behind: 0 })).toBe("Push");
     expect(pullTip({ hasUpstream: true, ahead: 0, behind: 4 })).toBe("Pull 4 commit(s)");

@@ -53,13 +53,20 @@ export interface Sync {
   behind: number;
 }
 
+export const NOT_PUBLISHED_TIP = "Not published yet\nPush (↑) publishes this branch to the remote.";
+
 export function syncLabel({ hasUpstream, ahead, behind }: Sync): string {
   if (!hasUpstream) return "not published";
   return ahead || behind ? `↑${ahead}  ↓${behind}` : "up to date";
 }
 
+/** Lines of `git log --format=%h HEAD --not --remotes`: commits of an unpublished branch no remote has. */
+export function unpublishedCount(stdout: string): number {
+  return stdout.split("\n").filter((l) => l.trim()).length;
+}
+
 export function pushTip({ hasUpstream, ahead }: Sync): string {
-  if (!hasUpstream) return "Publish branch";
+  if (!hasUpstream) return ahead ? `Publish branch with ${ahead} commit(s)` : "Publish branch";
   return ahead ? `Push ${ahead} commit(s)` : "Push";
 }
 
