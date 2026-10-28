@@ -1,4 +1,4 @@
-// The details pane under the table (92px): the selected session's full prompt and its meta line, or a hint
+// The details pane under the table (as tall as its prompt, at most 3 lines): the selected session's full prompt and its meta line, or a hint
 // for what is selected in the sidebar; Resume / Switch to, Fork and Delete on the right.
 
 import type { Session } from "../../bindings/Session";
