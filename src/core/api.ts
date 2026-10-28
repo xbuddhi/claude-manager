@@ -103,6 +103,7 @@ const WINDOW_EVENTS: ReadonlySet<string> = new Set([
   "notify:clicked",
   "pty-moved",
   "pty-focus",
+  "tab-drag",
 ]);
 
 /** Listens to a backend event; a throwing handler is logged instead of breaking the listener. */

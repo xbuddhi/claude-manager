@@ -38,6 +38,7 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::pty::windows::pty_focus,
         crate::pty::windows::pty_focus_session,
         crate::pty::windows::window_list,
+        crate::pty::windows::tab_drag_over,
         crate::launch::launch_external,
         // ---- live + notify (WP3) ----
         crate::live::get_live,

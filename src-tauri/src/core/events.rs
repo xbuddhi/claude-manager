@@ -23,6 +23,8 @@ pub const INDEX_CHANGED: &str = "index-changed";
 pub const PTY_MOVED: &str = "pty-moved";
 /// Payload: `number`, a terminal id: the receiving window brings that terminal's tab to the front.
 pub const PTY_FOCUS: &str = "pty-focus";
+/// Payload: `string | null`: the title of a tab from another window dragged over this one, null once it left.
+pub const TAB_DRAG: &str = "tab-drag";
 // ---- live + notify (WP3) ----
 /// Payload: `LiveChanged` (every running session; sent only when an id or level changed).
 pub const LIVE_CHANGED: &str = "live-changed";
