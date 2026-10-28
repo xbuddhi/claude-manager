@@ -154,6 +154,7 @@ export const DEFAULT_SETTINGS: Settings = {
   archived: [],
   profileNames: {},
   hiddenProfiles: [],
+  profileCompanions: {},
   account: null,
   openIn: "external",
   showPicker: true,

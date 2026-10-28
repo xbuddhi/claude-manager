@@ -4,6 +4,9 @@ export const T = {
   renamePrompt:
     "Rename profile\nThe name shown in Claude Manager. The profile's folder stays as it is; leave it empty for the folder's name.",
   rename: "Rename…",
+  companion: "Companion",
+  chooseCompanion: "Choose companion…",
+  chooseFor: (name: string) => `Companion for ${name}`,
   hide: "Remove from app",
   unhide: "Show in app",
   hiddenCard: "Hidden · click to show",

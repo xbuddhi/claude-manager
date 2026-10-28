@@ -7,12 +7,11 @@ import { emit, type LaunchMode } from "../../core/bus";
 import { describeError, log } from "../../core/log";
 import { settings } from "../../core/settings";
 import { store } from "../../core/store";
-import { avatar } from "../../ui/avatar";
 import { type MenuItem, type MenuPosition, showMenu } from "../../ui/menu";
 import { toast } from "../../ui/toast";
 import { webMenuItem } from "../git/api";
 import { copyText, folderLabel, openFolder, openInCode, terminalHere, terminalHereLabel } from "../os/api";
-import { profileColor, profileInitial, startProfile } from "../profiles/api";
+import { profileAvatar, startProfile } from "../profiles/api";
 import { continueLast as continueSession, deleteSessions } from "../sessions/api";
 import {
   deleteProject,
@@ -96,7 +95,7 @@ function profileItems(dir: string): MenuItem[] {
   if (!list.length) return [{ label: "No profiles found", disabled: true }];
   return list.map((p) => ({
     label: p.name,
-    icon: avatar({ text: profileInitial(p.name), color: profileColor(p.name), size: 16 }),
+    icon: profileAvatar(p.dir, 16),
     run: () => newSession(dir, undefined, p.dir),
   }));
 }

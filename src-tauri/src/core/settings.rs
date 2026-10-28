@@ -208,6 +208,10 @@ fn sanitize(mut s: Settings) -> Settings {
     s.hidden.retain(|p| !p.trim().is_empty());
     s.archived.retain(|id| !id.trim().is_empty());
     s.hidden_profiles.retain(|p| !p.trim().is_empty());
+    // companion keys are short names ("se", "qa"); anything else is dropped
+    s.profile_companions.retain(|dir, key| {
+        !dir.trim().is_empty() && !key.is_empty() && key.len() <= 16 && key.chars().all(|c| c.is_ascii_lowercase())
+    });
     // a blank name means the folder's own name again; long ones are cut
     s.profile_names = std::mem::take(&mut s.profile_names)
         .into_iter()

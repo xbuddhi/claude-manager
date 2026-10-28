@@ -14,6 +14,8 @@ import { showMenu } from "../../ui/menu";
 import { toggle } from "../../ui/toggle";
 import { countFor } from "../index-data/api";
 import { hideProfile, profileAvatar, profileEmail, profileLabel, renameProfile, showProfile } from "./api";
+import { chooseCompanion } from "./chooser";
+import { companionFor } from "./companions";
 import { enterProfile } from "./startup";
 import { sessionCount, T } from "./strings";
 
@@ -101,6 +103,11 @@ function createCard(id: CardId): HTMLElement {
       void showMenu(
         [
           { label: T.rename, icon: pencil(), run: () => void renameProfile(dir) },
+          {
+            label: T.chooseCompanion,
+            icon: profileAvatar(dir, 16),
+            run: () => chooseCompanion(dir, card.querySelector<HTMLElement>(".avatar") ?? card, profileLabel(dir)),
+          },
           hidden
             ? { label: T.unhide, icon: "plus", run: () => void showProfile(dir) }
             : { label: T.hide, icon: "minus", run: () => void hideProfile(dir) },
@@ -129,10 +136,11 @@ function updateCard(card: HTMLElement, id: CardId): void {
   const loaded = store.get().index.loaded !== "loading";
   const count = add || !loaded ? "" : sessionCount(countFor(dir));
   card.classList.toggle("prof-card-hidden", hidden);
-  const sig = `${name}\n${mail}\n${count}`;
+  // the companion is in it, so choosing another one redraws the card
+  const sig = `${name}\n${mail}\n${count}\n${dir === null ? "" : companionFor(dir).key}`;
   if (card.dataset.sig === sig) return;
   card.dataset.sig = sig;
-  const pic = add ? avatar({ text: "+", color: "var(--ctrl)", size: 84 }) : profileAvatar(dir, 84);
+  const pic = add ? avatar({ text: "+", color: "var(--ctrl)", size: 84 }) : profileAvatar(dir, 84, undefined, true);
   if (add) pic.classList.add("prof-avatar-all");
   card.replaceChildren(
     pic,
@@ -187,7 +195,7 @@ export function mountPicker(root: HTMLElement): Picker {
     more.textContent = showingHidden ? T.hideHidden : T.showHidden(s.hiddenProfiles.length);
   };
   cards.after(more);
-  store.select((s) => [s.profiles, s.hiddenProfiles, s.index] as const, render, {
+  store.select((s) => [s.profiles, s.hiddenProfiles, s.index, s.settings.profileCompanions] as const, render, {
     equals: (a, b) => a.every((v, i) => v === b[i]),
     immediate: true,
   });

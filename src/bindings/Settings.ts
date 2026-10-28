@@ -32,6 +32,10 @@ profileNames: { [key in string]: string },
  */
 hiddenProfiles: Array<string>, 
 /**
+ * Companion (avatar character) chosen per profile folder; a profile without one gets one from its folder.
+ */
+profileCompanions: { [key in string]: string }, 
+/**
  * Profile folder of the account last used for new sessions.
  */
 account: string | null, openIn: OpenIn, showPicker: boolean, 

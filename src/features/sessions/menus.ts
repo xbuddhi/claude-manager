@@ -5,11 +5,10 @@ import { isMac } from "../../core/platform";
 import { profiles } from "../../core/profiles";
 import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
-import { avatar } from "../../ui/avatar";
 import { type MenuItem, type MenuPosition, showMenu } from "../../ui/menu";
 import { webMenuItem } from "../git/api";
 import { copyText, openFolder, openInCode, reveal, revealLabel, terminalHere } from "../os/api";
-import { profileColor, profileInitial } from "../profiles/api";
+import { profileAvatar } from "../profiles/api";
 import { archiveSelected, deleteSelected, doNew, doResume, isArchived, startNew } from "./actions";
 import { renameSession } from "./api";
 import { archiveIcon, pencilIcon } from "./icons";
@@ -51,7 +50,7 @@ function profileItems(): MenuItem[] {
   const folder = scope?.kind === "folder" ? scope.path : null;
   return profiles().map((p) => ({
     label: p.name,
-    icon: avatar({ text: profileInitial(p.name), color: profileColor(p.name), size: 16 }),
+    icon: profileAvatar(p.dir, 16),
     detail: p.email ?? undefined,
     // like the Windows app, only for a folder: a project would first need its folder picked
     disabled: folder === null,

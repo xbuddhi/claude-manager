@@ -34,7 +34,7 @@ export function mountAvatarButton(slot: HTMLElement): void {
   slot.append(btn);
 
   store.select(
-    (s) => [s.currentProfile, s.profiles] as const,
+    (s) => [s.currentProfile, s.profiles, s.settings.profileCompanions] as const,
     ([dir]) => {
       const tip = avatarTip(dir);
       pic.replaceChildren(profileAvatar(dir, 22));
@@ -42,6 +42,6 @@ export function mountAvatarButton(slot: HTMLElement): void {
       btn.dataset.tip = tip;
       btn.setAttribute("aria-label", `Profile: ${tip}`);
     },
-    { equals: (a, b) => a[0] === b[0] && a[1] === b[1], immediate: true },
+    { equals: (a, b) => a.every((v, i) => v === b[i]), immediate: true },
   );
 }

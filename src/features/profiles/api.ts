@@ -8,9 +8,9 @@ import { isMac } from "../../core/platform";
 import { profileName, profiles } from "../../core/profiles";
 import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
-import { avatar } from "../../ui/avatar";
 import { input } from "../../ui/dialog";
 import { toast } from "../../ui/toast";
+import { companionFor, companionSvg, huddleSvg } from "./companions";
 import { T } from "./strings";
 
 /** Avatar colours, picked by the sum of the name's UTF-16 code units (as the Windows app). White ink. */
@@ -80,11 +80,26 @@ export function profileEmail(dir: string | null): string {
 }
 
 /** A profile's round picture: coloured with white ink, or control-coloured with text ink for all profiles. */
-export function profileAvatar(dir: string | null, size: number, label?: string): HTMLElement {
-  const name = dir === null ? null : profileName(dir);
-  const el = avatar({ text: profileInitial(name), color: profileColor(name), size, label });
-  if (dir === null) el.classList.add("prof-avatar-all");
+/**
+ * A profile's picture: its companion (companions.ts); "All profiles" is three of them huddled. It moves
+ * only with `animate` (the picker and the open profile menu); the title bar's chip and menus stay still.
+ */
+export function profileAvatar(dir: string | null, size: number, label?: string, animate = false): HTMLElement {
+  const moving = animate && size >= 24;
+  const el = document.createElement("span");
+  el.className = `avatar prof-companion${dir === null ? " prof-all" : ""}`;
+  el.style.width = el.style.height = `${size}px`;
+  // numbers and fixed names only (companions.ts)
+  el.innerHTML = dir === null ? huddleSvg(size, moving) : companionSvg(companionFor(dir), size, moving);
+  if (label) {
+    el.setAttribute("role", "img");
+    el.setAttribute("aria-label", label);
+  } else el.setAttribute("aria-hidden", "true");
   return el;
+}
+
+export async function setCompanion(dir: string, key: string): Promise<void> {
+  await updateSettings({ profileCompanions: { ...settings().profileCompanions, [dir]: key } });
 }
 
 /** Turns finish notifications on or off (settings.notify). Turning them on asks macOS for permission. */

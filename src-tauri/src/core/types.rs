@@ -169,6 +169,8 @@ pub struct Settings {
     pub profile_names: BTreeMap<String, String>,
     /// Profile folders left out of the app (picker, menus, "All profiles"); nothing on disk changes.
     pub hidden_profiles: Vec<String>,
+    /// Companion (avatar character) chosen per profile folder; a profile without one gets one from its folder.
+    pub profile_companions: BTreeMap<String, String>,
     /// Profile folder of the account last used for new sessions.
     pub account: Option<String>,
     pub open_in: OpenIn,
@@ -211,6 +213,7 @@ impl Default for Settings {
             archived: Vec::new(),
             profile_names: BTreeMap::new(),
             hidden_profiles: Vec::new(),
+            profile_companions: BTreeMap::new(),
             account: None,
             open_in: OpenIn::External,
             show_picker: true,
