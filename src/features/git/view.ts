@@ -14,6 +14,7 @@ import type { MenuItem } from "../../ui/menu";
 import { splitter } from "../../ui/splitter";
 import { textTabs } from "../../ui/texttabs";
 import { openInCode, trashName } from "../os/api";
+import { startProfile } from "../profiles/api";
 import { trashPath } from "../sessions/api";
 import { git } from "./backend";
 import { planSwitch, showBranchMenu, showRepoMenu } from "./branch";
@@ -76,7 +77,7 @@ let header: Header;
 const changes = createChanges({ onSelect: () => void showSelectedDiff(), onOpen: (r) => openFile(r), onAction });
 const history = createHistory((hash) => void showCommit(hash));
 const diff = createDiff();
-const commit = createCommitBox({ onCommit: () => void doCommit(), menu: commitMenu });
+const commit = createCommitBox({ onCommit: () => void doCommit(), menu: commitMenu, generate: generateMessage });
 const tabs = textTabs<Tab>({
   label: "Changes or history",
   items: [
@@ -324,6 +325,25 @@ async function runOp(args: string[], busyText = "", opts: OpOptions = {}): Promi
 function push() {
   if (st.sync.hasUpstream) void runOp(["push"], "Pushing...");
   else void runOp(["push", "-u", "origin", "HEAD"], "Publishing branch...");
+}
+
+/** Has Claude write a message for what Commit would take (staged changes, else all of them). */
+async function generateMessage(): Promise<string | null> {
+  const repo = st.repo;
+  if (!repo) return null;
+  if (!st.staged && !st.changes) {
+    message(TEXT.nothingToCommit);
+    return null;
+  }
+  message(TEXT.generating);
+  const res = await call("git_commit_message", { repo, profile: startProfile() }, { quiet: true });
+  if (repo !== st.repo) return null;
+  if (!res.ok) {
+    message(res.error.message, true);
+    return null;
+  }
+  message("");
+  return res.value;
 }
 
 async function doCommit(opts: { push?: boolean; amend?: boolean } = {}) {

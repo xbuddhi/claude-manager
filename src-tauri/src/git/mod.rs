@@ -3,12 +3,14 @@
 
 pub mod files;
 pub mod guard;
+pub mod message;
 pub mod repos;
 pub mod run;
 pub mod status;
 pub mod web;
 
 use crate::core::error::{AppError, AppResult, blocking};
+use crate::core::{env, settings};
 use files::NewFile;
 use run::GitOutput;
 use status::GitStatus;
@@ -56,6 +58,18 @@ pub async fn find_repos(path: String) -> AppResult<Vec<String>> {
 #[tauri::command]
 pub async fn git_web_url(dir: String) -> AppResult<Option<String>> {
     blocking(move || web::of_folder(&dir)).await
+}
+
+/// A commit message for what a commit of `repo` would take, written by `claude -p` (Sonnet) with
+/// `profile` (a profile folder; none = the default one).
+#[tauri::command]
+pub async fn git_commit_message(app: tauri::AppHandle, repo: String, profile: Option<String>) -> AppResult<String> {
+    let claude_override = settings::get(&app).claude_path;
+    blocking(move || {
+        let claude = env::claude_executable(claude_override.as_deref())?;
+        message::generate(&repo, profile.as_deref(), claude)
+    })
+    .await
 }
 
 /// An untracked file of `repo` for the diff view.

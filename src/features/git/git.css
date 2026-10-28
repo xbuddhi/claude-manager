@@ -105,9 +105,10 @@
 
 /* ---------- commit box ---------- */
 .git-msg {
+  position: relative;
   flex: none;
   margin: 12px 12px 0;
-  padding: 0 8px 0 10px;
+  padding: 0 32px 0 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--alt);
@@ -650,5 +651,27 @@ html.os-macos .git-diff {
 @keyframes git-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Generate (top right of the message box): it pulses while Claude writes */
+.git-gen {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  width: 26px;
+  height: 26px;
+  color: var(--muted);
+}
+.git-gen:hover:not(:disabled) {
+  color: var(--accent);
+}
+.git-gen.working {
+  color: var(--accent);
+  animation: git-gen-pulse 1s ease-in-out infinite;
+}
+@keyframes git-gen-pulse {
+  50% {
+    opacity: 0.35;
   }
 }

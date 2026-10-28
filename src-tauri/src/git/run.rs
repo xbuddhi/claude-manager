@@ -267,7 +267,7 @@ pub fn run(dir: &str, args: &[String], stdin: Option<&str>, poll: bool) -> AppRe
 }
 
 /// Starts `cmd`, writes `stdin` (then closes it), reads both pipes, and ends the process tree after `limit`.
-fn execute(cmd: &mut Command, stdin: Option<&str>, limit: Duration) -> AppResult<GitOutput> {
+pub(super) fn execute(cmd: &mut Command, stdin: Option<&str>, limit: Duration) -> AppResult<GitOutput> {
     let mut child = cmd
         .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(Stdio::piped())

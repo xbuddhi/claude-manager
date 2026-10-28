@@ -19,6 +19,8 @@ export const TEXT = {
   newBranch: "New branch\nName for the new branch (created from the current one):",
   createBranch: "Create new branch...",
   findBranch: "Find a branch",
+  generateTip: "Write a commit message with Claude (Sonnet) from the changes",
+  generating: "Claude is writing a commit message...",
   switchConflicts: "This repository has merge conflicts\nResolve them, or abort the merge, before switching branches.",
   badBranch: "A branch name cannot start with '-'.",
 } as const;
