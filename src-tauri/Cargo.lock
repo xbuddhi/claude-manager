@@ -582,8 +582,10 @@ dependencies = [
  "libc",
  "log",
  "memchr",
+ "muda",
  "notify",
  "notify-debouncer-full",
+ "objc2",
  "portable-pty",
  "rayon",
  "reqwest",
@@ -607,6 +609,7 @@ dependencies = [
  "trash",
  "ts-rs",
  "webview2-com",
+ "windows",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
 ]
