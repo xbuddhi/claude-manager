@@ -87,6 +87,61 @@
   min-width: 0;
   display: flex;
 }
+/* ---------- a narrow column (createSourceControlPanel): the head's controls, then lists over the diff ---------- */
+.git-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.git-panel-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 2px 4px 2px 10px;
+  overflow: hidden;
+}
+/* the controls that do not fit give way first: the count, then the branch name shortens */
+.git-panel-head .git-count {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-panel-head .git-hbtns {
+  margin-left: auto;
+}
+.git-panel-head .git-repo,
+.git-panel-head .git-branch {
+  height: 24px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.git-panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.git-panel .git-main {
+  flex-direction: column;
+}
+.git-panel .git-left {
+  flex: 1 1 50%;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+.git-panel .git-divider {
+  width: auto;
+  height: 1px;
+}
+.git-panel .git-right {
+  flex: 1 1 50%;
+  min-height: 0;
+}
 .git-status-line {
   flex: none;
   height: 26px;
@@ -510,7 +565,7 @@ html.os-macos .git-diff {
   width: 38px;
   text-align: right;
 }
-/* syntax colours (highlight.ts: syn-* classes): Monokai Pro, the Spectrum filter in the dark theme and
+/* syntax colours (highlight.ts: syn-* classes, in diffs and any .syn-code element): Monokai Pro, the Spectrum filter in the dark theme and
    Monokai Pro Light in the light one */
 :root {
   --syn-red: #e14775;
@@ -534,52 +589,52 @@ html.os-macos .git-diff {
   --syn-comment-strong: #a8a5ad;
   --syn-punct: #8b888f;
 }
-.git-dl .syn-keyword,
-.git-dl .syn-operator,
-.git-dl .syn-tag {
+:is(.git-dl, .syn-code) .syn-keyword,
+:is(.git-dl, .syn-code) .syn-operator,
+:is(.git-dl, .syn-code) .syn-tag {
   color: var(--syn-red);
 }
-.git-dl .syn-storage,
-.git-dl .syn-type,
-.git-dl .syn-attribute,
-.git-dl .syn-link {
+:is(.git-dl, .syn-code) .syn-storage,
+:is(.git-dl, .syn-code) .syn-type,
+:is(.git-dl, .syn-code) .syn-attribute,
+:is(.git-dl, .syn-code) .syn-link {
   color: var(--syn-cyan);
   font-style: italic;
 }
-.git-dl .syn-type {
+:is(.git-dl, .syn-code) .syn-type {
   font-style: normal;
 }
-.git-dl .syn-string,
-.git-dl .syn-heading {
+:is(.git-dl, .syn-code) .syn-string,
+:is(.git-dl, .syn-code) .syn-heading {
   color: var(--syn-yellow);
 }
-.git-dl .syn-constant,
-.git-dl .syn-escape,
-.git-dl .syn-meta {
+:is(.git-dl, .syn-code) .syn-constant,
+:is(.git-dl, .syn-code) .syn-escape,
+:is(.git-dl, .syn-code) .syn-meta {
   color: var(--syn-purple);
 }
-.git-dl .syn-function {
+:is(.git-dl, .syn-code) .syn-function {
   color: var(--syn-green);
 }
-.git-dl .syn-comment {
+:is(.git-dl, .syn-code) .syn-comment {
   color: var(--syn-comment);
   font-style: italic;
 }
-.git-dl .syn-punct {
+:is(.git-dl, .syn-code) .syn-punct {
   color: var(--syn-punct);
 }
-.git-dl .syn-heading,
-.git-dl .syn-strong {
+:is(.git-dl, .syn-code) .syn-heading,
+:is(.git-dl, .syn-code) .syn-strong {
   font-weight: 600;
 }
-.git-dl .syn-emphasis {
+:is(.git-dl, .syn-code) .syn-emphasis {
   font-style: italic;
 }
-.git-dl .syn-param {
+:is(.git-dl, .syn-code) .syn-param {
   color: var(--syn-orange);
   font-style: italic;
 }
-.git-dl .syn-member {
+:is(.git-dl, .syn-code) .syn-member {
   color: var(--syn-purple);
 }
 /* the words that changed inside a replaced line */

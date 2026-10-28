@@ -1,12 +1,14 @@
 // The commit message box (grows from one to six lines; Ctrl+Enter / Cmd+Enter commits; a sparkle button
 // in its corner has Claude write the message) and the commit split button with its menu of alternatives.
+// With nothing to commit the button syncs or publishes the branch instead (strings.ts commitAction).
 
 import { h } from "../../core/dom";
+import { type IconName, iconNode } from "../../core/icons";
 import { isMac } from "../../core/platform";
 import { button as iconButton } from "../../ui/button";
 import { type MenuItem, showMenu } from "../../ui/menu";
 import { splitButton } from "../../ui/splitbutton";
-import { commitLabel, placeholder, TEXT } from "./strings";
+import { type CommitAction, commitLabel, placeholder, TEXT } from "./strings";
 
 const LINE = 18;
 const MAX_LINES = 6;
@@ -19,8 +21,11 @@ function sparkle(): Element {
   return t.content.firstElementChild as Element;
 }
 
+const ACTION_ICON: Record<CommitAction, IconName> = { commit: "check", sync: "refresh", publish: "push" };
+
 export interface CommitOptions {
-  onCommit(): void;
+  /** The button was pressed (Ctrl+Enter / Cmd+Enter always commits). */
+  onAction(action: CommitAction): void;
   /** Items for the arrow's menu, built when it opens. */
   menu(): MenuItem[];
   /** Writes a message for the changes; null when it could not (the caller says why). */
@@ -35,7 +40,8 @@ export interface CommitBox {
   /** Puts `text` in the box (the box grows to fit). */
   setMessage(text: string): void;
   focus(): void;
-  setStaged(n: number): void;
+  /** What the button does and says (strings.ts commitAction). */
+  setAction(action: CommitAction, label: string): void;
   setBusy(busy: boolean): void;
 }
 
@@ -73,7 +79,7 @@ export function createCommitBox(opts: CommitOptions): CommitBox {
   box.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
       e.preventDefault();
-      opts.onCommit();
+      opts.onAction("commit");
     }
   });
 
@@ -82,12 +88,14 @@ export function createCommitBox(opts: CommitOptions): CommitBox {
     icon: "check",
     kind: "primary",
     arrowTitle: "More commit actions",
-    onMain: opts.onCommit,
+    onMain: () => opts.onAction(action),
     onArrow: (anchor) => void showMenu(opts.menu(), { at: { anchor, align: "end" }, label: "Commit actions" }),
   });
   button.el.classList.add("git-commit-btn");
   const row = h("div", { class: "git-commit-row" }, button.el);
-  const label = button.el.querySelector<HTMLElement>(".sbtn-main span:last-child");
+  const main = button.el.querySelector<HTMLElement>(".sbtn-main");
+  const label = main?.querySelector<HTMLElement>("span:last-child");
+  let action: CommitAction = "commit";
 
   return {
     els: [wrap, row],
@@ -101,8 +109,11 @@ export function createCommitBox(opts: CommitOptions): CommitBox {
       grow();
     },
     focus: () => box.focus(),
-    setStaged(n) {
-      if (label) label.textContent = commitLabel(n);
+    setAction(next, text) {
+      if (label && label.textContent !== text) label.textContent = text;
+      if (next === action) return;
+      action = next;
+      main?.firstElementChild?.replaceWith(iconNode(ACTION_ICON[next]));
     },
     setBusy: (busy) => button.setDisabled(busy),
   };

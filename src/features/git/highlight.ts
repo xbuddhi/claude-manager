@@ -115,6 +115,13 @@ function tokenize(parser: Parser, text: string): Token[][] {
   return lines;
 }
 
+/** Tokens for every line of the file `path` (null: no parser for its language, or too large). */
+export async function highlightFile(path: string, text: string): Promise<Token[][] | null> {
+  if (text.length > MAX_CHARS) return null;
+  const parser = await parserFor(path);
+  return parser ? tokenize(parser, text) : null;
+}
+
 /** The path a "file" line names (a new file's line ends with "  (new file)"). */
 function pathOf(d: DiffLine): string {
   return d.text.replace(/\s+\(new file\)$/, "");

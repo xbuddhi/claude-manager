@@ -107,7 +107,8 @@ export function createHeader(el: HTMLElement, opts: HeaderOptions): Header {
         if (unpublished) sync.setAttribute("aria-label", label);
         else sync.removeAttribute("aria-label");
       }
-      if (!unpublished && sync.textContent !== label) sync.textContent = label;
+      // the ahead/behind counts are on the commit button (Sync Changes) and the Pull / Push badges
+      if (!unpublished && sync.textContent) sync.textContent = "";
       const state = s ?? { hasUpstream: true, ahead: 0, behind: 0 };
       setCount(push, name !== null ? state.ahead : 0, name !== null ? pushTip(state) : "Push");
       setCount(pull, name !== null ? state.behind : 0, name !== null ? pullTip(state) : "Pull");

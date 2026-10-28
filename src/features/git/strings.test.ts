@@ -4,6 +4,7 @@ import {
   branchName,
   changeCount,
   changesTab,
+  commitAction,
   commitLabel,
   commitUrl,
   errorText,
@@ -61,6 +62,17 @@ describe("labels and messages", () => {
     expect(changesTab(5)).toBe("Changes  5");
     expect(commitLabel(0)).toBe("Commit");
     expect(commitLabel(2)).toBe("Commit 2 staged");
+  });
+
+  it("turns the commit button into Sync or Publish when there is nothing to commit", () => {
+    const up = (ahead: number, behind: number) => ({ hasUpstream: true, ahead, behind });
+    expect(commitAction(1, 2, "dev", up(2, 43))).toEqual({ action: "commit", label: "Commit 1 staged" });
+    expect(commitAction(0, 0, "dev", up(2, 43))).toEqual({ action: "sync", label: "Sync Changes 43↓ 2↑" });
+    expect(commitAction(0, 0, "dev", up(2, 0)).label).toBe("Sync Changes 2↑");
+    expect(commitAction(0, 0, "dev", up(0, 0))).toEqual({ action: "commit", label: "Commit" });
+    expect(commitAction(0, 0, "dev", { hasUpstream: false, ahead: 3, behind: 0 }).action).toBe("publish");
+    expect(commitAction(0, 0, "HEAD (no branch)", up(0, 0)).action).toBe("commit");
+    expect(commitAction(0, 0, null, up(0, 0)).action).toBe("commit");
   });
 
   it("summarizes git output", () => {

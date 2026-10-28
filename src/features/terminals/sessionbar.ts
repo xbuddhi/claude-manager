@@ -1,17 +1,15 @@
-// The bar above the terminal in front: the session's folder (its full path; a click copies it), the git
-// branch there with how many files changed (a click lists the branches to switch to), and buttons to open the folder in VS Code, in Explorer / Finder,
-// or in Source control (Home, with that folder selected and the Source control view in front).
+// The bar above the terminal in front: a button showing or hiding the files panel, the session's folder
+// (its full path; a click copies it), the git branch there with how many files changed (a click lists the
+// branches to switch to), and buttons to open the folder in VS Code or in Explorer / Finder, and to show or
+// hide the source control panel.
 
 import { call } from "../../core/api";
-import { emit } from "../../core/bus";
 import { h } from "../../core/dom";
 import { iconNode } from "../../core/icons";
-import { showView } from "../../core/views";
 import { button } from "../../ui/button";
 import { toast } from "../../ui/toast";
 import { showBranchSwitcher } from "../git/api";
 import { copyText, folderLabel, openFolder, openInCode } from "../os/api";
-import { folderKey } from "../sidebar/api";
 
 /** How often the branch and changes are read again while a terminal is in front. */
 const GIT_POLL_MS = 10_000;
@@ -20,12 +18,16 @@ export class SessionBar {
   readonly el: HTMLElement;
   private path: HTMLButtonElement;
   private git: HTMLButtonElement;
+  private files: HTMLButtonElement;
+  private source: HTMLButtonElement;
   private gitText: HTMLSpanElement;
   private dir: string | null = null;
   private timer: ReturnType<typeof setInterval> | undefined;
   private seq = 0;
 
-  constructor() {
+  /** The files and source control panel buttons were pressed. */
+  constructor(toggleFiles: () => void, toggleSource: () => void) {
+    this.files = button({ icon: "sidebar", kind: "plain", title: "Files", onClick: toggleFiles });
     this.gitText = h("span", { class: "ses-git-text" });
     this.path = h("button", { type: "button", class: "ses-path" });
     this.path.addEventListener("click", () => void this.copyPath());
@@ -46,24 +48,32 @@ export class SessionBar {
       title: folderLabel(),
       onClick: () => this.dir && void openFolder(this.dir),
     });
-    const source = button({
-      icon: "branch",
-      label: "Source control",
-      kind: "plain",
-      onClick: () => this.sourceControl(),
-    });
+    this.source = button({ icon: "branch", kind: "plain", title: "Source control", onClick: toggleSource });
     this.el = h(
       "div",
       { class: "ses-bar" },
+      this.files,
       iconNode("folder"),
       this.path,
       this.git,
       h("span", { class: "ses-gap" }),
       code,
       folder,
-      source,
+      this.source,
     );
     window.addEventListener("focus", () => void this.readGit());
+  }
+
+  /** Marks the files panel button as on or off. */
+  setFilesOpen(open: boolean): void {
+    this.files.setAttribute("aria-pressed", String(open));
+    this.files.dataset.tip = open ? "Hide files" : "Show files";
+  }
+
+  /** Marks the source control panel button as on or off. */
+  setSourceOpen(open: boolean): void {
+    this.source.setAttribute("aria-pressed", String(open));
+    this.source.dataset.tip = open ? "Hide source control" : "Show source control";
   }
 
   /** Shows the bar for the session in front (null = none, e.g. Home). */
@@ -104,14 +114,5 @@ export class SessionBar {
 
   private async copyPath() {
     if (this.dir && (await copyText(this.dir))) toast("Folder path copied");
-  }
-
-  /** Home, with this folder selected and Source control in front. */
-  private sourceControl() {
-    const dir = this.dir;
-    if (!dir) return;
-    emit("terminal:show", { id: null });
-    emit("sidebar:select", { key: folderKey(dir) });
-    showView("git");
   }
 }

@@ -25,6 +25,11 @@ export function edgeStep(y: number, top: number, bottom: number): number {
 export interface DragOptions<T> {
   /** The scroll container holding the rows. */
   el: HTMLElement;
+  /**
+   * Where rows may be dragged beyond the list (default: the list): the pill shows up to its right edge, and
+   * the list scrolls at its top or bottom edge only while the cursor is over the list.
+   */
+  reach?: HTMLElement;
   /** The row a DOM element belongs to. */
   rowAt(node: Element | null): T | undefined;
   title(row: T): string;
@@ -59,7 +64,7 @@ export function attachDrag<T>(opts: DragOptions<T>): void {
 
   const placePill = () => {
     if (!pill) return;
-    const room = el.getBoundingClientRect().right - x - 14;
+    const room = (opts.reach ?? el).getBoundingClientRect().right - x - 14;
     pill.hidden = room < PILL_MIN;
     pill.style.maxWidth = `${Math.max(0, room)}px`;
     pill.style.transform = `translate(${Math.round(x + 12)}px, ${Math.round(y - 12)}px)`;
@@ -70,7 +75,7 @@ export function attachDrag<T>(opts: DragOptions<T>): void {
     frame = 0;
     if (!dragging) return;
     const r = el.getBoundingClientRect();
-    const step = edgeStep(y, r.top, r.bottom);
+    const step = opts.reach && (x < r.left || x > r.right) ? 0 : edgeStep(y, r.top, r.bottom);
     if (!step) return;
     const before = el.scrollTop;
     el.scrollTop = Math.max(0, Math.min(el.scrollHeight - el.clientHeight, before + step));

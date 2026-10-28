@@ -16,6 +16,7 @@ import { showSessionMenu } from "./menus";
 import { buildScope } from "./model";
 import "./sessions.css";
 import "./state";
+import { countText } from "./strings";
 import { createTable, type Table } from "./table";
 
 const MINUTE = 60_000;
@@ -101,6 +102,10 @@ export function mount(): void {
     (s) => s.sessionsScope,
     (scope) => {
       table.setRows(scope?.sessions ?? [], scope?.kind ?? "folder", store.get().currentProfile !== null);
+      table.setCount(
+        scope ? scope.sessions.length : null,
+        scope ? countText(scope.sessions.length, scope.name, scope.showingArchived) : undefined,
+      );
       applyWanted();
       renderDetails();
     },

@@ -1,7 +1,7 @@
-// The sessions view's part of the card head: the muted count ("12   in   app"), the New Session split
-// button and the Open menu. Shown only while the Sessions view is (the views registry hides it otherwise).
+// The sessions view's part of the card head: the archived toggle, the New Session split button and the Open
+// menu (the session count is a badge in the table's Session column). Shown only while the Sessions view is
+// (the views registry hides it otherwise).
 
-import { h } from "../../core/dom";
 import { iconNode } from "../../core/icons";
 import { store } from "../../core/store";
 import { button, setButtonLabel } from "../../ui/button";
@@ -9,8 +9,9 @@ import { showMenu } from "../../ui/menu";
 import { splitButton } from "../../ui/splitbutton";
 import { repoWebUrl } from "../git/api";
 import { doNew } from "./actions";
+import { archiveIcon } from "./icons";
 import { newSessionMenuItems, openMenuItems, openTarget } from "./menus";
-import { archivedText, countText, TIP_ARCHIVED, TIP_ARCHIVED_BACK, TIP_NEW } from "./strings";
+import { archivedText, TIP_ARCHIVED, TIP_ARCHIVED_BACK, TIP_NEW } from "./strings";
 
 export interface Header {
   /** The New Session button, as the anchor for the folder picker. */
@@ -18,7 +19,6 @@ export interface Header {
 }
 
 export function mountHeader(el: HTMLElement): Header {
-  const count = h("span", { class: "ses-count", attrs: { "aria-live": "polite" } });
   const newBtn = splitButton({
     label: "New Session",
     icon: "plus",
@@ -42,22 +42,25 @@ export function mountHeader(el: HTMLElement): Header {
   openBtn.setAttribute("aria-haspopup", "menu");
   openBtn.append(iconNode("chevronDown"));
   openBtn.classList.add("ses-open");
+  // the archive icon with the count in a badge; the words are in its tooltip and accessible name
   const archBtn = button({
-    label: archivedText(0),
+    label: "0",
+    icon: archiveIcon(),
     kind: "plain",
     onClick: () => store.set({ sessionsShowArchived: !store.get().sessionsShowArchived }),
   });
   archBtn.classList.add("ses-arch");
-  el.append(count, archBtn, newBtn.el, openBtn);
+  el.append(archBtn, newBtn.el, openBtn);
 
   store.select(
     (s) => s.sessionsScope,
     (scope) => {
-      count.textContent = scope ? countText(scope.sessions.length, scope.name, scope.showingArchived) : "";
       archBtn.hidden = !scope?.archived;
-      setButtonLabel(archBtn, archivedText(scope?.archived ?? 0));
+      const n = scope?.archived ?? 0;
+      setButtonLabel(archBtn, String(n));
+      archBtn.setAttribute("aria-label", archivedText(n));
       archBtn.setAttribute("aria-pressed", String(!!scope?.showingArchived));
-      archBtn.dataset.tip = scope?.showingArchived ? TIP_ARCHIVED_BACK : TIP_ARCHIVED;
+      archBtn.dataset.tip = `${scope?.showingArchived ? TIP_ARCHIVED_BACK : TIP_ARCHIVED} (${n})`;
       newBtn.setDisabled(!scope);
       openBtn.disabled = !scope;
     },

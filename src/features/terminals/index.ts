@@ -1,7 +1,9 @@
 // Terminal tabs: claude sessions in xterms over PTYs, in tabs next to the pinned Home tab (Windows app:
 // ClaudeManager.ps1 "terminal tabs"). Handles the bus events "launch" (a tab here, or a terminal window of
-// the OS per settings.openIn) and "terminal:show", the tab commands and keys, file drops, and the
-// questions asked when the app or this window closes while terminals run.
+// the OS per settings.openIn) and "terminal:show", the tab commands and keys, file drops, the files panel
+// left of the terminals and the source control panel right of them (both for the folder of the tab in
+// front; files can be dragged into the terminal), and the questions asked when the app or this window
+// closes while terminals run.
 //
 // Every app window has its own tabs, like browser windows (core/window.ts). Tabs move between windows
 // (dragged out of the strip, or "Move to ..." in their menu); their terminals keep running and the window
@@ -31,7 +33,10 @@ import { store, type TermInfo } from "../../core/store";
 import { isMainWindow, MAIN_WINDOW, windowLabel } from "../../core/window";
 import { ask, choose } from "../../ui/dialog";
 import { type MenuItem, showMenu } from "../../ui/menu";
+import { splitter } from "../../ui/splitter";
 import { toast } from "../../ui/toast";
+import { createExplorer, type Explorer } from "../files/api";
+import { createSourceControlPanel, type SourceControlPanel } from "../git/api";
 import { refreshIndex } from "../index-data/api";
 import { copyText, folderLabel, openFolder, openInCode } from "../os/api";
 import { startProfile } from "../profiles/api";
@@ -56,6 +61,56 @@ let nextId = 1;
 let strip: Strip;
 let panes: HTMLElement;
 let bar: SessionBar;
+let files: Explorer;
+let filesSide: HTMLElement;
+let filesOpen = false;
+let source: SourceControlPanel;
+let sourceSide: HTMLElement;
+let sourceOpen = false;
+
+const FILES_KEY = "terminals.files";
+const FILES_WIDTH_KEY = "terminals.filesWidth";
+const FILES_MIN = 180;
+/** Room the terminal keeps when a side panel is dragged wide. */
+const TERM_MIN = 320;
+const SOURCE_KEY = "terminals.source";
+const SOURCE_WIDTH_KEY = "terminals.sourceWidth";
+const SOURCE_MIN = 300;
+
+function loadFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveValue(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // only a convenience
+  }
+}
+
+/** Shows each side panel when it is open and a terminal is in front; they follow that terminal's folder. */
+function syncFiles() {
+  filesSide.hidden = !filesOpen;
+  files.setRoot(active?.dir ?? null);
+  files.setShown(filesOpen && active !== null);
+  bar.setFilesOpen(filesOpen);
+  sourceSide.hidden = !sourceOpen;
+  source.setFolder(active?.dir ?? null);
+  source.setShown(sourceOpen && active !== null);
+  bar.setSourceOpen(sourceOpen);
+}
+
+/** Pastes a path into the terminal in front, quoted as for a dropped file. */
+function pastePath(path: string) {
+  if (!active || active.exited) return;
+  active.view.paste(quotePaths([path], store.get().platform.os));
+  active.view.focus();
+}
 
 /** Mirrors the tabs into the store for other features (and the shell, which swaps workspace and terminals). */
 function publish() {
@@ -74,6 +129,7 @@ function publish() {
     activeTerminal: active?.id ?? null,
   });
   bar.show(active?.dir ?? null);
+  syncFiles();
 }
 
 function renderStrip() {
@@ -554,10 +610,71 @@ function installDrops() {
 // ---------- mount ----------
 
 export function mount(): void {
-  // the session bar over the terminals' panes
-  bar = new SessionBar();
+  // the session bar over the files panel and the terminals' panes
+  filesOpen = loadFlag(FILES_KEY);
+  sourceOpen = loadFlag(SOURCE_KEY);
+  bar = new SessionBar(
+    () => {
+      filesOpen = !filesOpen;
+      saveValue(FILES_KEY, filesOpen ? "1" : "0");
+      syncFiles();
+    },
+    () => {
+      sourceOpen = !sourceOpen;
+      saveValue(SOURCE_KEY, sourceOpen ? "1" : "0");
+      syncFiles();
+    },
+  );
   panes = h("div", { class: "term-panes" });
-  $("#terminal-root").append(bar.el, panes);
+  files = createExplorer({
+    noRoot: "No folder for this terminal.",
+    menuItems: (path) => [{ label: "Add to Chat", icon: "terminal", run: () => pastePath(path) }],
+    drop: {
+      at: (node) => !!node?.closest(".term-panes"),
+      mark: (on) => panes.classList.toggle("drop-target", on),
+      run: pastePath,
+    },
+  });
+  const divider = h("div", { class: "term-files-divider" });
+  filesSide = h("div", { class: "term-files" }, files.el, divider);
+  source = createSourceControlPanel();
+  const sourceDivider = h("div", { class: "term-source-divider" });
+  sourceSide = h("div", { class: "term-source" }, sourceDivider, source.el);
+  const body = h("div", { class: "term-body" }, filesSide, panes, sourceSide);
+  $("#terminal-root").append(bar.el, body);
+  const setFilesWidth = (px: number) => {
+    filesSide.style.width = `${px}px`;
+  };
+  splitter({
+    el: divider,
+    label: "Resize the files panel",
+    get: () => filesSide.getBoundingClientRect().width,
+    min: FILES_MIN,
+    max: () => Math.max(FILES_MIN, body.clientWidth - TERM_MIN),
+    onResize: setFilesWidth,
+    onCommit: (px) => saveValue(FILES_WIDTH_KEY, String(px)),
+  });
+  // the source control panel is on the right: the splitter moves its left edge, measured from the left
+  const setSourceWidth = (px: number) => {
+    sourceSide.style.width = `${px}px`;
+  };
+  splitter({
+    el: sourceDivider,
+    label: "Resize the source control panel",
+    get: () => body.clientWidth - sourceSide.getBoundingClientRect().width,
+    min: TERM_MIN,
+    max: () => Math.max(TERM_MIN, body.clientWidth - SOURCE_MIN),
+    onResize: (edge) => setSourceWidth(Math.max(SOURCE_MIN, body.clientWidth - edge)),
+    onCommit: () => saveValue(SOURCE_WIDTH_KEY, String(Math.round(sourceSide.getBoundingClientRect().width))),
+  });
+  try {
+    const saved = Number(localStorage.getItem(FILES_WIDTH_KEY));
+    if (saved >= FILES_MIN) setFilesWidth(saved);
+    const savedSource = Number(localStorage.getItem(SOURCE_WIDTH_KEY));
+    if (savedSource >= SOURCE_MIN) setSourceWidth(savedSource);
+  } catch {
+    // the default widths
+  }
   strip = new Strip($("#tabstrip-slot"), {
     select: (id) => {
       const tab = id === null ? null : (tabs.find((t) => t.id === id) ?? undefined);

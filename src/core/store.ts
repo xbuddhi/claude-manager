@@ -84,7 +84,7 @@ export function createStore<T extends object>(initial: T): Store<T> {
 // ---------- core state ----------
 
 export type Screen = "picker" | "main";
-export type ViewId = "sessions" | "git" | "memory";
+export type ViewId = "sessions" | "git" | "memory" | "files";
 export type LoadState = "loading" | "ok" | "empty" | "error";
 
 /** The session index as the frontend holds it. `gen` grows whenever `projects` is replaced. */

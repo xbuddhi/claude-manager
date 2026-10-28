@@ -90,6 +90,27 @@ export function commitLabel(staged: number): string {
   return staged ? `Commit ${staged} staged` : "Commit";
 }
 
+export type CommitAction = "commit" | "sync" | "publish";
+
+/**
+ * What the commit button does, like VS Code: Commit while there are changes; with none, Sync Changes when
+ * the branch is behind or ahead of its upstream ("Sync Changes 3↓ 2↑"), Publish Branch when it has none.
+ * `branch` null (no repository) or detached ("HEAD ...") keeps Commit.
+ */
+export function commitAction(
+  staged: number,
+  changes: number,
+  branch: string | null,
+  sync: Sync,
+): { action: CommitAction; label: string } {
+  const detached = branch === null || branch.startsWith("HEAD");
+  if (staged + changes > 0 || detached) return { action: "commit", label: commitLabel(staged) };
+  if (!sync.hasUpstream) return { action: "publish", label: "Publish Branch" };
+  if (!sync.ahead && !sync.behind) return { action: "commit", label: commitLabel(0) };
+  const counts = [sync.behind ? `${sync.behind}↓` : "", sync.ahead ? `${sync.ahead}↑` : ""].filter(Boolean);
+  return { action: "sync", label: `Sync Changes ${counts.join(" ")}` };
+}
+
 const nonEmptyLines = (text: string) =>
   text
     .split("\n")

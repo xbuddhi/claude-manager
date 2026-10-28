@@ -57,6 +57,13 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::memory::memory_files,
         crate::memory::memory_read,
         crate::memory::memory_create,
+        // ---- files view ----
+        crate::files::files_list,
+        crate::files::files_read,
+        crate::files::files_create,
+        crate::files::files_rename,
+        crate::files::files_duplicate,
+        crate::files::files_trash,
         // ---- profiles UI (WP6) ----
         crate::profiles_cmd::create_profile,
         crate::profiles_cmd::open_profile_folder,

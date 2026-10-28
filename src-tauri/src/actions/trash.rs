@@ -175,7 +175,7 @@ pub fn repo_path(path: &str, root: &str) -> AppResult<PathBuf> {
 
 /// Moves `files` to the OS trash on a thread of its own: on Windows the trash crate initialises COM for the
 /// calling thread and panics when that thread already uses another COM mode, which a pool thread might.
-fn os_trash(files: &[PathBuf]) -> AppResult<()> {
+pub(crate) fn os_trash(files: &[PathBuf]) -> AppResult<()> {
     let files = files.to_vec();
     let result = std::thread::spawn(move || {
         #[cfg(target_os = "macos")]

@@ -38,6 +38,9 @@ import { mount as mountUpdater } from "./updater";
 // memory files view
 import { mount as mountMemory } from "./memory";
 
+// files view
+import { mount as mountFiles } from "./files";
+
 // ---- end feature imports ----
 
 export function mountFeatures(): void {
@@ -66,5 +69,7 @@ export function mountFeatures(): void {
   mountUpdater();
   // memory files view
   mountMemory();
+  // files view
+  mountFiles();
   // ---- end feature mounts ----
 }

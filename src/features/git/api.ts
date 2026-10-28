@@ -9,6 +9,11 @@ import { planSwitch, showBranchMenu } from "./branch";
 import { githubIcon } from "./icons";
 import { errorText } from "./strings";
 
+/** Syntax colours for a whole file; the pieces' `syn-*` classes take colour inside a `.syn-code` element. */
+export { highlightFile, type Token } from "./highlight";
+/** Source control of one folder in a narrow column (beside a terminal). */
+export { createSourceControlPanel, type SourceControlPanel } from "./view";
+
 /** The https page of the repository `dir` is in (from its remote), or null: no repository or no remote. */
 export async function repoWebUrl(dir: string): Promise<string | null> {
   const res = await call("git_web_url", { dir }, { quiet: true });
