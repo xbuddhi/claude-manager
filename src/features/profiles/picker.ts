@@ -6,19 +6,26 @@ import type { Profile } from "../../bindings/Profile";
 import { emit } from "../../core/bus";
 import { h, reconcile } from "../../core/dom";
 import { scroller } from "../../core/motion";
+import { isMac } from "../../core/platform";
 import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
 import { avatar } from "../../ui/avatar";
+import { showMenu } from "../../ui/menu";
 import { toggle } from "../../ui/toggle";
 import { countFor } from "../index-data/api";
-import { profileAvatar, profileEmail, profileLabel } from "./api";
+import { hideProfile, profileAvatar, profileEmail, profileLabel, renameProfile, showProfile } from "./api";
+import { chooseCompanion } from "./chooser";
+import { companionFor } from "./companions";
 import { enterProfile } from "./startup";
 import { sessionCount, T } from "./strings";
 
-/** A card: a profile folder, "all" profiles, or the "add" card. */
-type CardId = { kind: "profile"; dir: string } | { kind: "all" } | { kind: "add" };
+/** A card: a profile folder, "all" profiles, the "add" card, or a profile removed from the app (dimmed). */
+type CardId = { kind: "profile"; dir: string } | { kind: "all" } | { kind: "add" } | { kind: "hidden"; dir: string };
 
-const cardKey = (c: CardId) => (c.kind === "profile" ? `p:${c.dir}` : c.kind);
+const cardKey = (c: CardId) => (c.kind === "profile" ? `p:${c.dir}` : c.kind === "hidden" ? `h:${c.dir}` : c.kind);
+
+/** The hidden profiles are listed (session only). */
+let showingHidden = false;
 
 export interface Box {
   left: number;
@@ -61,31 +68,79 @@ export function gridMove(boxes: readonly Box[], from: number, key: string): numb
   return best;
 }
 
-function cardIds(profiles: readonly Profile[]): CardId[] {
-  return [...profiles.map((p): CardId => ({ kind: "profile", dir: p.dir })), { kind: "all" }, { kind: "add" }];
+function cardIds(profiles: readonly Profile[], hidden: readonly Profile[]): CardId[] {
+  return [
+    ...profiles.map((p): CardId => ({ kind: "profile", dir: p.dir })),
+    { kind: "all" },
+    { kind: "add" },
+    ...(showingHidden ? hidden.map((p): CardId => ({ kind: "hidden", dir: p.dir })) : []),
+  ];
 }
 
 function createCard(id: CardId): HTMLElement {
   const card = h("button", { type: "button", class: "prof-card" });
-  card.addEventListener("click", () => {
-    if (id.kind === "add") emit("profile:new");
+  card.addEventListener("click", (e) => {
+    if (id.kind === "profile" && (e.target as Element).closest(".prof-card-edit")) {
+      void renameProfile(id.dir);
+      return;
+    }
+    if (id.kind === "hidden") void showProfile(id.dir);
+    else if (id.kind === "add") emit("profile:new");
     else enterProfile(id.kind === "all" ? null : id.dir);
   });
+  if (id.kind === "profile" || id.kind === "hidden") {
+    const dir = id.dir;
+    const hidden = id.kind === "hidden";
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "F2") void renameProfile(dir);
+      else if (!hidden && (e.key === "Delete" || (isMac() && e.metaKey && e.key === "Backspace")))
+        void hideProfile(dir);
+      else return;
+      e.preventDefault();
+    });
+    card.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      void showMenu(
+        [
+          { label: T.rename, icon: pencil(), run: () => void renameProfile(dir) },
+          {
+            label: T.chooseCompanion,
+            icon: profileAvatar(dir, 16),
+            run: () => chooseCompanion(dir, card.querySelector<HTMLElement>(".avatar") ?? card, profileLabel(dir)),
+          },
+          hidden
+            ? { label: T.unhide, icon: "plus", run: () => void showProfile(dir) }
+            : { label: T.hide, icon: "minus", run: () => void hideProfile(dir) },
+        ],
+        { at: { x: e.clientX, y: e.clientY }, label: profileLabel(dir) },
+      );
+    });
+  }
   return card;
+}
+
+/** Rename (only the picker uses it). */
+function pencil(): Element {
+  const t = document.createElement("template");
+  t.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.8l2.7 2.7-7.6 7.6H2.9v-2.7zM9 4.3l2.7 2.7"/></svg>`;
+  return t.content.firstElementChild as Element;
 }
 
 /** Fills a card; called again whenever the profiles or the index change (only text that changed is touched). */
 function updateCard(card: HTMLElement, id: CardId): void {
-  const dir = id.kind === "profile" ? id.dir : null;
+  const dir = id.kind === "profile" || id.kind === "hidden" ? id.dir : null;
   const add = id.kind === "add";
+  const hidden = id.kind === "hidden";
   const name = add ? T.addProfile : profileLabel(dir);
-  const mail = add ? T.addProfileSub : profileEmail(dir);
+  const mail = add ? T.addProfileSub : hidden ? T.hiddenCard : profileEmail(dir);
   const loaded = store.get().index.loaded !== "loading";
   const count = add || !loaded ? "" : sessionCount(countFor(dir));
-  const sig = `${name}\n${mail}\n${count}`;
+  card.classList.toggle("prof-card-hidden", hidden);
+  // the companion is in it, so choosing another one redraws the card
+  const sig = `${name}\n${mail}\n${count}\n${dir === null ? "" : companionFor(dir).key}`;
   if (card.dataset.sig === sig) return;
   card.dataset.sig = sig;
-  const pic = add ? avatar({ text: "+", color: "var(--ctrl)", size: 84 }) : profileAvatar(dir, 84);
+  const pic = add ? avatar({ text: "+", color: "var(--ctrl)", size: 84 }) : profileAvatar(dir, 84, undefined, true);
   if (add) pic.classList.add("prof-avatar-all");
   card.replaceChildren(
     pic,
@@ -93,6 +148,12 @@ function updateCard(card: HTMLElement, id: CardId): void {
     h("span", { class: "prof-card-mail" }, mail),
     h("span", { class: "prof-card-count" }, count),
   );
+  // a pencil in the corner (a card is a button, so not a nested one: the card's click handler sees it)
+  if (id.kind === "profile") {
+    const edit = h("span", { class: "prof-card-edit", attrs: { "aria-hidden": "true" } }, pencil());
+    edit.dataset.tip = T.renameTip;
+    card.append(edit);
+  }
   card.setAttribute("aria-label", [name, mail, count].filter(Boolean).join(", "));
 }
 
@@ -121,11 +182,29 @@ export function mountPicker(root: HTMLElement): Picker {
   root.classList.add("prof-picker-root");
   scroller(root);
 
-  const render = () => reconcile(cards, cardIds(store.get().profiles), cardKey, createCard, updateCard);
-  store.select((s) => [s.profiles, s.index] as const, render, {
-    equals: (a, b) => a[0] === b[0] && a[1] === b[1],
-    immediate: true,
+  const more = h("button", { type: "button", class: "prof-more" });
+  more.addEventListener("click", () => {
+    showingHidden = !showingHidden;
+    render();
   });
+  const render = () => {
+    const s = store.get();
+    if (!s.hiddenProfiles.length) showingHidden = false;
+    reconcile(cards, cardIds(s.profiles, s.hiddenProfiles), cardKey, createCard, updateCard);
+    more.hidden = !s.hiddenProfiles.length;
+    more.textContent = showingHidden ? T.hideHidden : T.showHidden(s.hiddenProfiles.length);
+  };
+  cards.after(more);
+  // the session counts follow the index only while the picker shows: entering it brings them up to date
+  store.select(
+    (s) =>
+      [s.profiles, s.hiddenProfiles, s.screen === "picker" ? s.index : null, s.settings.profileCompanions] as const,
+    render,
+    {
+      equals: (a, b) => a.every((v, i) => v === b[i]),
+      immediate: true,
+    },
+  );
   store.select(
     (s) => s.settings.showPicker,
     (on) => sw.set(on),

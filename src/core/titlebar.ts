@@ -6,7 +6,7 @@
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { $, h } from "./dom";
-import { type IconName, iconNode } from "./icons";
+import { type IconSpec, iconNode } from "./icons";
 import { describeError, log } from "./log";
 import { isMac, isWindows } from "./platform";
 import { store } from "./store";
@@ -15,23 +15,27 @@ export function setTitle(text: string): void {
   $(".tb-name", $("#tb-title")).textContent = text;
 }
 
-/** The muted line under the title, e.g. "default · 12 sessions · 4 folders". */
-export function setSubtitle(text: string): void {
-  $("#tb-subtitle").textContent = text;
-}
-
-export interface SubtitlePart {
-  icon?: IconName;
+/** One icon-and-count item of the subtitle ("💬 113"). */
+export interface SubtitleItem {
+  icon: IconSpec;
   text: string;
 }
 
-/** The subtitle as parts, each after its icon and joined by " · ", e.g. "✳ 12 sessions · ▭ 4 folders". */
-export function setSubtitleParts(parts: readonly SubtitlePart[]): void {
-  const nodes = parts.flatMap((p, i) => [
-    i ? " · " : null,
-    h("span", { class: "tb-part", dataset: { icon: p.icon ?? "" } }, p.icon ? iconNode(p.icon) : null, p.text),
-  ]);
-  $("#tb-subtitle").replaceChildren(...nodes.filter((n) => n !== null));
+/**
+ * The muted line under the title: plain text ("Choose a profile"), or icon-and-count items with `tip`
+ * saying the same in words (shown on hover and read by screen readers).
+ */
+export function setSubtitle(content: string | readonly SubtitleItem[], tip?: string): void {
+  const el = $("#tb-subtitle");
+  if (typeof content === "string") el.textContent = content;
+  else el.replaceChildren(...content.map((i) => h("span", { class: "tb-sub-item" }, iconNode(i.icon), i.text)));
+  if (tip) {
+    el.dataset.tip = tip;
+    el.setAttribute("aria-label", tip);
+  } else {
+    delete el.dataset.tip;
+    el.removeAttribute("aria-label");
+  }
 }
 
 async function trackFullscreen() {

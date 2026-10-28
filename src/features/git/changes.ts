@@ -81,8 +81,11 @@ export interface Changes {
 }
 
 export function createChanges(opts: ChangesOptions): Changes {
+  /** The rows shown, by key. */
+  let byKey = new Map<string, ChangeRow>();
+  const rowOf = (key: string | undefined) => (key === undefined ? undefined : byKey.get(key));
   const fileOf = (key: string | undefined) => {
-    const row = list.rows().find((r) => rowKey(r) === key);
+    const row = rowOf(key);
     return row?.kind === "file" ? row : null;
   };
   const list = createList<ChangeRow>({
@@ -149,7 +152,7 @@ export function createChanges(opts: ChangesOptions): Changes {
   list.el.addEventListener("click", (e) => {
     const b = (e.target as Element | null)?.closest<HTMLElement>(".git-act");
     const key = b?.closest<HTMLElement>(".list-row")?.dataset.key;
-    const row = list.rows().find((r) => rowKey(r) === key);
+    const row = rowOf(key);
     if (b && row) opts.onAction(row, b.dataset.act as Action);
   });
 
@@ -158,6 +161,7 @@ export function createChanges(opts: ChangesOptions): Changes {
     set(status) {
       const rows = changeRows(status);
       empty.hidden = rows.length > 0;
+      byKey = new Map(rows.map((r) => [rowKey(r), r]));
       list.setRows(rows);
     },
     selected: () => fileOf(list.selection.selected[0]),

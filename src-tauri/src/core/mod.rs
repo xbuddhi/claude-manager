@@ -39,7 +39,7 @@ pub fn init(app: &mut App) -> AppResult<()> {
     Ok(())
 }
 
-/// Log file in the app log folder (5 MB, one old file kept, local time) and stdout. Debug builds also
+/// Log file in the app log folder (1 MB, one old file kept, local time) and stdout. Debug builds also
 /// forward every line to the webview console, which helps while developing and only costs in release.
 pub fn log_plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
     let mut targets = vec![
@@ -52,7 +52,7 @@ pub fn log_plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri_plugin_log::Builder::new()
         .clear_targets()
         .targets(targets)
-        .max_file_size(5_000_000)
+        .max_file_size(1_000_000)
         .rotation_strategy(RotationStrategy::KeepOne)
         .timezone_strategy(TimezoneStrategy::UseLocal)
         .level(log::LevelFilter::Info)

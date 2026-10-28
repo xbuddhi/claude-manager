@@ -14,9 +14,11 @@ const dialog = vi.hoisted(() => ({
 vi.mock("../../ui/dialog", () => dialog);
 const calls = vi.hoisted(() => [] as Array<{ cmd: string; args: unknown }>);
 vi.mock("../../core/api", () => ({
-  call: vi.fn(async (cmd: string, args: { paths?: string[] }) => {
+  call: vi.fn(async (cmd: string, args: { paths?: string[]; dir?: string }) => {
     calls.push({ cmd, args });
     if (cmd === "path_kinds") return { ok: true, value: (args.paths ?? []).map(() => "dir") };
+    if (cmd === "git_web_url")
+      return { ok: true, value: args.dir?.endsWith("tools") ? "https://github.com/me/tools" : null };
     return { ok: false, error: { code: "internal", message: "no backend in tests" } };
   }),
   listen: vi.fn(async () => () => {}),
@@ -48,7 +50,6 @@ function project(path: string, modified: number): Project {
         file: `${id}.jsonl`,
         cwd: path,
         label: "hello",
-        full: "hello",
         count: 2,
         modified,
         sizeKb: 1,
@@ -105,10 +106,9 @@ describe("sidebar view", () => {
       name: "Web",
       folders: ["C:\\src\\site", "C:\\src\\api"],
     });
-    expect(document.getElementById("tb-subtitle")?.textContent).toBe("3 sessions · 3 folders · 1 project");
-    const icons = [...document.querySelectorAll<HTMLElement>("#tb-subtitle .tb-part")].map((p) => p.dataset.icon);
-    expect(icons).toEqual(["spark", "folder", "group"]);
-    expect(document.querySelectorAll("#tb-subtitle .tb-part svg")).toHaveLength(3);
+    const sub = document.getElementById("tb-subtitle");
+    expect(sub?.dataset.tip).toBe("3 sessions · 3 folders · 1 project");
+    expect([...(sub?.querySelectorAll(".tb-sub-item") ?? [])].map((e) => e.textContent)).toEqual(["3", "3", "1"]);
   });
 
   it("moves with the arrows and publishes folder selections", () => {
@@ -171,8 +171,9 @@ describe("sidebar view", () => {
     expect(store.get().sidebarSelection?.path).toBe("C:\\src\\site");
   });
 
-  it("shows the folder menu on right-click with the OS labels", () => {
+  it("shows the folder menu on right-click with the OS labels", async () => {
     rowEl("f:c:\\src\\tools")?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    await vi.waitFor(() => expect(document.querySelector(".menu")).not.toBeNull());
     const labels = [...document.querySelectorAll(".menu .mi-label")].map((e) => e.textContent);
     expect(labels).toEqual([
       "New session",
@@ -183,16 +184,19 @@ describe("sidebar view", () => {
       "Open PowerShell here",
       "Open in Explorer",
       "Open in VS Code",
+      "Open on GitHub",
       "Copy path",
       "Move to project",
       "Pin",
+      "Hide from sidebar",
       "Delete all sessions...",
     ]);
     expect(store.get().sidebarSelection?.path).toBe("C:\\src\\tools");
   });
 
-  it("offers 'Remove from project' for a grouped folder and the project menu for a group", () => {
+  it("offers 'Remove from project' for a grouped folder and the project menu for a group", async () => {
     rowEl("f:c:\\src\\site")?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    await vi.waitFor(() => expect(document.querySelector(".menu")).not.toBeNull());
     expect([...document.querySelectorAll(".menu .mi-label")].map((e) => e.textContent)).toContain(
       "Remove from project",
     );
@@ -232,5 +236,20 @@ describe("sidebar view", () => {
     setData([], [project("C:\\src\\site", 300)]); // a rebuild, like the 60 s timer's
     expect(sub.textContent).toBe("Choose a profile");
     store.set({ screen: "main" });
+  });
+});
+
+describe("sameSelection", () => {
+  it("compares kind, key, path, name and the folders", async () => {
+    const { sameSelection } = await import("./view");
+    const g = { kind: "group" as const, key: "g:web", name: "Web", folders: ["a", "b"] };
+    expect(sameSelection(g, { ...g, folders: ["a", "b"] })).toBe(true);
+    expect(sameSelection(g, { ...g, folders: ["a"] })).toBe(false);
+    expect(sameSelection(g, { ...g, name: "Site" })).toBe(false);
+    expect(sameSelection(g, null)).toBe(false);
+    expect(sameSelection(null, null)).toBe(true);
+    const f = { kind: "folder" as const, key: "f:a", path: "a", name: "a" };
+    expect(sameSelection(f, { ...f })).toBe(true);
+    expect(sameSelection(f, { ...f, path: "A" })).toBe(false);
   });
 });

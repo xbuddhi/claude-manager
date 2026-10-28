@@ -5,13 +5,13 @@ import { isMac } from "../../core/platform";
 import { profiles } from "../../core/profiles";
 import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
-import { avatar } from "../../ui/avatar";
 import { type MenuItem, type MenuPosition, showMenu } from "../../ui/menu";
+import { webMenuItem } from "../git/api";
 import { copyText, openFolder, openInCode, reveal, revealLabel, terminalHere } from "../os/api";
-import { profileColor, profileInitial } from "../profiles/api";
-import { deleteSelected, doNew, doResume, startNew } from "./actions";
+import { profileAvatar } from "../profiles/api";
+import { archiveSelected, deleteSelected, doNew, doResume, isArchived, startNew } from "./actions";
 import { renameSession } from "./api";
-import { pencilIcon } from "./icons";
+import { archiveIcon, pencilIcon } from "./icons";
 
 /** Delete is Del on Windows and Cmd+Backspace on macOS (a Mac keyboard's delete key is Backspace). */
 export function deleteKeys(mac = isMac()): string {
@@ -19,6 +19,7 @@ export function deleteKeys(mac = isMac()): string {
 }
 
 export function sessionMenuItems(s: Session): MenuItem[] {
+  const archived = isArchived(s.id);
   return [
     { label: "Resume", icon: "history", shortcut: "Enter", run: () => void doResume(s) },
     { label: "Resume in new window", icon: "popout", run: () => void doResume(s, { mode: "external" }) },
@@ -35,6 +36,7 @@ export function sessionMenuItems(s: Session): MenuItem[] {
     },
     { label: revealLabel(), icon: "folder", run: () => void reveal(s.file) },
     { kind: "separator" },
+    { label: archived ? "Unarchive" : "Archive", icon: archiveIcon(), run: () => archiveSelected(!archived) },
     { label: "Delete", icon: "trash", danger: true, shortcut: deleteKeys(), run: deleteSelected },
   ];
 }
@@ -48,7 +50,7 @@ function profileItems(): MenuItem[] {
   const folder = scope?.kind === "folder" ? scope.path : null;
   return profiles().map((p) => ({
     label: p.name,
-    icon: avatar({ text: profileInitial(p.name), color: profileColor(p.name), size: 16 }),
+    icon: profileAvatar(p.dir, 16),
     detail: p.email ?? undefined,
     // like the Windows app, only for a folder: a project would first need its folder picked
     disabled: folder === null,
@@ -78,14 +80,15 @@ export function newSessionMenuItems(anchor?: HTMLElement): MenuItem[] {
 }
 
 /** The folder the Open menu acts on: the selected folder, or a project's first folder. */
-function openTarget(): { path: string | null; folders: string[]; isFolder: boolean } {
+export function openTarget(): { path: string | null; folders: string[]; isFolder: boolean } {
   const scope = store.get().sessionsScope;
   if (scope?.kind === "folder") return { path: scope.path, folders: [scope.path], isFolder: true };
   if (scope?.kind === "group") return { path: scope.folders[0] ?? null, folders: scope.folders, isFolder: false };
   return { path: null, folders: [], isFolder: false };
 }
 
-export function openMenuItems(): MenuItem[] {
+/** `web`: the page of the folder's repository (repoWebUrl), listed when there is one. */
+export function openMenuItems(web: string | null = null): MenuItem[] {
   const t = openTarget();
   const mac = isMac();
   const folderOnly = !t.isFolder || t.path === null;
@@ -103,6 +106,7 @@ export function openMenuItems(): MenuItem[] {
       disabled: folderOnly,
       run: () => void (t.path && terminalHere(t.path)),
     },
+    ...(web ? [webMenuItem(web)] : []),
     { kind: "separator" },
     { label: "Copy path", icon: "copy", disabled: folderOnly, run: () => void (t.path && copyText(t.path)) },
   ];

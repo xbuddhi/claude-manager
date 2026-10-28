@@ -13,9 +13,10 @@ import { deleteSelected, doNew, doResume, resumeSelected, selectedSessions } fro
 import { createDetails, type Details } from "./details";
 import { type Header, mountHeader } from "./header";
 import { showSessionMenu } from "./menus";
-import { buildScope } from "./model";
+import { buildScope, sameScope } from "./model";
 import "./sessions.css";
 import "./state";
+import { countText } from "./strings";
 import { createTable, type Table } from "./table";
 
 const MINUTE = 60_000;
@@ -25,7 +26,18 @@ let details: Details;
 let page: HTMLElement;
 let header: Header | null = null;
 
+// several store changes in one round (a new index changes the scope, then the selection) render the pane once
+let detailsQueued = false;
 function renderDetails() {
+  if (detailsQueued) return;
+  detailsQueued = true;
+  queueMicrotask(() => {
+    detailsQueued = false;
+    renderDetailsNow();
+  });
+}
+
+function renderDetailsNow() {
   const s = store.get();
   const selected = selectedSessions();
   const first = selected[0];
@@ -43,13 +55,22 @@ function renderDetails() {
 function recomputeScope() {
   const s = store.get();
   const projects = projectsFor(s.currentProfile, s.index.projects);
-  store.set({ sessionsScope: buildScope(s.sidebarSelection, projects, s.platform.os) });
+  const archived = new Set(s.settings.archived);
+  const next = buildScope(s.sidebarSelection, projects, s.platform.os, archived, s.sessionsShowArchived);
+  // an index update elsewhere leaves this scope as it was: keep it, so the table and pane are not redrawn
+  if (!sameScope(next, s.sessionsScope)) store.set({ sessionsScope: next });
 }
 
 /** Selects the row asked for by sessionsWanted (search picked a session) once the table lists it. */
 function applyWanted() {
-  const id = store.get().sessionsWanted;
-  if (!id || !table.list.rows().some((r) => r.id === id)) return;
+  const { sessionsWanted: id, sessionsScope, sessionsShowArchived, settings } = store.get();
+  if (!id) return;
+  if (table.list.indexOfKey(id) < 0) {
+    // an archived session (e.g. picked in search): list the archived ones; the scope change calls back here
+    const archived = settings.archived.includes(id);
+    if (sessionsScope && archived !== sessionsShowArchived) store.set({ sessionsShowArchived: archived });
+    return;
+  }
   table.list.select([id]);
   table.list.scrollToKey(id);
   store.set({ sessionsWanted: null, sessionsSelected: [id] });
@@ -92,14 +113,29 @@ export function mount(): void {
     (s) => s.sessionsScope,
     (scope) => {
       table.setRows(scope?.sessions ?? [], scope?.kind ?? "folder", store.get().currentProfile !== null);
+      table.setCount(
+        scope ? scope.sessions.length : null,
+        scope ? countText(scope.sessions.length, scope.name, scope.showingArchived) : undefined,
+      );
       applyWanted();
       renderDetails();
     },
     { immediate: true },
   );
-  store.select((s) => [s.index, s.currentProfile, s.sidebarSelection, s.platform.os] as const, recomputeScope, {
-    equals: (a, b) => a.every((v, i) => v === b[i]),
-  });
+  store.select(
+    (s) =>
+      [
+        s.index,
+        s.currentProfile,
+        s.sidebarSelection,
+        s.platform.os,
+        s.settings.archived,
+        s.sessionsShowArchived,
+        s.profiles,
+      ] as const,
+    recomputeScope,
+    { equals: (a, b) => a.every((v, i) => v === b[i]) },
+  );
   recomputeScope();
   store.select((s) => s.sessionsWanted, applyWanted);
   store.select((s) => s.sessionsSelected, renderDetails);
@@ -121,7 +157,10 @@ export function mount(): void {
   // another folder, or back from a terminal: the content settles in
   store.select(
     (s) => s.sidebarSelection?.key ?? null,
-    () => settleIn(page),
+    () => {
+      store.set({ sessionsShowArchived: false });
+      settleIn(page);
+    },
   );
   store.select(
     (s) => s.activeTerminal === null,

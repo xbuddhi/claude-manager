@@ -1,7 +1,8 @@
 //! One copy of the process table per scan, so a tick asks the system once and then walks it freely.
 
-use crate::core::procs::Procs;
+use crate::core::procs::{self, Procs};
 use std::collections::{HashMap, HashSet};
+use sysinfo::System;
 
 #[derive(Clone, Debug, Default)]
 pub struct Proc {
@@ -21,10 +22,21 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// Reads every process, with the command lines of `cmd_for`.
+    /// Reads every process, with the command lines of `cmd_for`, from the shared table.
     pub fn take(procs: &Procs, cmd_for: &HashSet<u32>) -> Self {
-        let wanted: Vec<sysinfo::Pid> = cmd_for.iter().map(|&p| sysinfo::Pid::from_u32(p)).collect();
-        procs.with_cmd_of(&wanted, |sys| Snapshot {
+        let wanted = pids(cmd_for);
+        procs.with_cmd_of(&wanted, |sys| Self::of(sys, cmd_for))
+    }
+
+    /// The same from a table of the caller's own (the live scan keeps one, so the shared table is not
+    /// locked for a whole refresh while terminals query it).
+    pub fn take_own(sys: &mut System, cmd_for: &HashSet<u32>) -> Self {
+        procs::refresh_all(sys, &pids(cmd_for));
+        Self::of(sys, cmd_for)
+    }
+
+    fn of(sys: &System, cmd_for: &HashSet<u32>) -> Self {
+        Snapshot {
             procs: sys
                 .processes()
                 .iter()
@@ -44,7 +56,12 @@ impl Snapshot {
                     (pid, proc)
                 })
                 .collect(),
-        })
+        }
+    }
+
+    /// No processes (a scan with nothing to look at).
+    pub fn empty() -> Self {
+        Snapshot::default()
     }
 
     #[cfg(test)]
@@ -79,10 +96,22 @@ impl Snapshot {
     }
 }
 
-/// `Claude.EXE` -> `claude`: names compare lowercase and without the Windows extension.
+/// `Claude.EXE` -> `claude`: names compare lowercase and without the Windows extension. One allocation
+/// (this runs for every process on every scan).
 pub fn short_name(name: &str) -> String {
-    let lower = name.to_lowercase();
-    lower.strip_suffix(".exe").map(str::to_string).unwrap_or(lower)
+    let mut lower = if name.is_ascii() {
+        name.to_ascii_lowercase()
+    } else {
+        name.to_lowercase()
+    };
+    if lower.ends_with(".exe") {
+        lower.truncate(lower.len() - ".exe".len());
+    }
+    lower
+}
+
+fn pids(set: &HashSet<u32>) -> Vec<sysinfo::Pid> {
+    set.iter().map(|&p| sysinfo::Pid::from_u32(p)).collect()
 }
 
 #[cfg(test)]
@@ -121,6 +150,8 @@ pub mod tests {
     fn short_names() {
         assert_eq!(short_name("Claude.EXE"), "claude");
         assert_eq!(short_name("2.1.310"), "2.1.310");
+        assert_eq!(short_name("Code Helper (Plugin)"), "code helper (plugin)");
+        assert_eq!(short_name("ÄPP.exe"), "äpp");
     }
 
     #[test]
@@ -129,5 +160,8 @@ pub mod tests {
         let snap = Snapshot::take(&Procs::new(), &HashSet::from([me]));
         let p = snap.get(me).unwrap();
         assert!(p.start > 0 && !p.name.is_empty() && !p.cmd.is_empty());
+        let mut own = System::new();
+        let again = Snapshot::take_own(&mut own, &HashSet::from([me]));
+        assert_eq!(again.get(me).map(|p| (&p.name, p.start)), Some((&p.name, p.start)));
     }
 }

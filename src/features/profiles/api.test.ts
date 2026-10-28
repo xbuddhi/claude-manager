@@ -82,13 +82,38 @@ describe("profile email and avatar", () => {
     expect(profileEmail(null)).toBe("Sessions from every profile");
   });
 
-  it("draw all profiles with the control colour and text ink", () => {
+  it("draw a profile as its companion and all profiles as the huddle", () => {
     store.set({ profiles: [profile("/h/.claude-work", "work")] });
     const work = profileAvatar("/h/.claude-work", 34);
-    expect(work.textContent).toBe("W");
-    expect(work.classList.contains("prof-avatar-all")).toBe(false);
+    expect(work.classList.contains("prof-companion")).toBe(true);
+    expect(work.classList.contains("prof-all")).toBe(false);
+    // it moves only when asked (the picker, the open profile menu)
+    expect(work.querySelector(".pc-breath")).toBeNull();
+    expect(profileAvatar("/h/.claude-work", 84, undefined, true).querySelector(".pc-breath")).not.toBeNull();
     const all = profileAvatar(null, 84);
-    expect(all.textContent).toBe("All");
-    expect(all.classList.contains("prof-avatar-all")).toBe(true);
+    expect(all.classList.contains("prof-all")).toBe(true);
+    expect(all.querySelectorAll("svg path").length).toBeGreaterThanOrEqual(3); // three companions
+  });
+});
+
+describe("companions", () => {
+  it("keeps the chosen one, else gives each profile one nobody else has", async () => {
+    const { assignCompanions, companionFor } = await import("./companions");
+    expect(companionFor("/h/.claude-work", { "/h/.claude-work": "qa" }, []).key).toBe("qa");
+    const auto = companionFor("/h/.claude-test", {}, []);
+    expect(companionFor("/h/.claude-test", {}, []).key).toBe(auto.key);
+    // an unknown key falls back to the folder's own
+    expect(companionFor("/h/.claude-test", { "/h/.claude-test": "nope" }, []).key).toBe(auto.key);
+    // ten profiles, none chosen: ten different companions, whatever order they come in
+    const dirs = Array.from({ length: 10 }, (_, i) => `/h/.claude-p${i}`);
+    const one = assignCompanions(dirs, {});
+    expect(new Set([...one.values()].map((c) => c.key)).size).toBe(10);
+    const two = assignCompanions([...dirs].reverse(), {});
+    expect(dirs.every((d) => one.get(d) === two.get(d))).toBe(true);
+    // a chosen one is never given to another profile
+    const taken = one.get(dirs[0] as string)?.key as string;
+    const mixed = assignCompanions(dirs.slice(0, 3), { [dirs[1] as string]: taken });
+    expect(mixed.get(dirs[1] as string)?.key).toBe(taken);
+    expect(mixed.get(dirs[0] as string)?.key).not.toBe(taken);
   });
 });

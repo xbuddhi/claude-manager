@@ -32,6 +32,8 @@ pub mod os;
 pub mod updater;
 // memory files view
 pub mod memory;
+// files view
+pub mod files;
 // ---- end feature modules ----
 
 use tauri_plugin_window_state::StateFlags;

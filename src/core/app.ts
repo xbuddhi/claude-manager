@@ -103,12 +103,14 @@ export async function start(mountFeatures: () => void): Promise<void> {
     installTooltips();
     await Promise.all([initPlatform(), initSettings(), initProfiles()]);
     initTheme();
-    await initTitlebar();
+    // the title bar's window queries and the menu listener need not hold up mounting: they only have to be
+    // done before the window shows (both set up what they need synchronously first)
+    const chrome = Promise.all([initTitlebar(), installKeyboard()]);
     initShell();
     initViews();
     registerCoreCommands();
-    await installKeyboard();
     mountFeatures();
+    await chrome;
     await waitBeforeShow();
   } catch (e) {
     // still show what did render: a hidden window with no error is worse than a partial one

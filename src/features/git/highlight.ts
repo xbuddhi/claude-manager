@@ -3,15 +3,21 @@
 // side (context and added lines), so code spanning lines inside a hunk reads right; context lines take the
 // new side's colours. A hunk that starts inside a comment or string can still come out wrong.
 
-import type { Parser } from "@lezer/common";
+import type { Parser, Tree } from "@lezer/common";
 import { highlightCode, styleTags, Tag, tags as t, tagHighlighter } from "@lezer/highlight";
 import type { DiffLine } from "./diffparse";
 
 /** One coloured piece of a line: its text and its `syn-*` class ("" = plain). */
 export type Token = [text: string, cls: string];
 
-/** Diffs bigger than this (in characters) stay plain: parsing them would hold up the view. */
-const MAX_CHARS = 2_000_000;
+/** Files and diffs bigger than this (in characters) stay plain: colouring them takes too long to be worth it. */
+const MAX_CHARS = 300_000;
+/** Work done before giving the page a turn (ms), and the text coloured between two checks (characters). */
+const SLICE_MS = 8;
+const CHUNK = 16_000;
+
+/** Says the result is no longer wanted (another file or diff came up): the work stops early. */
+export type Stale = () => boolean;
 
 /** Roles the JS/TS grammar does not tag apart, which Monokai colours: parameters, and members of a type. */
 const param = Tag.define(t.variableName);
@@ -102,17 +108,62 @@ function parserFor(path: string): Promise<Parser | null> {
   return p;
 }
 
-/** `text` split into lines of tokens. */
-function tokenize(parser: Parser, text: string): Token[][] {
+/** The next task: lets input and painting run between two slices of work. */
+function nextTask(): Promise<void> {
+  return new Promise((resolve) => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => {
+      ch.port1.close();
+      resolve();
+    };
+    ch.port2.postMessage(null);
+  });
+}
+
+/** Splits long work into slices of SLICE_MS; `pause()` is false once the result is stale. */
+function slicer(stale: Stale | undefined) {
+  let start = performance.now();
+  return async (): Promise<boolean> => {
+    if (performance.now() - start >= SLICE_MS) {
+      await nextTask();
+      start = performance.now();
+    }
+    return !stale?.();
+  };
+}
+type Pause = ReturnType<typeof slicer>;
+
+/** `text` split into lines of tokens, parsed and coloured a slice at a time; null once stale. */
+async function tokenize(parser: Parser, text: string, pause: Pause): Promise<Token[][] | null> {
+  const parse = parser.startParse(text);
+  let tree: Tree | null = parse.advance();
+  while (!tree) {
+    if (!(await pause())) return null;
+    tree = parse.advance();
+  }
   const lines: Token[][] = [[]];
-  highlightCode(
-    text,
-    parser.parse(text),
-    highlighter,
-    (piece, cls) => (lines[lines.length - 1] as Token[]).push([piece, cls]),
-    () => lines.push([]),
-  );
+  const put = (piece: string, cls: string) => (lines[lines.length - 1] as Token[]).push([piece, cls]);
+  const brk = () => lines.push([]);
+  // in chunks that end after a line break, so no line is cut: the tokens come out as from one pass
+  for (let from = 0; from < text.length; ) {
+    const nl = from + CHUNK < text.length ? text.indexOf("\n", from + CHUNK) : -1;
+    const to = nl < 0 ? text.length : nl + 1;
+    highlightCode(text, tree, highlighter, put, brk, from, to);
+    from = to;
+    if (from < text.length && !(await pause())) return null;
+  }
   return lines;
+}
+
+/**
+ * Tokens for every line of the file `path` (null: no parser for its language, too large, or `stale` became
+ * true meanwhile). The work is split so the page stays responsive.
+ */
+export async function highlightFile(path: string, text: string, stale?: Stale): Promise<Token[][] | null> {
+  if (text.length > MAX_CHARS) return null;
+  const parser = await parserFor(path);
+  if (!parser || stale?.()) return null;
+  return tokenize(parser, text, slicer(stale));
 }
 
 /** The path a "file" line names (a new file's line ends with "  (new file)"). */
@@ -122,38 +173,44 @@ function pathOf(d: DiffLine): string {
 
 /**
  * Tokens for every code line of `lines` (by index; missing = plain). Resolves once the parsers it needs
- * have loaded.
+ * have loaded and every hunk is coloured; the work is split so the page stays responsive, and stops early
+ * (leaving the rest plain) once `stale` is true.
  */
-export async function highlightDiff(lines: readonly DiffLine[]): Promise<Array<Token[] | undefined>> {
+export async function highlightDiff(lines: readonly DiffLine[], stale?: Stale): Promise<Array<Token[] | undefined>> {
   const out: Array<Token[] | undefined> = new Array(lines.length);
   let chars = 0;
   for (const d of lines) chars += d.text.length + 1;
   if (chars > MAX_CHARS) return out;
 
+  const pause = slicer(stale);
   let parser: Parser | null = null;
   // the hunk being collected: line indexes of each side, in order
   let oldSide: number[] = [];
   let newSide: number[] = [];
-  const flush = () => {
-    if (parser) {
-      for (const side of [oldSide, newSide]) {
-        if (!side.length) continue;
-        const toks = tokenize(parser, side.map((i) => (lines[i] as DiffLine).text).join("\n"));
-        side.forEach((i, n) => {
-          out[i] = toks[n];
-        });
-      }
-    }
+  /** Colours the hunk collected; false once stale. */
+  const flush = async (): Promise<boolean> => {
+    const sides = [oldSide, newSide];
     oldSide = [];
     newSide = [];
+    if (!parser) return !stale?.();
+    for (const side of sides) {
+      if (!side.length) continue;
+      const toks = await tokenize(parser, side.map((i) => (lines[i] as DiffLine).text).join("\n"), pause);
+      if (!toks) return false;
+      side.forEach((i, n) => {
+        out[i] = toks[n];
+      });
+      if (!(await pause())) return false;
+    }
+    return true;
   };
   for (let i = 0; i < lines.length; i++) {
     const d = lines[i] as DiffLine;
     if (d.kind === "file") {
-      flush();
+      if (!(await flush())) return out;
       parser = await parserFor(pathOf(d));
     } else if (d.kind === "hunk") {
-      flush();
+      if (!(await flush())) return out;
     } else if (d.kind === "del") {
       oldSide.push(i);
     } else if (d.kind === "add") {
@@ -164,6 +221,6 @@ export async function highlightDiff(lines: readonly DiffLine[]): Promise<Array<T
       newSide.push(i);
     }
   }
-  flush();
+  await flush();
   return out;
 }

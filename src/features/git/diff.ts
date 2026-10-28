@@ -11,6 +11,7 @@ import { segmented } from "../../ui/segmented";
 import { copyText } from "../os/api";
 import { type DiffLine, diffToText, displayText, markWords, type SplitRow, splitRows, widestLine } from "./diffparse";
 import { highlightDiff, type Token } from "./highlight";
+import { createRowWindow } from "./rowwindow";
 
 const LINE = 18;
 const OVERSCAN = 20;
@@ -139,39 +140,35 @@ export function createDiff(): DiffView {
   let rows: SplitRow[] = [];
   let tokens: Array<Token[] | undefined> = [];
   let sig: string | null = null;
+  /** Longest line of the diff in characters (worked out once per diff). */
+  let widest = 0;
   let frame = 0;
   /** How far both sides are scrolled sideways (side by side), in px. */
   let sx = 0;
 
   const count = () => (mode === "split" ? rows.length : lines.length);
 
+  /** Row `i` of the current mode. */
+  function build(i: number): HTMLElement {
+    const top = i * LINE;
+    if (mode === "inline") return rowEl(lines[i] as DiffLine, top, tokens[i]);
+    const r = rows[i] as SplitRow;
+    if (r.span !== undefined) return spanEl(lines[r.span] as DiffLine, top);
+    const left = r.left === undefined ? undefined : lines[r.left];
+    const right = r.right === undefined ? undefined : lines[r.right];
+    return h(
+      "div",
+      { class: "git-dl git-dl-split", style: { top: `${top}px` } },
+      halfEl(left, "old", r.left === undefined ? undefined : tokens[r.left]),
+      halfEl(right, "new", r.right === undefined ? undefined : tokens[r.right]),
+    );
+  }
+  const shown = createRowWindow(inner, build);
+
   function render() {
     const first = Math.max(0, Math.floor(scroller.scrollTop / LINE) - OVERSCAN);
     const last = Math.min(count(), Math.ceil((scroller.scrollTop + scroller.clientHeight) / LINE) + OVERSCAN);
-    const out: HTMLElement[] = [];
-    for (let i = first; i < last; i++) {
-      const top = i * LINE;
-      if (mode === "inline") {
-        out.push(rowEl(lines[i] as DiffLine, top, tokens[i]));
-        continue;
-      }
-      const r = rows[i] as SplitRow;
-      if (r.span !== undefined) {
-        out.push(spanEl(lines[r.span] as DiffLine, top));
-        continue;
-      }
-      const left = r.left === undefined ? undefined : lines[r.left];
-      const right = r.right === undefined ? undefined : lines[r.right];
-      out.push(
-        h(
-          "div",
-          { class: "git-dl git-dl-split", style: { top: `${top}px` } },
-          halfEl(left, "old", r.left === undefined ? undefined : tokens[r.left]),
-          halfEl(right, "new", r.right === undefined ? undefined : tokens[r.right]),
-        ),
-      );
-    }
-    inner.replaceChildren(...out);
+    shown.update(first, last);
   }
   const schedule = () => {
     if (!frame) {
@@ -191,7 +188,7 @@ export function createDiff(): DiffView {
   function scrollSides(dx: number) {
     const ch = ruler.offsetWidth / 100 || 7;
     const half = scroller.clientWidth / 2;
-    const max = Math.max(0, SPLIT_GUTTER + 24 + widestLine(lines) * ch - half);
+    const max = Math.max(0, SPLIT_GUTTER + 24 + widest * ch - half);
     sx = Math.max(0, Math.min(max, sx + dx));
     inner.style.setProperty("--sx", `${sx}px`);
   }
@@ -226,10 +223,11 @@ export function createDiff(): DiffView {
   function layout() {
     scroller.classList.toggle("split", mode === "split");
     inner.style.height = `${count() * LINE + 8}px`;
-    inner.style.width = mode === "split" ? "" : `calc(${GUTTER + 24}px + ${widestLine(lines)}ch)`;
+    inner.style.width = mode === "split" ? "" : `calc(${GUTTER + 24}px + ${widest}ch)`;
     sx = 0;
     scrollSides(0);
     scroller.scrollLeft = 0;
+    shown.invalidate();
     render();
   }
 
@@ -237,6 +235,7 @@ export function createDiff(): DiffView {
     lines = next;
     markWords(lines);
     rows = splitRows(lines);
+    widest = widestLine(lines);
     tokens = [];
     scroller.scrollTop = 0;
     layout();
@@ -249,10 +248,11 @@ export function createDiff(): DiffView {
       if (nextSig === sig) return;
       sig = nextSig;
       set(next);
-      void highlightDiff(next).then((t) => {
-        // another diff came up meanwhile
+      // another diff coming up meanwhile stops the colouring
+      void highlightDiff(next, () => lines !== next).then((t) => {
         if (lines !== next) return;
         tokens = t;
+        shown.invalidate();
         render();
       });
     },

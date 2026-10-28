@@ -1,7 +1,5 @@
 // Every user-visible text of the sidebar, worded as in the Windows app (ClaudeManager.ps1, MacUI.cs Tree).
 
-import type { SubtitlePart } from "../../core/titlebar";
-
 export const S = {
   title: "Workspace",
   addTip: "New project or folder",
@@ -11,6 +9,9 @@ export const S = {
   folders: (n: number) => `FOLDERS  ·  ${n}`,
   showMore: (n: number) => `Show ${n} more`,
   showLess: "Show less",
+  showHidden: (n: number) => `Show ${n} hidden`,
+  hiddenHeading: (n: number) => `HIDDEN  ·  ${n}`,
+  hiddenTip: "Click to fold the hidden folders away",
   dragHere: "Drag folders here",
   noProjects: "No projects yet. Click + to create one.",
   noMatches: "No matching projects",
@@ -38,10 +39,13 @@ export const S = {
   continueLast: "Continue last session",
   openCode: "Open in VS Code",
   copyPath: "Copy path",
+  openOn: "Open on",
   moveTo: "Move to project",
   removeFrom: "Remove from project",
   pin: "Pin",
   unpin: "Unpin",
+  hide: "Hide from sidebar",
+  unhide: "Show in sidebar",
   deleteAll: "Delete all sessions...",
   newSessionIn: "New session in...",
   startWhich: (name: string) => `Start in which folder of '${name}'?`,
@@ -50,14 +54,11 @@ export const S = {
   deleteProject: "Delete project",
 
   dropHint: "Drop folders to pin them and start a session in each",
-  /** The title bar subtitle: sessions (Claude's spark), folders and projects (groups), each with its icon. */
-  subtitle: (sessions: number, folders: number, projects: number): SubtitlePart[] => {
+  subtitle: (who: string, sessions: number, folders: number, projects: number) => {
     const n = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
-    const parts: SubtitlePart[] = [
-      { icon: "spark", text: n(sessions, "session") },
-      { icon: "folder", text: n(folders, "folder") },
-    ];
-    if (projects) parts.push({ icon: "group", text: n(projects, "project") });
-    return parts;
+    const parts = [n(sessions, "session"), n(folders, "folder")];
+    if (who) parts.unshift(who);
+    if (projects) parts.push(n(projects, "project"));
+    return parts.join(" · ");
   },
 };

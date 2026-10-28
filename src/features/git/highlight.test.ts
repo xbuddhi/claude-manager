@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { newFileLines, parseDiff } from "./diffparse";
-import { highlightDiff } from "./highlight";
+import { highlightDiff, highlightFile } from "./highlight";
 
 const classesOf = (toks: Array<[string, string]> | undefined, text: string) =>
   toks?.find(([t]) => t === text)?.[1] ?? null;
@@ -47,5 +47,23 @@ describe("highlightDiff", () => {
     expect(classesOf(toks[2], "true")).toBe("syn-constant");
     const txt = await highlightDiff(newFileLines("notes.txt", "hello\n"));
     expect(txt[1]).toBeUndefined();
+  });
+});
+
+describe("highlightFile", () => {
+  it("colours a long file in slices with the same tokens on every line", async () => {
+    const line = "const s = f('text', 2); // note\n";
+    const text = line.repeat(2000);
+    const toks = await highlightFile("big.ts", text);
+    expect(toks).not.toBeNull();
+    expect(toks?.length).toBe(2001);
+    const first = JSON.stringify(toks?.[0]);
+    expect(toks?.every((t, i) => i === 2000 || JSON.stringify(t) === first)).toBe(true);
+    expect(toks?.[0]?.map(([piece]) => piece).join("")).toBe(line.slice(0, -1));
+  });
+
+  it("stops when the result is no longer wanted, and leaves very large files plain", async () => {
+    expect(await highlightFile("a.ts", "let a = 1;\n", () => true)).toBeNull();
+    expect(await highlightFile("a.ts", "x".repeat(400_000))).toBeNull();
   });
 });

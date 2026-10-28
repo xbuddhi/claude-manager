@@ -3,8 +3,8 @@
 // AppState holds the shared core fields below. A feature adds its own fields by declaration merging in its
 // `features/<x>/state.ts` and gives them defaults with defineState():
 //
-//   declare module "../../core/store" { interface AppState { searchQuery: string } }
-//   defineState({ searchQuery: "" });
+//   declare module "../../core/store" { interface AppState { sessionFilter: string } }
+//   defineState({ sessionFilter: "" });
 
 import type { LiveSession } from "../bindings/LiveSession";
 import type { PlatformInfo } from "../bindings/PlatformInfo";
@@ -84,7 +84,7 @@ export function createStore<T extends object>(initial: T): Store<T> {
 // ---------- core state ----------
 
 export type Screen = "picker" | "main";
-export type ViewId = "sessions" | "git" | "memory";
+export type ViewId = "sessions" | "git" | "memory" | "files";
 export type LoadState = "loading" | "ok" | "empty" | "error";
 
 /** The session index as the frontend holds it. `gen` grows whenever `projects` is replaced. */
@@ -123,7 +123,10 @@ export interface TermInfo {
 /** Fields the foundation owns. */
 export interface CoreState {
   platform: PlatformInfo;
+  /** The profiles the app shows (named as the user named them; hidden ones left out). */
   profiles: Profile[];
+  /** Profiles removed from the app (settings.hiddenProfiles), for the picker to bring back. */
+  hiddenProfiles: Profile[];
   /** Profile folder in view; null = all profiles. */
   currentProfile: string | null;
   screen: Screen;
@@ -147,6 +150,11 @@ export interface AppState extends CoreState {}
 /** Same defaults as the backend's Settings::default(); replaced by get_settings during startup. */
 export const DEFAULT_SETTINGS: Settings = {
   pinned: [],
+  hidden: [],
+  archived: [],
+  profileNames: {},
+  hiddenProfiles: [],
+  profileCompanions: {},
   account: null,
   openIn: "external",
   showPicker: true,
@@ -167,7 +175,7 @@ export const DEFAULT_SETTINGS: Settings = {
   gitSplit: null,
   claudePath: null,
   macOptionIsMeta: true,
-  scrollback: 5000,
+  scrollback: 2000,
   keepRunningOnClose: null,
 };
 
@@ -180,6 +188,7 @@ function guessPlatform(): PlatformInfo {
 const coreDefaults: CoreState = {
   platform: guessPlatform(),
   profiles: [],
+  hiddenProfiles: [],
   currentProfile: null,
   screen: "main",
   settings: DEFAULT_SETTINGS,

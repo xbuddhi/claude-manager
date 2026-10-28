@@ -102,6 +102,11 @@ export function widestLine(lines: readonly DiffLine[]): number {
 /** Lines longer than this, or pairs with more words than this between them, get no word marks. */
 const MARK_MAX_CHARS = 1000;
 const MARK_MAX_CELLS = 40_000;
+/** Work for a whole diff: line pairs compared, and their words multiplied together. The rest stays unmarked. */
+export const MARK_MAX_PAIRS = 5000;
+const MARK_MAX_TOTAL_CELLS = 2_000_000;
+
+type Marks = { a: Array<[number, number]>; b: Array<[number, number]> };
 
 /** Words and single symbols, with their offsets (spaces are not compared). */
 function words(text: string): Array<[string, number]> {
@@ -113,13 +118,18 @@ function words(text: string): Array<[string, number]> {
  * Null when the lines are too long to compare or have almost nothing in common: then the whole line is the
  * change, and marking every word in it says nothing more.
  */
-export function wordMarks(a: string, b: string): { a: Array<[number, number]>; b: Array<[number, number]> } | null {
-  if (a.length > MARK_MAX_CHARS || b.length > MARK_MAX_CHARS) return null;
+export function wordMarks(a: string, b: string): Marks | null {
+  return compareWords(a, b)[0];
+}
+
+/** wordMarks, and the cells compared (the work done). */
+function compareWords(a: string, b: string): [Marks | null, number] {
+  if (a.length > MARK_MAX_CHARS || b.length > MARK_MAX_CHARS) return [null, 0];
   const wa = words(a);
   const wb = words(b);
   const n = wa.length;
   const m = wb.length;
-  if (n * m > MARK_MAX_CELLS) return null;
+  if (n * m > MARK_MAX_CELLS) return [null, 0];
   // lcs[i][j]: common words of wa[i..] and wb[j..]
   const lcs = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
   for (let i = n - 1; i >= 0; i--) {
@@ -141,8 +151,8 @@ export function wordMarks(a: string, b: string): { a: Array<[number, number]>; b
     } else if ((lcs[i + 1]?.[j] as number) >= (lcs[i]?.[j + 1] as number)) i++;
     else j++;
   }
-  if (common * 3 < Math.min(n, m)) return null;
-  return { a: ranges(a, wa, keptA), b: ranges(b, wb, keptB) };
+  if (common * 3 < Math.min(n, m)) return [null, n * m];
+  return [{ a: ranges(a, wa, keptA), b: ranges(b, wb, keptB) }, n * m];
 }
 
 /** The offsets of the words not kept, joined into ranges; only spaces between two changed words join them. */
@@ -157,8 +167,13 @@ function ranges(text: string, w: Array<[string, number]>, kept: boolean[]): Arra
   return out;
 }
 
-/** Marks the changed words of each removed line and the added line in its place (the n-th of each block). */
+/**
+ * Marks the changed words of each removed line and the added line in its place (the n-th of each block).
+ * A huge diff gets marks only up to MARK_MAX_PAIRS pairs / MARK_MAX_TOTAL_CELLS of work.
+ */
 export function markWords(lines: DiffLine[]): void {
+  let pairsDone = 0;
+  let cells = 0;
   for (let i = 0; i < lines.length; ) {
     if (lines[i]?.kind !== "del") {
       i++;
@@ -170,9 +185,12 @@ export function markWords(lines: DiffLine[]): void {
     while (lines[i]?.kind === "add") i++;
     const pairs = Math.min(addStart - delStart, i - addStart);
     for (let k = 0; k < pairs; k++) {
+      if (pairsDone >= MARK_MAX_PAIRS || cells >= MARK_MAX_TOTAL_CELLS) return;
+      pairsDone++;
       const d = lines[delStart + k] as DiffLine;
       const a = lines[addStart + k] as DiffLine;
-      const marks = wordMarks(d.text, a.text);
+      const [marks, work] = compareWords(d.text, a.text);
+      cells += work;
       if (!marks) continue;
       d.marks = marks.a;
       a.marks = marks.b;

@@ -383,10 +383,89 @@ html.mode-terminal .term-tab.active {
 .ses-bar .btn:hover {
   color: var(--text);
 }
+.ses-bar .btn[aria-pressed="true"] {
+  color: var(--text);
+}
+.term-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+/* the files panel left of the terminal (files/explorer.ts), on the terminal's colours like the bar */
+.term-files {
+  position: relative;
+  flex: none;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid color-mix(in srgb, var(--term-fg) 10%, transparent);
+  --text: var(--term-fg);
+  --muted: color-mix(in srgb, var(--term-fg) 60%, transparent);
+  --ctrl-hover: color-mix(in srgb, var(--term-fg) 10%, transparent);
+  --border: color-mix(in srgb, var(--term-fg) 10%, transparent);
+  color: var(--text);
+}
+.term-files[hidden] {
+  display: none;
+}
+.term-files .fm-bar {
+  min-height: 32px;
+  padding: 2px 4px 2px 10px;
+}
+.term-files .fm-bar .btn {
+  height: 24px;
+}
+/* the source control panel right of the terminal (git/view.ts createSourceControlPanel), on its colours */
+.term-source {
+  position: relative;
+  flex: none;
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid color-mix(in srgb, var(--term-fg) 10%, transparent);
+  --text: var(--term-fg);
+  --muted: color-mix(in srgb, var(--term-fg) 60%, transparent);
+  --ctrl-hover: color-mix(in srgb, var(--term-fg) 10%, transparent);
+  --border: color-mix(in srgb, var(--term-fg) 10%, transparent);
+  --card: var(--term-bg);
+  color: var(--text);
+}
+.term-source[hidden] {
+  display: none;
+}
+.term-source > .term-source-divider {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  bottom: 0;
+  z-index: 2;
+  width: 6px;
+  cursor: col-resize;
+}
+.term-files > .term-files-divider {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 2;
+  width: 6px;
+  cursor: col-resize;
+}
 .term-panes {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
+}
+/* a file from the panel dragged over the terminal */
+.term-panes.drop-target::after {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  content: "";
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .term-pane {
   position: absolute;

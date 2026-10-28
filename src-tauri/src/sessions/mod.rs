@@ -12,22 +12,42 @@ pub mod scan;
 pub mod types;
 pub mod watch;
 
-use crate::core::error::{AppResult, blocking, lock};
+use crate::core::error::{AppError, AppResult, blocking, lock};
 use crate::core::events;
 use crate::core::lifecycle::{self, ShutdownHook};
 use crate::core::types::Project;
 use crate::core::{paths, profiles, settings};
 use scan::{HEADER_BYTES, Scanner, Transcript};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{App, AppHandle, Emitter, Listener, Manager};
-use types::{IndexChanged, IndexSnapshot, ProfileCount};
+use types::{IndexChanged, IndexSnapshot, ProfileCount, ProjectList};
 
 /// The cache file is written at most this often while transcripts keep changing (and on exit).
-const SAVE_EVERY: Duration = Duration::from_secs(10);
+const SAVE_EVERY: Duration = Duration::from_secs(45);
+/// Grouped generations kept to send only the changes since one of them.
+const KEPT_GENERATIONS: usize = 8;
+/// How long a project folder's "missing" check is trusted (scans check again at once).
+const DIRS_FOR: Duration = Duration::from_secs(30);
+
+/// The projects of one generation. Unchanged projects share their `Arc` with the previous generation,
+/// so a changed project is one whose `Arc` differs.
+#[derive(Clone)]
+struct Generation {
+    generation: u64,
+    projects: Arc<Vec<Arc<Project>>>,
+    /// No two projects have the same path, so changes can be sent by path.
+    unique: bool,
+}
+
+/// Which project folders exist, checked at most every [`DIRS_FOR`].
+struct Dirs {
+    checked: Instant,
+    exists: HashMap<String, bool>,
+}
 
 /// The index. Managed as state.
 pub struct Index {
@@ -36,9 +56,12 @@ pub struct Index {
     scan_lock: Mutex<()>,
     generation: AtomicU64,
     ready: AtomicBool,
+    /// The file watcher runs, so new transcripts reach the index without a rescan.
+    watching: AtomicBool,
     pinned: Mutex<Vec<String>>,
-    /// Projects grouped for one generation.
-    grouped: Mutex<Option<(u64, Arc<Vec<Project>>)>>,
+    /// Projects grouped for the last few generations asked for, newest last.
+    grouped: Mutex<VecDeque<Generation>>,
+    dirs: Mutex<Dirs>,
     last_save: Mutex<Instant>,
 }
 
@@ -49,8 +72,13 @@ impl Index {
             scan_lock: Mutex::new(()),
             generation: AtomicU64::new(0),
             ready: AtomicBool::new(false),
+            watching: AtomicBool::new(false),
             pinned: Mutex::new(pinned),
-            grouped: Mutex::new(None),
+            grouped: Mutex::new(VecDeque::new()),
+            dirs: Mutex::new(Dirs {
+                checked: Instant::now(),
+                exists: HashMap::new(),
+            }),
             last_save: Mutex::new(Instant::now()),
         }
     }
@@ -66,7 +94,8 @@ impl Index {
     /// The first scan (and a full rescan): a fast pass over the start of new files, then the rest.
     /// `fresh` reads every file again from the start. Calls `changed` after each pass that changed something.
     pub fn full_scan(&self, profiles: &[PathBuf], fresh: bool, changed: impl Fn(u64)) {
-        let _scan = lock(&self.scan_lock);
+        let scan = lock(&self.scan_lock);
+        self.forget_dirs();
         if fresh {
             self.scanner.reset();
         }
@@ -95,13 +124,14 @@ impl Index {
                 changed(self.bump());
             }
         }
+        drop(scan);
         self.save(true);
     }
 
     /// Re-reads the given transcript paths (changed, created or deleted). Paths outside `profiles`
     /// are ignored.
     pub fn update_paths(&self, profiles: &[PathBuf], paths: &[PathBuf], changed: impl Fn(u64)) {
-        let _scan = lock(&self.scan_lock);
+        let scan = lock(&self.scan_lock);
         let mut list = Vec::new();
         let mut gone = false;
         for path in paths {
@@ -117,16 +147,24 @@ impl Index {
         if stats.changed || gone {
             changed(self.bump());
         }
+        drop(scan);
         self.save(false);
     }
 
     /// Stats every transcript and reads what changed (after folder moves, watcher overflows, new profiles).
     pub fn rescan(&self, profiles: &[PathBuf], changed: impl Fn(u64)) {
-        let _scan = lock(&self.scan_lock);
+        let scan = lock(&self.scan_lock);
+        self.forget_dirs();
         if self.scanner.scan(profiles, None).changed {
             changed(self.bump());
         }
+        drop(scan);
         self.save(false);
+    }
+
+    /// The next grouping checks every project folder again.
+    fn forget_dirs(&self) {
+        lock(&self.dirs).exists.clear();
     }
 
     /// Takes the pinned folders from settings; true when they changed.
@@ -152,38 +190,105 @@ impl Index {
     }
 
     /// Projects of the current generation (grouped once per generation).
-    pub fn projects(&self) -> (u64, Arc<Vec<Project>>) {
-        let generation = self.generation();
-        let mut grouped = lock(&self.grouped);
-        if let Some((g, projects)) = grouped.as_ref()
-            && *g == generation
-        {
-            return (generation, projects.clone());
-        }
-        let pinned = lock(&self.pinned).clone();
-        let projects = Arc::new(group::group(self.scanner.sessions(), &pinned, |p| {
-            Path::new(p).is_dir()
-        }));
-        *grouped = Some((generation, projects.clone()));
-        (generation, projects)
+    pub fn projects(&self) -> (u64, Arc<Vec<Arc<Project>>>) {
+        let g = self.current();
+        (g.generation, g.projects)
     }
 
-    pub fn snapshot(&self, since_gen: Option<u64>) -> IndexSnapshot {
-        if !self.ready.load(Ordering::SeqCst) {
-            return IndexSnapshot {
-                generation: 0,
-                ready: false,
-                projects: None,
-                counts: Vec::new(),
-            };
+    fn current(&self) -> Generation {
+        let generation = self.generation();
+        let mut grouped = lock(&self.grouped);
+        if let Some(g) = grouped.back()
+            && g.generation == generation
+        {
+            return g.clone();
         }
-        let (generation, projects) = self.projects();
-        IndexSnapshot {
+        let pinned = lock(&self.pinned).clone();
+        let fresh = {
+            let mut dirs = lock(&self.dirs);
+            if dirs.checked.elapsed() >= DIRS_FOR {
+                dirs.exists.clear();
+                dirs.checked = Instant::now();
+            }
+            group::group(self.scanner.sessions_with_folders(), &pinned, |p| {
+                *dirs
+                    .exists
+                    .entry(p.to_string())
+                    .or_insert_with(|| Path::new(p).is_dir())
+            })
+        };
+        // a project equal to the one of the previous generation keeps its Arc
+        let previous: HashMap<&str, &Arc<Project>> = grouped
+            .back()
+            .map(|g| g.projects.iter().map(|p| (p.path.as_str(), p)).collect())
+            .unwrap_or_default();
+        let projects: Vec<Arc<Project>> = fresh
+            .into_iter()
+            .map(|p| match previous.get(p.path.as_str()) {
+                Some(old) if ***old == p => Arc::clone(old),
+                _ => Arc::new(p),
+            })
+            .collect();
+        drop(previous);
+        let mut seen = HashSet::new();
+        let unique = projects.iter().all(|p| seen.insert(p.path.as_str()));
+        let g = Generation {
             generation,
-            ready: true,
-            projects: (since_gen != Some(generation)).then(|| projects.as_ref().clone()),
-            counts: self.counts(),
+            projects: Arc::new(projects),
+            unique,
+        };
+        // generations only grow; an older one is never added after a newer one
+        if grouped.back().is_none_or(|b| b.generation < generation) {
+            grouped.push_back(g.clone());
+            while grouped.len() > KEPT_GENERATIONS {
+                grouped.pop_front();
+            }
         }
+        g
+    }
+
+    /// The index for a frontend that holds generation `since_gen`: nothing when that is current, only the
+    /// changes when that generation is still kept, else every project.
+    pub fn snapshot(&self, since_gen: Option<u64>) -> IndexSnapshot {
+        let mut snap = IndexSnapshot {
+            generation: 0,
+            ready: false,
+            projects: None,
+            counts: Vec::new(),
+            base: None,
+            changed: None,
+            order: None,
+        };
+        if !self.ready.load(Ordering::SeqCst) {
+            return snap;
+        }
+        let current = self.current();
+        snap.generation = current.generation;
+        snap.ready = true;
+        snap.counts = self.counts();
+        if since_gen == Some(current.generation) {
+            return snap;
+        }
+        let base = since_gen.and_then(|since| {
+            let grouped = lock(&self.grouped);
+            grouped.iter().find(|g| g.generation == since).cloned()
+        });
+        match base.filter(|b| b.unique && current.unique) {
+            Some(base) => {
+                let old: HashMap<&str, &Arc<Project>> = base.projects.iter().map(|p| (p.path.as_str(), p)).collect();
+                let changed = current
+                    .projects
+                    .iter()
+                    .filter(|p| old.get(p.path.as_str()).is_none_or(|o| !Arc::ptr_eq(o, p)))
+                    .cloned()
+                    .collect();
+                snap.base = Some(base.generation);
+                snap.changed = Some(ProjectList(changed));
+                snap.order = Some(current.projects.iter().map(|p| p.path.clone()).collect());
+            }
+            None => snap.projects = Some(ProjectList(current.projects.as_ref().clone())),
+        }
+        snap
     }
 
     pub fn counts(&self) -> Vec<ProfileCount> {
@@ -206,6 +311,55 @@ impl Index {
             }
         });
         n
+    }
+
+    /// Transcripts of `profile` last written after `since` (path, last write). None until the first scan
+    /// is done. Only listed sessions (with a user message) are included.
+    /// Whether the file watcher runs (it keeps the index current between scans).
+    pub fn set_watching(&self, on: bool) {
+        self.watching.store(on, Ordering::SeqCst);
+    }
+
+    /// Transcripts of `profile` written after `since`. None until the first scan, and while no file watcher
+    /// keeps the index current: a new session would then be missing, so the caller lists the disk instead.
+    pub fn transcripts_since(&self, profile: &Path, since: SystemTime) -> Option<Vec<(PathBuf, SystemTime)>> {
+        if !self.ready.load(Ordering::SeqCst) || !self.watching.load(Ordering::SeqCst) {
+            return None;
+        }
+        let since_ms = since.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+        let mut out = Vec::new();
+        self.scanner.for_each(|s| {
+            if s.modified > since_ms && Path::new(&s.profile) == profile {
+                out.push((PathBuf::from(&s.file), UNIX_EPOCH + Duration::from_millis(s.modified)));
+            }
+        });
+        Some(out)
+    }
+
+    /// The shown text (at most 600 characters) of session `id` in `profile`; None when it is not listed.
+    pub fn text_for(&self, profile: &Path, id: &str) -> Option<String> {
+        self.scanner.text_of(profile, id)
+    }
+
+    /// Ids of the listed sessions of `profile` (None = all) whose shown text contains `query`, case-insensitively
+    /// (both sides lower-cased, as the webview did), newest first, at most `limit`. Sessions without a text
+    /// ("(no prompt)") never match.
+    pub fn search(&self, query: &str, profile: Option<&Path>, limit: usize) -> Vec<String> {
+        let q = query.trim().to_lowercase();
+        if q.is_empty() || limit == 0 {
+            return Vec::new();
+        }
+        let mut hits: Vec<(u64, String)> = Vec::new();
+        self.scanner.for_each_text(|s, text| {
+            if profile.is_some_and(|p| !paths::same(Path::new(&s.profile), p)) || text == "(no prompt)" {
+                return;
+            }
+            if text.to_lowercase().contains(&q) {
+                hits.push((s.modified, s.id.clone()));
+            }
+        });
+        hits.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+        hits.into_iter().take(limit).map(|(_, id)| id).collect()
     }
 
     pub fn label_for(&self, session_id: &str) -> Option<String> {
@@ -285,6 +439,12 @@ pub fn init(app: &mut App) -> AppResult<()> {
     Ok(())
 }
 
+/// Transcripts of `profile` last written after `since`, from the index (for the live scan, which would
+/// otherwise list them from disk every tick). None while the first scan runs.
+pub fn transcripts_since(app: &AppHandle, profile: &Path, since: SystemTime) -> Option<Vec<(PathBuf, SystemTime)>> {
+    app.try_state::<Index>()?.transcripts_since(profile, since)
+}
+
 /// The display label of session `session_id`, for notifications (WP3). None when it is not indexed.
 pub fn label_for(app: &AppHandle, session_id: &str) -> Option<String> {
     app.try_state::<Index>()?.label_for(session_id)
@@ -292,7 +452,8 @@ pub fn label_for(app: &AppHandle, session_id: &str) -> Option<String> {
 
 // ---- commands ----
 
-/// The index: projects only when they changed since generation `since_gen`.
+/// The index: nothing when generation `since_gen` is current, only the changed projects when the backend
+/// still knows that generation, else every project.
 #[tauri::command]
 pub async fn get_index(app: AppHandle, since_gen: Option<u64>) -> AppResult<IndexSnapshot> {
     blocking(move || Ok(app.state::<Index>().snapshot(since_gen))).await
@@ -317,6 +478,28 @@ pub async fn count_for(app: AppHandle, profile: Option<String>) -> AppResult<u32
     Ok(app.state::<Index>().count_for(profile.as_deref()))
 }
 
+/// Most ids `search_sessions` returns.
+const SEARCH_LIMIT: usize = 500;
+
+/// The text a session is shown with (title, summary or first prompt), at most 600 characters, for the
+/// details pane. Null when the session is not listed.
+#[tauri::command]
+pub async fn session_text(app: AppHandle, profile: String, id: String) -> AppResult<Option<String>> {
+    if !profiles::is_session_id(&id) {
+        return Err(AppError::InvalidInput(format!("Not a session id: {id}")));
+    }
+    let profile = profiles::resolve_profile(&profile)?;
+    blocking(move || Ok(app.state::<Index>().text_for(&profile, &id))).await
+}
+
+/// Ids of the sessions whose text contains `query` (case-insensitive), newest first, at most 500; `profile`
+/// null = all profiles. The webview matches labels itself and merges both.
+#[tauri::command]
+pub async fn search_sessions(app: AppHandle, query: String, profile: Option<String>) -> AppResult<Vec<String>> {
+    let profile = profile.as_deref().map(profiles::resolve_profile).transpose()?;
+    blocking(move || Ok(app.state::<Index>().search(&query, profile.as_deref(), SEARCH_LIMIT))).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,7 +520,7 @@ mod tests {
         index.full_scan(&profiles, false, count);
         let snap = index.snapshot(None);
         assert!(snap.ready && snap.generation >= 1);
-        assert_eq!(snap.projects.as_ref().map(Vec::len), Some(1));
+        assert_eq!(snap.projects.as_ref().map(|p| p.0.len()), Some(1));
         assert_eq!(
             snap.counts,
             [ProfileCount {
@@ -355,7 +538,7 @@ mod tests {
         std::fs::remove_file(&file).unwrap();
         index.update_paths(&profiles, std::slice::from_ref(&file), count);
         assert_eq!(events.load(Ordering::SeqCst), before + 1);
-        assert_eq!(index.snapshot(None).projects.map(|p| p.len()), Some(0));
+        assert_eq!(index.snapshot(None).projects.map(|p| p.0.len()), Some(0));
     }
 
     #[test]
@@ -383,6 +566,119 @@ mod tests {
         }
     }
 
+    fn paths_of(list: &ProjectList) -> Vec<&str> {
+        list.0.iter().map(|p| p.path.as_str()).collect()
+    }
+
+    #[test]
+    fn sends_only_the_projects_that_changed_since_a_kept_generation() {
+        let home = tempfile::tempdir().unwrap();
+        let (profile, a) = transcript(home.path(), "a", ID, &user_line("one", "/a"));
+        let (_, b) = transcript(home.path(), "b", ID2, &user_line("two", "/b"));
+        let profiles = vec![profile];
+        let index = Index::new(None, vec![]);
+        index.full_scan(&profiles, false, |_| {});
+        let first = index.snapshot(None);
+        let full = first.projects.clone().unwrap();
+        assert!(first.base.is_none() && first.changed.is_none() && first.order.is_none());
+
+        // /a grows and becomes the newest project: only it is sent, with the new order
+        let mut f = std::fs::OpenOptions::new().append(true).open(&a).unwrap();
+        std::io::Write::write_all(&mut f, user_line("more", "/a").as_bytes()).unwrap();
+        let later = std::fs::metadata(&b).unwrap().modified().unwrap() + Duration::from_secs(5);
+        f.set_modified(later).unwrap();
+        drop(f);
+        index.update_paths(&profiles, std::slice::from_ref(&a), |_| {});
+        let delta = index.snapshot(Some(first.generation));
+        assert!(delta.generation > first.generation);
+        assert_eq!(delta.base, Some(first.generation));
+        assert!(delta.projects.is_none());
+        let changed = delta.changed.as_ref().unwrap();
+        assert_eq!(paths_of(changed), ["/a"]);
+        assert_eq!(changed.0[0].sessions[0].count, 2);
+        assert_eq!(delta.order.as_deref(), Some(&["/a".to_string(), "/b".to_string()][..]));
+        // the unchanged project is the same shared value as before
+        let now = index.projects().1;
+        let old_b = full.0.iter().find(|p| p.path == "/b").unwrap();
+        assert!(Arc::ptr_eq(old_b, now.iter().find(|p| p.path == "/b").unwrap()));
+
+        // a removed project is left out of the order
+        std::fs::remove_file(&b).unwrap();
+        index.update_paths(&profiles, std::slice::from_ref(&b), |_| {});
+        let removed = index.snapshot(Some(delta.generation));
+        assert_eq!(removed.base, Some(delta.generation));
+        assert_eq!(removed.changed.map(|c| c.0.len()), Some(0));
+        assert_eq!(removed.order.as_deref(), Some(&["/a".to_string()][..]));
+
+        // nothing changed: nothing is sent
+        let same = index.snapshot(Some(removed.generation));
+        assert!(same.projects.is_none() && same.base.is_none() && same.changed.is_none());
+    }
+
+    #[test]
+    fn unknown_or_forgotten_generations_get_every_project() {
+        let home = tempfile::tempdir().unwrap();
+        let (profile, _) = transcript(home.path(), "a", ID, &user_line("one", "/a"));
+        let index = Index::new(None, vec![]);
+        index.full_scan(std::slice::from_ref(&profile), false, |_| {});
+        let first = index.snapshot(None);
+        // a generation the backend never grouped
+        let odd = index.snapshot(Some(first.generation + 100));
+        assert!(odd.base.is_none());
+        assert_eq!(odd.projects.map(|p| p.0.len()), Some(1));
+        // more generations than are kept
+        for i in 0..KEPT_GENERATIONS + 1 {
+            assert!(index.set_pinned(vec![format!("/pin{i}")]));
+            index.bump();
+            index.snapshot(None);
+        }
+        let old = index.snapshot(Some(first.generation));
+        assert!(old.base.is_none());
+        assert_eq!(old.projects.map(|p| p.0.len()), Some(2));
+    }
+
+    #[test]
+    fn same_paths_twice_are_sent_whole() {
+        let home = tempfile::tempdir().unwrap();
+        // a transcript without a folder is listed under its slug; a pinned folder spelled like it collides
+        let (profile, _) = transcript(
+            home.path(),
+            "slug",
+            ID,
+            "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}\n",
+        );
+        let index = Index::new(None, vec!["slug".into()]);
+        index.full_scan(std::slice::from_ref(&profile), false, |_| {});
+        let first = index.snapshot(None);
+        assert_eq!(paths_of(first.projects.as_ref().unwrap()), ["slug", "slug"]);
+        index.bump();
+        let next = index.snapshot(Some(first.generation));
+        assert!(next.base.is_none() && next.projects.is_some());
+    }
+
+    #[test]
+    fn transcripts_since_come_from_the_index() {
+        let home = tempfile::tempdir().unwrap();
+        let (profile, file) = transcript(home.path(), "a", ID, &user_line("one", "/a"));
+        let index = Index::new(None, vec![]);
+        assert!(index.transcripts_since(&profile, UNIX_EPOCH).is_none());
+        index.full_scan(std::slice::from_ref(&profile), false, |_| {});
+        // scanned, but nothing keeps it current: the caller lists the disk
+        assert!(index.transcripts_since(&profile, UNIX_EPOCH).is_none());
+        index.set_watching(true);
+        let all = index.transcripts_since(&profile, UNIX_EPOCH).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].0, file);
+        let future = SystemTime::now() + Duration::from_secs(3600);
+        assert!(index.transcripts_since(&profile, future).unwrap().is_empty());
+        assert!(
+            index
+                .transcripts_since(&home.path().join("x"), UNIX_EPOCH)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
     #[test]
     fn pinned_changes_and_counts() {
         let home = tempfile::tempdir().unwrap();
@@ -399,5 +695,56 @@ mod tests {
         assert_eq!(index.count_for(Some(&profile.to_string_lossy())), 2);
         assert_eq!(index.count_for(Some("/nope")), 0);
         assert_eq!(index.label_for(ID2).as_deref(), Some("two"));
+    }
+
+    #[test]
+    fn finds_sessions_by_text_and_gives_one_session_its_text() {
+        let home = tempfile::tempdir().unwrap();
+        let (profile, _) = transcript(home.path(), "a", ID, &user_line("Fix the LOGIN form", "/a"));
+        let (_, b) = transcript(home.path(), "b", ID2, &user_line("Straße login", "/b"));
+        // a command line only: listed as "(no prompt)"
+        let id3 = "2f8c2a4e-1b2c-4d5e-8f90-a1b2c3d4e5f6";
+        transcript(
+            home.path(),
+            "c",
+            id3,
+            &user_line("<command-name>/clear</command-name>", "/c"),
+        );
+        let later = std::fs::metadata(&b).unwrap().modified().unwrap() + Duration::from_secs(5);
+        std::fs::File::options()
+            .append(true)
+            .open(&b)
+            .unwrap()
+            .set_modified(later)
+            .unwrap();
+        let index = Index::new(None, vec![]);
+        index.full_scan(std::slice::from_ref(&profile), false, |_| {});
+        assert_eq!(index.search("login", None, SEARCH_LIMIT), [ID2, ID], "newest first");
+        assert_eq!(index.search("  LOGIN ", Some(&profile), SEARCH_LIMIT), [ID2, ID]);
+        assert_eq!(
+            index.search("login", Some(Path::new("/nope")), SEARCH_LIMIT),
+            Vec::<String>::new()
+        );
+        assert_eq!(index.search("login", None, 1), [ID2]);
+        assert_eq!(
+            index.search("STRASSE", None, SEARCH_LIMIT),
+            Vec::<String>::new(),
+            "lower-cased, not folded"
+        );
+        assert_eq!(index.search("straße", None, SEARCH_LIMIT), [ID2]);
+        assert_eq!(index.search("", None, SEARCH_LIMIT), Vec::<String>::new());
+        assert_eq!(
+            index.search("prompt", None, SEARCH_LIMIT),
+            Vec::<String>::new(),
+            "no '(no prompt)' match"
+        );
+        assert_eq!(index.count_for(None), 3);
+        assert_eq!(index.text_for(&profile, id3).as_deref(), Some("(no prompt)"));
+        assert_eq!(index.text_for(&profile, ID).as_deref(), Some("Fix the LOGIN form"));
+        assert_eq!(
+            index.text_for(&profile, &ID.to_uppercase()).as_deref(),
+            Some("Fix the LOGIN form")
+        );
+        assert_eq!(index.text_for(Path::new("/nope"), ID), None);
     }
 }

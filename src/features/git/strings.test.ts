@@ -1,20 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
+  bodyParagraphs,
   branchName,
   changeCount,
   changesTab,
+  commitAction,
   commitLabel,
+  commitUrl,
   errorText,
   isHead,
   largeFile,
+  longAge,
   parseLog,
+  parseShortstat,
   pullTip,
   pushTip,
   refPills,
-  shortAge,
   stashMessage,
   successText,
+  switchAsk,
   syncLabel,
+  unpublishedCount,
 } from "./strings";
 
 describe("ref pills", () => {
@@ -33,35 +39,15 @@ describe("ref pills", () => {
   });
 });
 
-describe("short ages (git's %ar, shortened)", () => {
-  const now = 1_800_000_000_000;
-  const ago = (seconds: number) => shortAge(Math.floor(now / 1000) - seconds, now);
-  it("follows git's thresholds and rounding", () => {
-    expect(ago(0)).toBe("0s");
-    expect(ago(89)).toBe("89s");
-    expect(ago(90)).toBe("2m");
-    expect(ago(89 * 60)).toBe("89m");
-    expect(ago(90 * 60)).toBe("2h");
-    expect(ago(35 * 3600)).toBe("35h");
-    expect(ago(36 * 3600)).toBe("2d");
-    expect(ago(13 * 86400)).toBe("13d");
-    expect(ago(14 * 86400)).toBe("2w");
-    expect(ago(69 * 86400)).toBe("10w");
-    expect(ago(70 * 86400)).toBe("2mo");
-    expect(ago(364 * 86400)).toBe("12mo");
-    expect(ago(365 * 86400)).toBe("1y");
-    expect(ago(430 * 86400)).toBe("1y 2mo");
-    expect(ago(1825 * 86400)).toBe("5y");
-    expect(ago(-10)).toBe("now");
-  });
-});
-
 describe("labels and messages", () => {
   it("describes the sync state and the push / pull buttons", () => {
     expect(syncLabel({ hasUpstream: false, ahead: 0, behind: 0 })).toBe("not published");
     expect(syncLabel({ hasUpstream: true, ahead: 2, behind: 1 })).toBe("↑2  ↓1");
     expect(syncLabel({ hasUpstream: true, ahead: 0, behind: 0 })).toBe("up to date");
-    expect(pushTip({ hasUpstream: false, ahead: 3, behind: 0 })).toBe("Publish branch");
+    expect(pushTip({ hasUpstream: false, ahead: 3, behind: 0 })).toBe("Publish branch with 3 commit(s)");
+    expect(pushTip({ hasUpstream: false, ahead: 0, behind: 0 })).toBe("Publish branch");
+    expect(unpublishedCount("a1b2c3d\ne4f5a6b\n")).toBe(2);
+    expect(unpublishedCount("")).toBe(0);
     expect(pushTip({ hasUpstream: true, ahead: 3, behind: 0 })).toBe("Push 3 commit(s)");
     expect(pushTip({ hasUpstream: true, ahead: 0, behind: 0 })).toBe("Push");
     expect(pullTip({ hasUpstream: true, ahead: 0, behind: 4 })).toBe("Pull 4 commit(s)");
@@ -76,6 +62,17 @@ describe("labels and messages", () => {
     expect(changesTab(5)).toBe("Changes  5");
     expect(commitLabel(0)).toBe("Commit");
     expect(commitLabel(2)).toBe("Commit 2 staged");
+  });
+
+  it("turns the commit button into Sync or Publish when there is nothing to commit", () => {
+    const up = (ahead: number, behind: number) => ({ hasUpstream: true, ahead, behind });
+    expect(commitAction(1, 2, "dev", up(2, 43))).toEqual({ action: "commit", label: "Commit 1 staged" });
+    expect(commitAction(0, 0, "dev", up(2, 43))).toEqual({ action: "sync", label: "Sync Changes 43↓ 2↑" });
+    expect(commitAction(0, 0, "dev", up(2, 0)).label).toBe("Sync Changes 2↑");
+    expect(commitAction(0, 0, "dev", up(0, 0))).toEqual({ action: "commit", label: "Commit" });
+    expect(commitAction(0, 0, "dev", { hasUpstream: false, ahead: 3, behind: 0 }).action).toBe("publish");
+    expect(commitAction(0, 0, "HEAD (no branch)", up(0, 0)).action).toBe("commit");
+    expect(commitAction(0, 0, null, up(0, 0)).action).toBe("commit");
   });
 
   it("summarizes git output", () => {
@@ -102,5 +99,46 @@ describe("parseLog", () => {
       { hash: "b2", parents: "", subject: "Root", author: "Bo", at: 1_600_000_000, refs: "" },
     ]);
     expect(parseLog("")).toEqual([]);
+  });
+});
+
+describe("switchAsk", () => {
+  it("names what makes switching risky: changed files, Claude working, or both", () => {
+    expect(switchAsk("dev", 1, false)).toMatch(/^Switch to dev\?\n1 uncommitted file: bring them along/);
+    expect(switchAsk("dev", 0, true)).toBe(
+      "Switch to dev?\nClaude is working in this folder: its files change under it when you switch.",
+    );
+    expect(switchAsk("dev", 3, true).split("\n\n")).toHaveLength(2);
+  });
+});
+
+describe("commit hover card texts", () => {
+  it("says how long ago, in words", () => {
+    const now = 1_000_000 * 1000;
+    expect(longAge(1_000_000 - 15 * 60, now)).toBe("15 minutes ago");
+    expect(longAge(1_000_000 - 3 * 3600, now)).toBe("3 hours ago");
+    expect(longAge(1_000_000 - 60 * 86400, now)).toBe("2 months ago");
+  });
+
+  it("reads the short stat, and none for a merge", () => {
+    expect(parseShortstat(" 14 files changed, 141 insertions(+), 22 deletions(-)\n")).toEqual({
+      files: 14,
+      insertions: 141,
+      deletions: 22,
+    });
+    expect(parseShortstat(" 1 file changed, 1 deletion(-)")).toEqual({ files: 1, insertions: 0, deletions: 1 });
+    expect(parseShortstat("")).toBeNull();
+  });
+
+  it("joins hard-wrapped lines but keeps bullets apart", () => {
+    expect(bodyParagraphs("Archive leaves sessions\nout of the list.\n\n- one\n- two that\n  wraps\n")).toEqual([
+      "Archive leaves sessions out of the list.",
+      "- one\n- two that wraps",
+    ]);
+  });
+
+  it("links the commit on its site", () => {
+    expect(commitUrl("https://github.com/a/b", "abc")).toBe("https://github.com/a/b/commit/abc");
+    expect(commitUrl("https://gitlab.com/a/b", "abc")).toBe("https://gitlab.com/a/b/-/commit/abc");
   });
 });

@@ -8,28 +8,56 @@ use std::path::Path;
 /// Name of the project that holds sessions whose transcript has no working folder.
 pub const UNKNOWN_FOLDER: &str = "Unknown folder";
 
+/// A session's working folder: normalized, and its comparison key. Computed once when the transcript
+/// changes, not on every regroup.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Folder {
+    pub path: String,
+    pub key: String,
+}
+
+impl Folder {
+    /// None when the session has no working folder.
+    pub fn of(cwd: Option<&str>) -> Option<Self> {
+        let path = paths::norm(cwd?);
+        if path.is_empty() {
+            return None;
+        }
+        Some(Folder {
+            key: paths::key(&path),
+            path,
+        })
+    }
+}
+
 /// Sessions grouped by working folder (compared with `paths::key`, so case-insensitive on Windows and
 /// macOS), newest first; sessions without one go to an "Unknown folder" project per transcript folder (slug).
 /// Pinned folders are listed even without sessions. Projects: pinned first, then most recently active.
 /// A session's `cwd` is left out when it equals its project's path (the frontend uses `cwd ?? path`).
-pub fn group(sessions: Vec<Session>, pinned: &[String], is_dir: impl Fn(&str) -> bool) -> Vec<Project> {
+/// Each session comes with its [`Folder`] (`Folder::of(session.cwd)`).
+pub fn group(
+    sessions: Vec<(Session, Option<Folder>)>,
+    pinned: &[String],
+    mut is_dir: impl FnMut(&str) -> bool,
+) -> Vec<Project> {
     let mut map: HashMap<String, Project> = HashMap::new();
-    for s in sessions.into_iter().filter(|s| s.count > 0) {
-        let cwd = s.cwd.as_deref().map(paths::norm).filter(|c| !c.is_empty());
-        let key = match &cwd {
-            Some(c) => paths::key(c),
+    for (mut s, folder) in sessions.into_iter().filter(|(s, _)| s.count > 0) {
+        let key = match &folder {
+            Some(f) => f.key.clone(),
             // a separate key space: a folder path never equals it
             None => format!("\0{}", s.slug),
         };
         let p = map
             .entry(key)
             .or_insert_with(|| project(&s.slug, UNKNOWN_FOLDER.to_string()));
-        // the folder is spelled as its newest session spells it
-        if let Some(c) = &cwd
-            && (p.sessions.is_empty() || s.modified >= p.modified)
-        {
-            p.path = c.clone();
-            p.name = leaf(c);
+        if let Some(f) = folder {
+            // the folder is spelled as its newest session spells it
+            if p.sessions.is_empty() || s.modified >= p.modified {
+                p.name = leaf(&f.path);
+                p.path = f.path;
+            }
+            // grouped by this folder, so the cwd equals the project's path
+            s.cwd = None;
         }
         p.modified = p.modified.max(s.modified);
         p.sessions.push(s);
@@ -54,12 +82,6 @@ pub fn group(sessions: Vec<Session>, pinned: &[String], is_dir: impl Fn(&str) ->
     for p in &mut list {
         p.sessions
             .sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.id.cmp(&b.id)));
-        let path_key = paths::key(&p.path);
-        for s in &mut p.sessions {
-            if s.cwd.as_deref().is_some_and(|c| paths::key(c) == path_key) {
-                s.cwd = None;
-            }
-        }
     }
     list.sort_by(|a, b| {
         b.pinned
@@ -99,7 +121,6 @@ mod tests {
             file: format!("{id}.jsonl"),
             cwd: cwd.map(String::from),
             label: id.into(),
-            full: id.into(),
             count,
             modified,
             size_kb: 1,
@@ -107,6 +128,17 @@ mod tests {
             slug: "C--code-slug".into(),
             partial: false,
         }
+    }
+
+    fn group(sessions: Vec<Session>, pinned: &[String], is_dir: impl FnMut(&str) -> bool) -> Vec<Project> {
+        let sessions = sessions
+            .into_iter()
+            .map(|s| {
+                let folder = Folder::of(s.cwd.as_deref());
+                (s, folder)
+            })
+            .collect();
+        super::group(sessions, pinned, is_dir)
     }
 
     fn names(list: &[Project]) -> Vec<&str> {

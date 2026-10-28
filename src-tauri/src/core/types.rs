@@ -8,6 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// A Claude Code config folder (`~/.claude`, `~/.claude-work`, or `$CLAUDE_CONFIG_DIR`).
@@ -26,7 +27,7 @@ pub struct Profile {
 }
 
 /// One transcript: `<profile>/projects/<slug>/<id>.jsonl`.
-#[derive(Serialize, TS, Clone, Debug)]
+#[derive(Serialize, TS, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Session {
@@ -34,10 +35,9 @@ pub struct Session {
     pub id: String,
     pub file: String,
     pub cwd: Option<String>,
-    /// Title, summary or first prompt, whitespace collapsed, at most 140 characters.
+    /// Title, summary or first prompt, whitespace collapsed, at most 140 characters. The same text at up
+    /// to 600 characters is fetched on demand (`session_text`), not sent with the index.
     pub label: String,
-    /// The same text at most 600 characters, for tooltips and the details pane.
-    pub full: String,
     /// User messages (tool results excluded).
     pub count: u32,
     /// Last write, ms since the Unix epoch.
@@ -52,7 +52,7 @@ pub struct Session {
 }
 
 /// Sessions grouped by the folder they ran in.
-#[derive(Serialize, TS, Clone, Debug)]
+#[derive(Serialize, TS, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Project {
@@ -175,6 +175,16 @@ pub struct Group {
 pub struct Settings {
     /// Pinned project folders, shown even without sessions.
     pub pinned: Vec<String>,
+    /// Folders hidden from the sidebar's FOLDERS list (shown again from its "Show N hidden" row).
+    pub hidden: Vec<String>,
+    /// Ids of archived sessions: left out of the sessions list (shown again from its "Archived" button).
+    pub archived: Vec<String>,
+    /// Names given to profiles in the app, by profile folder (the folder itself is never renamed).
+    pub profile_names: BTreeMap<String, String>,
+    /// Profile folders left out of the app (picker, menus, "All profiles"); nothing on disk changes.
+    pub hidden_profiles: Vec<String>,
+    /// Companion (avatar character) chosen per profile folder; a profile without one gets one from its folder.
+    pub profile_companions: BTreeMap<String, String>,
     /// Profile folder of the account last used for new sessions.
     pub account: Option<String>,
     pub open_in: OpenIn,
@@ -216,6 +226,11 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             pinned: Vec::new(),
+            hidden: Vec::new(),
+            archived: Vec::new(),
+            profile_names: BTreeMap::new(),
+            hidden_profiles: Vec::new(),
+            profile_companions: BTreeMap::new(),
             account: None,
             open_in: OpenIn::External,
             show_picker: true,
@@ -236,7 +251,7 @@ impl Default for Settings {
             git_split: None,
             claude_path: None,
             mac_option_is_meta: true,
-            scrollback: 5000,
+            scrollback: 2000,
             keep_running_on_close: None,
             extra: Map::new(),
         }

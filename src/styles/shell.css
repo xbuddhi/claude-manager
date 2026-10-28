@@ -108,26 +108,27 @@ html.window-inactive .tb-cap:not(:hover) {
   display: none;
 }
 .tb-sub {
+  /* hover for the counts' tooltip; a press still drags the window ("deep" drag region, plain text) */
+  pointer-events: auto;
+  width: fit-content;
+  max-width: 100%;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* a subtitle part: its icon, then its text, on one centre line */
-.tb-part {
+.tb-sub-item {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  vertical-align: middle;
+  gap: 4px;
+  margin-right: 12px;
+  font-variant-numeric: tabular-nums;
 }
-.tb-part svg {
+.tb-sub-item svg {
   width: 13px;
   height: 13px;
-}
-/* Claude's spark (sessions) in the accent colour */
-.tb-part[data-icon="spark"] svg {
-  color: var(--accent);
+  opacity: 0.85;
 }
 #tb-search-slot {
   min-width: 0;

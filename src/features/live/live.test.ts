@@ -73,6 +73,27 @@ describe("live state", () => {
     expect(folderLevel("C:\\other")).toBe(0);
   });
 
+  it("keeps the objects of a scan that changed nothing, and of entries that did not change", () => {
+    applyLive({
+      sessions: [session(A, 10, 2, "C:\\Code\\App"), session(B, 11, 1, null)],
+      liveCwd: { "c:\\code\\app": 2 },
+    });
+    const held = store.get();
+    applyLive({
+      sessions: [session(A, 10, 2, "C:\\Code\\App"), session(B, 11, 1, null)],
+      liveCwd: { "c:\\code\\app": 2 },
+    });
+    expect(store.get().live).toBe(held.live);
+    expect(store.get().liveCwd).toBe(held.liveCwd);
+    applyLive({
+      sessions: [session(A, 10, 1, "C:\\Code\\App"), session(B, 11, 1, null)],
+      liveCwd: { "c:\\code\\app": 2 },
+    });
+    expect(store.get().live).not.toBe(held.live);
+    expect(store.get().live[B]).toBe(held.live[B]);
+    expect(store.get().liveCwd).toBe(held.liveCwd);
+  });
+
   it("reports the pid of the running tab in front only", () => {
     const terminals = [term(1, 100, null), term(2, 200, null, true)];
     store.set({ terminals, activeTerminal: 1 });

@@ -13,7 +13,7 @@ import { store } from "../../core/store";
 import { openPopover, type Popover } from "../../ui/popover";
 import { profileLabel } from "../profiles/api";
 import { localScope, planScope, plansStale, ringFraction, ringState, sameDirs, samePlans, weekPercent } from "./model";
-import { panelHtml } from "./popover";
+import { type PanelData, panelHtml, tickPanel } from "./popover";
 import { createRing, type Ring } from "./ring";
 import "./state";
 import "./usage.css";
@@ -123,20 +123,28 @@ function paintRing() {
   );
 }
 
+function panelData(): PanelData {
+  const s = store.get();
+  return {
+    scope: profileLabel(s.currentProfile),
+    plans: s.usagePlans,
+    plansBusy: s.usagePlansBusy,
+    local: s.usageLocal,
+    localBusy: s.usageLocalBusy,
+  };
+}
+
+/** Draws the whole panel (the numbers changed). */
 function paintPanel() {
   if (!pop) return;
-  const s = store.get();
-  setHtml(
-    pop.el.firstElementChild as HTMLElement,
-    panelHtml({
-      scope: profileLabel(s.currentProfile),
-      plans: s.usagePlans,
-      plansBusy: s.usagePlansBusy,
-      local: s.usageLocal,
-      localBusy: s.usageLocalBusy,
-    }),
-  );
+  setHtml(pop.el.firstElementChild as HTMLElement, panelHtml(panelData()));
   pop.reposition();
+}
+
+/** Only the times that count on with the clock (every second while open). */
+function tickPanelTimes() {
+  if (!pop) return;
+  if (tickPanel(pop.el.firstElementChild as HTMLElement, panelData())) pop.reposition();
 }
 
 function open(by: "hover" | "click") {
@@ -169,7 +177,7 @@ function open(by: "hover" | "click") {
   repaintTimer = setInterval(() => {
     ticks++;
     if (ticks % 30 === 0) void refreshLocal();
-    paintPanel();
+    tickPanelTimes();
   }, 1000);
   if (plansStale(store.get().usagePlans, OPEN_STALE_S)) void refreshPlans();
 }
@@ -209,11 +217,18 @@ export function mount(): void {
       if (!active()) pop?.close();
     },
   );
-  // the profiles in view: entering a profile, All profiles, or a sign-in appearing
+  // the profiles in view: entering a profile, All profiles, or a sign-in appearing. Worked out only when
+  // what they come from changes, and acted on only when they differ.
+  let inView = "";
   store.select(
-    () => JSON.stringify([active(), scopes()]),
-    () => void scopeChanged(),
-    { immediate: true },
+    (s) => [s.screen, s.settings.showUsage, s.currentProfile, s.profiles] as const,
+    () => {
+      const next = JSON.stringify([active(), scopes()]);
+      if (next === inView) return;
+      inView = next;
+      void scopeChanged();
+    },
+    { equals: (a, b) => a.every((v, i) => v === b[i]), immediate: true },
   );
   // self-heal: the sign-in may have been refreshed since (e.g. the profile was used once)
   store.select(

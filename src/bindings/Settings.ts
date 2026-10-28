@@ -17,6 +17,26 @@ export type Settings = {
  */
 pinned: Array<string>, 
 /**
+ * Folders hidden from the sidebar's FOLDERS list (shown again from its "Show N hidden" row).
+ */
+hidden: Array<string>, 
+/**
+ * Ids of archived sessions: left out of the sessions list (shown again from its "Archived" button).
+ */
+archived: Array<string>, 
+/**
+ * Names given to profiles in the app, by profile folder (the folder itself is never renamed).
+ */
+profileNames: { [key in string]: string }, 
+/**
+ * Profile folders left out of the app (picker, menus, "All profiles"); nothing on disk changes.
+ */
+hiddenProfiles: Array<string>, 
+/**
+ * Companion (avatar character) chosen per profile folder; a profile without one gets one from its folder.
+ */
+profileCompanions: { [key in string]: string }, 
+/**
  * Profile folder of the account last used for new sessions.
  */
 account: string | null, openIn: OpenIn, showPicker: boolean, 

@@ -198,6 +198,24 @@
 .sb-hint .sb-label {
   color: var(--muted);
 }
+/* the open "hidden" row is a small heading with a rule beside it, over the hidden folders */
+.sb-more.sb-divider {
+  gap: 8px;
+  padding-right: 14px;
+}
+.sb-more.sb-divider .sb-label {
+  flex: none;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.sb-more.sb-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
 
 /* state colours last: they outrank the kind rules above */
 .sb-row.dim .sb-label,

@@ -33,7 +33,7 @@ pub struct Notifier(Mutex<Inner>);
 
 #[derive(Default)]
 struct Inner {
-    /// Sessions of the previous tick, by id.
+    /// Working (level 2) sessions of the previous tick, by id: only those can finish.
     prev: HashMap<String, LiveSession>,
     /// Process of the terminal tab in front of each window, by window label (reported by the frontend).
     active_pids: HashMap<String, u32>,
@@ -128,13 +128,19 @@ fn leaf(path: &str) -> Option<String> {
 /// Runs after each live scan, also while the profile picker is shown.
 pub fn on_tick(app: &AppHandle, sessions: &[LiveSession], snap: &Snapshot) {
     let notifier = app.state::<Notifier>();
+    let enabled = settings::with(app, |s| s.notify);
     let (prev, active_pids) = {
         let mut st = lock(&notifier.0);
-        if !settings::get(app).notify {
+        if !enabled {
             st.prev.clear();
             return;
         }
-        let now = sessions.iter().map(|s| (s.session_id.clone(), s.clone())).collect();
+        let mut working = sessions.iter().filter(|s| s.level == 2).peekable();
+        // nothing was or is working: nothing to remember
+        if st.prev.is_empty() && working.peek().is_none() {
+            return;
+        }
+        let now = working.map(|s| (s.session_id.clone(), s.clone())).collect();
         (std::mem::replace(&mut st.prev, now), st.active_pids.clone())
     };
     let done = finished(&prev, sessions);

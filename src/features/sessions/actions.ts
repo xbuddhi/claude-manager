@@ -5,6 +5,7 @@
 import type { Session } from "../../bindings/Session";
 import { emit, type LaunchMode } from "../../core/bus";
 import { leaf } from "../../core/format";
+import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
 import { ask } from "../../ui/dialog";
 import { type MenuItem, type MenuPosition, showMenu } from "../../ui/menu";
@@ -127,6 +128,16 @@ export function doContinue(mode?: LaunchMode): void {
 export function resumeSelected(opts: { fork?: boolean; mode?: LaunchMode } = {}): void {
   const s = selectedSession();
   if (s) void doResume(s, opts);
+}
+
+export const isArchived = (id: string) => settings().archived.includes(id);
+
+/** Archives (or unarchives) the selected sessions. Only the app's list changes; the transcripts stay. */
+export function archiveSelected(archive: boolean): void {
+  const ids = selectedSessions().map((s) => s.id);
+  if (!ids.length) return;
+  const rest = settings().archived.filter((id) => !ids.includes(id));
+  void updateSettings({ archived: archive ? [...rest, ...ids] : rest });
 }
 
 export function deleteSelected(): void {

@@ -144,7 +144,7 @@ pub fn on_window_event(window: &Window, event: &WindowEvent) {
     let live = registry.live_count();
     if live > 0 {
         api.prevent_close();
-        match settings::get(app).keep_running_on_close {
+        match settings::with(app, |s| s.keep_running_on_close) {
             Some(true) => decide_now(app, QuitDecision::Keep),
             Some(false) => decide_now(app, QuitDecision::Close),
             None => ask(app, live),

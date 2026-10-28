@@ -22,6 +22,8 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::sessions::get_index,
         crate::sessions::rescan_full,
         crate::sessions::count_for,
+        crate::sessions::session_text,
+        crate::sessions::search_sessions,
         // ---- pty + launch (WP2) ----
         crate::pty::pty_new,
         crate::pty::pty_resume,
@@ -57,6 +59,13 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::memory::memory_files,
         crate::memory::memory_read,
         crate::memory::memory_create,
+        // ---- files view ----
+        crate::files::files_list,
+        crate::files::files_read,
+        crate::files::files_create,
+        crate::files::files_rename,
+        crate::files::files_duplicate,
+        crate::files::files_trash,
         // ---- profiles UI (WP6) ----
         crate::profiles_cmd::create_profile,
         crate::profiles_cmd::open_profile_folder,
@@ -69,6 +78,8 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::git::git_status,
         crate::git::find_repos,
         crate::git::read_new_file,
+        crate::git::git_web_url,
+        crate::git::git_commit_message,
         // ---- os (WP9) ----
         crate::os::explorer_menu::explorer_menu_state,
         crate::os::explorer_menu::explorer_menu_install,

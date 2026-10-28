@@ -43,7 +43,7 @@ function focusSidebar() {
 
 /**
  * Enters a profile (null = all profiles): it becomes the profile in view, is remembered as the last one
- * (and as the account for new sessions), the search is cleared and the main screen shows.
+ * (and as the account for new sessions) and the main screen shows.
  */
 export function enterProfile(dir: string | null, opts: { focus?: boolean } = {}): void {
   const known = dir === null ? null : knownProfile(dir);
@@ -51,7 +51,7 @@ export function enterProfile(dir: string | null, opts: { focus?: boolean } = {})
     toast(`That profile no longer exists:\n${dir}`, { kind: "error" });
     return;
   }
-  store.set({ currentProfile: known, screen: "main", searchQuery: "" });
+  store.set({ currentProfile: known, screen: "main" });
   void updateSettings(known === null ? { lastProfile: "all" } : { account: known, lastProfile: known });
   if (opts.focus !== false) requestAnimationFrame(focusSidebar);
 }

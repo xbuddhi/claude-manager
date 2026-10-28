@@ -63,6 +63,18 @@
   --git-conflict: #e4676b;
   --on-accent: #ffffff;
 
+  /* syntax colours (git highlight.ts: syn-* classes): Monokai Pro Light here, the Spectrum filter of
+     Monokai Pro in the dark theme */
+  --syn-red: #e14775;
+  --syn-orange: #e16032;
+  --syn-yellow: #cc7a0a;
+  --syn-green: #269d69;
+  --syn-cyan: #1c8ca8;
+  --syn-purple: #7058be;
+  --syn-comment: #a59fa0;
+  --syn-comment-strong: #6e686b;
+  --syn-punct: #706b6e;
+
   /* type and shape */
   --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
@@ -92,6 +104,16 @@
   --hover: #333336;
   --backdrop: rgb(0 0 0 / 0.4);
   --shadow-pop: 0 12px 36px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.06);
+
+  --syn-red: #fc618d;
+  --syn-orange: #fd9353;
+  --syn-yellow: #fce566;
+  --syn-green: #7bd88f;
+  --syn-cyan: #5ad4e6;
+  --syn-purple: #948ae3;
+  --syn-comment: #69676c;
+  --syn-comment-strong: #a8a5ad;
+  --syn-punct: #8b888f;
 }
 
 :root[data-term-theme="dark"] {

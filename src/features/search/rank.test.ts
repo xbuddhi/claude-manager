@@ -2,20 +2,19 @@ import { describe, expect, it } from "vitest";
 import type { Group } from "../../bindings/Group";
 import type { Project } from "../../bindings/Project";
 import type { Session } from "../../bindings/Session";
-import { LIMITS, nextPick, type SearchData, type SearchItem, searchItems } from "./rank";
+import { LIMITS, nextPick, type SearchData, type SearchItem, searchItems, topK } from "./rank";
 
 const NOW = Date.UTC(2026, 9, 25, 12);
 const HOUR = 3_600_000;
 
 let seq = 0;
-function session(full: string, modified: number, cwd: string | null = "C:\\code\\app"): Session {
+function session(label: string, modified: number, cwd: string | null = "C:\\code\\app"): Session {
   const id = `00000000-0000-0000-0000-${String(++seq).padStart(12, "0")}`;
   return {
     id,
     file: `C:\\Users\\me\\.claude\\projects\\x\\${id}.jsonl`,
     cwd,
-    label: full,
-    full,
+    label,
     count: 3,
     modified,
     sizeKb: 4,
@@ -108,6 +107,19 @@ describe("searchItems", () => {
     expect(titles(searchItems("prompt", data({ projects: [project("C:\\x", NOW, sessions)] })), "session")).toEqual([]);
   });
 
+  it("lists sessions the backend matched by their full text next to label matches", () => {
+    const byText = session("Fix the build", NOW - HOUR);
+    const byLabel = session("Where is the login form?", NOW - 2 * HOUR);
+    const none = session("(no prompt)", NOW);
+    const other = session("Unrelated", NOW - 3 * HOUR);
+    const projects = [project("C:\\code\\app", NOW, [none, byLabel, byText, other])];
+    const textMatches = new Set([byText.id, none.id]);
+    const found = searchItems("login", data({ projects, textMatches })).filter((i) => i.kind === "session");
+    expect(found.map((s) => s.title)).toEqual(["Fix the build", "Where is the login form?"]);
+    // without the backend's ids only labels match
+    expect(titles(searchItems("login", data({ projects })), "session")).toEqual(["Where is the login form?"]);
+  });
+
   it("orders the sections projects, folders, sessions", () => {
     const projects = [project("C:\\code\\app", NOW, [session("app crash", NOW)])];
     const groups: Group[] = [{ name: "apps", folders: [], collapsed: false }];
@@ -131,5 +143,31 @@ describe("nextPick", () => {
     expect(nextPick(items, 1, -1)).toBe(3);
     expect(nextPick(items, items.length, -1)).toBe(3);
     expect(nextPick([{ kind: "empty", title: "none" }], 0, 1)).toBe(-1);
+  });
+});
+
+describe("topK", () => {
+  it("gives what a stable sort and slice give", () => {
+    const items = [5, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5].map((v, i) => ({ v, i }));
+    const cmp = (a: { v: number }, b: { v: number }) => b.v - a.v;
+    for (const k of [0, 1, 3, 5, 20]) expect(topK(items, k, cmp)).toEqual([...items].sort(cmp).slice(0, k));
+  });
+});
+
+describe("folder times", () => {
+  it("uses the project's time without a profile filter and its sessions' otherwise", () => {
+    const p = project("C:\\code\\app", NOW - HOUR, [session("x", NOW - 2 * HOUR)]);
+    const right = (d: SearchData) => searchItems("app", d).find((i) => i.kind === "folder");
+    expect(right(data({ projects: [p], unfiltered: true }))).toMatchObject({ right: "1h ago" });
+    expect(right(data({ projects: [p] }))).toMatchObject({ right: "2h ago" });
+  });
+
+  it("names a folder's project", () => {
+    const p = project("C:\\code\\app", NOW, [session("x", NOW)]);
+    const groups: Group[] = [{ name: "Web", folders: ["c:\\CODE\\app\\"], collapsed: false }];
+    expect(searchItems("app", data({ projects: [p], groups })).find((i) => i.kind === "folder")).toMatchObject({
+      sub: "in Web",
+      group: "Web",
+    });
   });
 });

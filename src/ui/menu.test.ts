@@ -124,3 +124,35 @@ describe("showMenu from a button", () => {
     btn.remove();
   });
 });
+
+describe("showMenu with a search field", () => {
+  it("hides the items that do not match, keeps `keep` ones, and runs the first match on Enter", async () => {
+    const btn = document.createElement("button");
+    document.body.append(btn);
+    const run = vi.fn();
+    const done = showMenu(
+      [
+        { label: "main" },
+        { label: "rr/fix-bugs", run },
+        { kind: "separator" },
+        { label: "Create new branch...", keep: true },
+      ],
+      { at: { anchor: btn }, filter: { placeholder: "Find" } },
+    );
+    const field = document.querySelector<HTMLInputElement>(".menu-filter");
+    expect(document.activeElement).toBe(field);
+    if (!field) return;
+    field.value = "FIX";
+    field.dispatchEvent(new Event("input"));
+    const shown = [...document.querySelectorAll<HTMLElement>(".menu-item:not([hidden]) .mi-label")];
+    expect(shown.map((e) => e.textContent)).toEqual(["rr/fix-bugs", "Create new branch..."]);
+    expect(document.querySelector<HTMLElement>(".menu-sep")?.hidden).toBe(true);
+    expect(active(menus()[0])).toBe("rr/fix-bugs");
+    press(" "); // typed into the field, not an activation
+    expect(run).not.toHaveBeenCalled();
+    press("Enter");
+    expect(await done).toBe(true);
+    expect(run).toHaveBeenCalledTimes(1);
+    btn.remove();
+  });
+});

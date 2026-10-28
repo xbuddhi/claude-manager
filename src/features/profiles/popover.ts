@@ -47,6 +47,7 @@ function profileRow(dir: string | null, pick: (run: () => void) => void): HTMLEl
       attrs: { role: "menuitem" },
       onclick: () => pick(() => enterProfile(dir)),
     },
+    // still: a row is too small for the movement to show, and the menu lists every profile
     profileAvatar(dir, 32),
     h(
       "span",
@@ -83,7 +84,7 @@ async function build(pick: (run: () => void) => void): Promise<HTMLElement> {
   const header = h(
     "div",
     { class: "prof-pop-head" },
-    profileAvatar(cur, 64),
+    profileAvatar(cur, 64, undefined, true),
     h("span", { class: "prof-pop-name" }, profileLabel(cur)),
     h("span", { class: "prof-pop-mail" }, profileEmail(cur)),
   );

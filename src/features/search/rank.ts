@@ -1,12 +1,13 @@
 // What the search dropdown lists for a query (Get-SearchItems): PROJECTS (groups, at most 4), FOLDERS (at
 // most 6) and SESSIONS (at most 8). Matching is a case-insensitive substring; names that start with the
-// query come first. Pure, so it is tested without the DOM.
+// query come first. Sessions match by label here, and by their full text through the ids the backend
+// found (`textMatches`, search_sessions). Pure, so it is tested without the DOM.
 
 import type { Group } from "../../bindings/Group";
 import type { Project } from "../../bindings/Project";
 import type { Session } from "../../bindings/Session";
 import { ago, leaf, plural } from "../../core/format";
-import { pathKey, samePath } from "../../core/paths";
+import { pathKey } from "../../core/paths";
 
 export const LIMITS = { groups: 4, folders: 6, sessions: 8 } as const;
 
@@ -33,6 +34,10 @@ export interface SearchData {
   liveCwd: Readonly<Record<string, number>>;
   os: string;
   profileName(dir: string): string;
+  /** Projects hold every session (no profile filter): their `modified` is their newest session's time. */
+  unfiltered?: boolean;
+  /** Ids of the sessions whose full text matches the query (from the backend); labels are matched here. */
+  textMatches?: ReadonlySet<string>;
   now?: number;
 }
 
@@ -50,9 +55,33 @@ function lower(owner: object, text: string): string {
 /** 0 when `name` starts with the query, else 1. */
 const rank = (name: string, q: string) => (name.startsWith(q) ? 0 : 1);
 
-/** The project (group) a folder belongs to, if any. */
-export function groupOf(path: string, groups: readonly Group[], os: string): Group | undefined {
-  return groups.find((g) => g.folders.some((f) => samePath(f, path, os)));
+/**
+ * The first `k` items in `cmp` order, as a stable sort and slice would give them, without sorting every
+ * match (a short query matches most sessions).
+ */
+export function topK<T>(items: Iterable<T>, k: number, cmp: (a: T, b: T) => number): T[] {
+  const out: T[] = [];
+  if (k <= 0) return out;
+  for (const x of items) {
+    if (out.length === k && cmp(out[k - 1] as T, x) <= 0) continue;
+    let i = out.length;
+    while (i > 0 && cmp(out[i - 1] as T, x) > 0) i--;
+    out.splice(i, 0, x);
+    if (out.length > k) out.pop();
+  }
+  return out;
+}
+
+/** The project (group) name of each folder by pathKey; the first group listing a folder wins. */
+function groupNames(groups: readonly Group[], os: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const g of groups) {
+    for (const f of g.folders) {
+      const key = pathKey(f, os);
+      if (!out.has(key)) out.set(key, g.name);
+    }
+  }
+  return out;
 }
 
 /** The parent folder's name: "C:\\code\\app" gives "code". */
@@ -80,17 +109,19 @@ export function searchItems(query: string, d: SearchData): SearchItem[] {
     }
   }
 
-  // the newest session in view: p.modified counts every profile's sessions
-  const last = (p: Project) => p.sessions.reduce((m, s) => Math.max(m, s.modified), 0);
-  const folders = d.projects
-    .map((p) => ({ p, name: lower(p, leaf(p.path)), last: last(p) }))
-    .filter((x) => x.name.includes(q))
-    .sort((a, b) => rank(a.name, q) - rank(b.name, q) || b.last - a.last)
-    .slice(0, LIMITS.folders);
+  // the newest session in view: with a profile filter p.modified would count every profile's sessions
+  const last = (p: Project) => (d.unfiltered ? p.modified : p.sessions.reduce((m, s) => Math.max(m, s.modified), 0));
+  const matched: Array<{ p: Project; name: string; last: number }> = [];
+  for (const p of d.projects) {
+    const name = lower(p, leaf(p.path));
+    if (name.includes(q)) matched.push({ p, name, last: last(p) });
+  }
+  const folders = topK(matched, LIMITS.folders, (a, b) => rank(a.name, q) - rank(b.name, q) || b.last - a.last);
   if (folders.length) {
     out.push({ kind: "section", title: "FOLDERS" });
+    const groupByKey = groupNames(d.groups, d.os);
     for (const { p, last } of folders) {
-      const group = groupOf(p.path, d.groups, d.os)?.name ?? null;
+      const group = groupByKey.get(pathKey(p.path, d.os)) ?? null;
       out.push({
         kind: "folder",
         title: leaf(p.path),
@@ -103,11 +134,15 @@ export function searchItems(query: string, d: SearchData): SearchItem[] {
     }
   }
 
-  const sessions = d.projects
-    .flatMap((p) => p.sessions)
-    .filter((s) => s.label !== "(no prompt)" && lower(s, s.full).includes(q))
-    .sort((a, b) => b.modified - a.modified)
-    .slice(0, LIMITS.sessions);
+  const byText = d.textMatches;
+  function* matching() {
+    for (const p of d.projects) {
+      for (const s of p.sessions) {
+        if (s.label !== "(no prompt)" && (byText?.has(s.id) || lower(s, s.label).includes(q))) yield s;
+      }
+    }
+  }
+  const sessions = topK(matching(), LIMITS.sessions, (a, b) => b.modified - a.modified);
   if (sessions.length) {
     out.push({ kind: "section", title: "SESSIONS" });
     for (const s of sessions) {

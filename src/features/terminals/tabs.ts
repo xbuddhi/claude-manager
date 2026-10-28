@@ -77,6 +77,9 @@ interface Drag {
   keepAlive: ReturnType<typeof setTimeout> | undefined;
 }
 
+const signature = (tabs: readonly StripTab[]) =>
+  tabs.map((t) => `${t.id}\u0000${t.title}\u0000${t.sub}\u0000${t.exited}`).join("\u0001");
+
 export class Strip {
   private root: HTMLElement;
   private list: HTMLElement;
@@ -88,6 +91,8 @@ export class Strip {
   private pillW = new Spring(0.3, 0.9, 0.1);
   private pillShown = false;
   private lastLayout = "";
+  /** What the strip shows (ids, titles, subtitles, exited), to tell a change of the active tab alone. */
+  private shownSig = "";
   private drag: Drag | null = null;
   /** The title of a tab from another window dragged over this one: a placeholder shows where it lands. */
   private incoming: string | null = null;
@@ -140,6 +145,7 @@ export class Strip {
 
   /** Redraws the strip; hidden while there are no terminals. */
   render(tabs: StripTab[], active: number | null): void {
+    if (this.switchActive(tabs, active)) return;
     const from = this.lefts();
     this.endDrag();
     this.tabs = tabs;
@@ -150,6 +156,7 @@ export class Strip {
       this.pillShown = false;
       this.seen.clear();
       this.lastLayout = "";
+      this.shownSig = "";
       setHtml(this.list, html``);
       this.placeIncoming();
       return;
@@ -159,6 +166,7 @@ export class Strip {
     const avail = this.root.clientWidth - homeW - HOME_GAP - TAB_GAP;
     const layout = layoutTabs(tabs.length, activeIndex, avail);
     this.lastLayout = this.layoutKey();
+    this.shownSig = signature(tabs);
     const shown = layout.shown.map((i) => tabs[i]).filter((t): t is StripTab => !!t);
     const hidden = tabs.length - shown.length;
     setHtml(
@@ -184,10 +192,36 @@ export class Strip {
     this.placePill(true);
   }
 
+  /**
+   * Only another tab came to the front (same tabs, all shown, nothing dragged): moves the active marks and
+   * the pill instead of drawing the strip again. False when the strip has to be drawn.
+   */
+  private switchActive(tabs: StripTab[], active: number | null): boolean {
+    if (active === this.active || this.drag || !tabs.length || signature(tabs) !== this.shownSig) return false;
+    if (this.list.querySelector(".term-more")) return false; // which tabs are shown depends on the active one
+    const prev = this.node(this.active ?? 0);
+    const next = this.node(active ?? 0);
+    if (!prev || !next) return false;
+    for (const [node, on] of [
+      [prev, false],
+      [next, true],
+    ] as const) {
+      node.classList.toggle("active", on);
+      node.setAttribute("aria-selected", String(on));
+      node.tabIndex = on ? 0 : -1;
+    }
+    this.tabs = tabs;
+    this.active = active;
+    this.lastLayout = this.layoutKey();
+    this.placePill(true);
+    return true;
+  }
+
   /** Changes one tab's title in place (claude animates its title; a full redraw per change is wasted). */
   setTitle(id: number, title: string): void {
     const t = this.tabs.find((x) => x.id === id);
     if (t) t.title = title;
+    this.shownSig = signature(this.tabs);
     const node = this.node(id);
     if (!node) return;
     const label = node.querySelector(".term-title");
@@ -519,15 +553,22 @@ export class Strip {
   /** Tabs that were on screen at `from` glide to where they are now (a reorder, a close, a tab moved away). */
   private slide(from: Map<number, number>) {
     if (reduceMotion.matches || !from.size) return;
+    // all reads first, then the writes, with one forced layout between (not one per tab)
+    const moving: Array<{ n: HTMLElement; dx: number }> = [];
     for (const n of this.list.querySelectorAll<HTMLElement>(".term-tab:not(.term-home)")) {
       const was = from.get(Number(n.dataset.key));
       if (was === undefined) continue;
       const dx = was - n.getBoundingClientRect().left;
-      if (Math.abs(dx) < 1) continue;
+      if (Math.abs(dx) >= 1) moving.push({ n, dx });
+    }
+    if (!moving.length) return;
+    for (const { n, dx } of moving) {
       n.style.transition = "none";
       n.style.transform = `translateX(${dx}px)`;
-      // the start position must be painted before the transition back to none begins
-      void n.offsetWidth;
+    }
+    // the start positions must be applied before the transitions back to none begin
+    void this.list.offsetWidth;
+    for (const { n } of moving) {
       n.style.transition = `transform ${SLIDE_MS}ms var(--ease)`;
       n.style.transform = "";
       const clear = () => {

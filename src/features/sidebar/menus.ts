@@ -7,21 +7,23 @@ import { emit, type LaunchMode } from "../../core/bus";
 import { describeError, log } from "../../core/log";
 import { settings } from "../../core/settings";
 import { store } from "../../core/store";
-import { avatar } from "../../ui/avatar";
 import { type MenuItem, type MenuPosition, showMenu } from "../../ui/menu";
 import { toast } from "../../ui/toast";
+import { webMenuItem } from "../git/api";
 import { copyText, folderLabel, openFolder, openInCode, terminalHere, terminalHereLabel } from "../os/api";
-import { profileColor, profileInitial, startProfile } from "../profiles/api";
+import { profileAvatar, startProfile } from "../profiles/api";
 import { continueLast as continueSession, deleteSessions } from "../sessions/api";
 import {
   deleteProject,
   groupOf,
+  hide,
   isPinned,
   moveFolder,
   newProject,
   pin,
   renameProject,
   togglePin,
+  unhide,
   unpin,
 } from "./groups";
 import { S } from "./strings";
@@ -73,6 +75,14 @@ function openGroupInCode(g: GroupInfo) {
 
 const sep: MenuItem = { kind: "separator" };
 
+/** Hide / show in sidebar (only this menu uses them). */
+function eye(off: boolean): Element {
+  const t = document.createElement("template");
+  const slash = off ? `<path d="M2.5 2.5l11 11"/>` : "";
+  t.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>${slash}</svg>`;
+  return t.content.firstElementChild as Element;
+}
+
 /** Rename (only this menu uses it). */
 function pencil(): Element {
   const t = document.createElement("template");
@@ -85,7 +95,7 @@ function profileItems(dir: string): MenuItem[] {
   if (!list.length) return [{ label: "No profiles found", disabled: true }];
   return list.map((p) => ({
     label: p.name,
-    icon: avatar({ text: profileInitial(p.name), color: profileColor(p.name), size: 16 }),
+    icon: profileAvatar(p.dir, 16),
     run: () => newSession(dir, undefined, p.dir),
   }));
 }
@@ -103,7 +113,8 @@ function moveItems(f: FolderInfo, current: string | undefined): MenuItem[] {
   return items;
 }
 
-export function folderMenu(f: FolderInfo): MenuItem[] {
+/** `web`: the page of the folder's repository (repoWebUrl), listed when there is one. */
+export function folderMenu(f: FolderInfo, web: string | null = null): MenuItem[] {
   const os = store.get().platform.os;
   const current = groupOf(settings().groups, f.path, os)?.name;
   const pinned = f.pinned || isPinned(settings().pinned, f.path, os);
@@ -120,17 +131,23 @@ export function folderMenu(f: FolderInfo): MenuItem[] {
     { label: terminalHereLabel(), icon: "terminal", disabled: gone, run: () => void terminalHere(f.path) },
     { label: folderLabel(), icon: "folder", disabled: gone, run: () => void openFolder(f.path) },
     { label: S.openCode, icon: "vscode", disabled: gone, run: () => void openInCode([f.path]) },
+    ...(web && !gone ? [webMenuItem(web, S.openOn)] : []),
     { label: S.copyPath, icon: "copy", run: () => void copyText(f.path) },
     sep,
     { label: S.moveTo, icon: "group", submenu: moveItems(f, current) },
   ];
   if (current !== undefined)
     items.push({ label: S.removeFrom, icon: "minus", run: () => void moveFolder(f.path, null) });
-  items.push(
-    sep,
-    { label: pinned ? S.unpin : S.pin, icon: "star", run: () => void togglePin(f.path) },
-    { label: S.deleteAll, icon: "trash", danger: true, run: () => void deleteAllSessions(f) },
-  );
+  // only FOLDERS hides folders: a project's folders were put there on purpose
+  const hidden = current === undefined && isPinned(settings().hidden, f.path, os);
+  items.push(sep, { label: pinned ? S.unpin : S.pin, icon: "star", run: () => void togglePin(f.path) });
+  if (current === undefined)
+    items.push({
+      label: hidden ? S.unhide : S.hide,
+      icon: eye(!hidden),
+      run: () => void (hidden ? unhide(f.path) : hide(f.path)),
+    });
+  items.push({ label: S.deleteAll, icon: "trash", danger: true, run: () => void deleteAllSessions(f) });
   return items;
 }
 

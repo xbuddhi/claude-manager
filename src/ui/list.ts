@@ -6,7 +6,9 @@
 // unselected row selects just it, on a selected row it keeps the selection. Selection is kept by key when
 // the rows are replaced, so a data refresh never loses it.
 //
-// The list renders only the rows in view (plus some overscan) and reuses row elements by key.
+// The list renders only the rows in view (plus some overscan) and reuses row elements by key. Scrolling only
+// places rows; update() runs for rows that come into view and for every rendered row after setRows(),
+// refresh() or a selection change.
 
 import { h } from "../core/dom";
 import { isMac } from "../core/platform";
@@ -189,6 +191,10 @@ export interface List<T> {
   selection: SelectionModel;
   setRows(rows: T[]): void;
   rows(): readonly T[];
+  /** The row with this key, if listed. */
+  rowByKey(key: string): T | undefined;
+  /** Index of the row with this key; -1 when not listed. */
+  indexOfKey(key: string): number;
   /** Replaces the selection by key (does not call onSelectionChange). */
   select(keys: string[]): void;
   scrollToKey(key: string): void;
@@ -219,6 +225,7 @@ export function createList<T>(opts: ListOptions<T>): List<T> {
 
   let rows: T[] = [];
   let keys: string[] = [];
+  let index = new Map<string, number>();
   let tops: number[] = [];
   let total = 0;
   const rendered = new Map<string, HTMLElement>();
@@ -226,6 +233,10 @@ export function createList<T>(opts: ListOptions<T>): List<T> {
 
   function layout() {
     keys = rows.map(opts.key);
+    index = new Map();
+    keys.forEach((k, i) => {
+      if (!index.has(k)) index.set(k, i);
+    });
     tops = [];
     total = 0;
     for (const r of rows) {
@@ -247,7 +258,10 @@ export function createList<T>(opts: ListOptions<T>): List<T> {
     return lo;
   }
 
-  function render() {
+  const indexOfKey = (key: string) => index.get(key) ?? -1;
+
+  /** Places the rows in view; `full` also updates the content of rows that were already rendered. */
+  function render(full: boolean) {
     const top = el.scrollTop - overscan;
     const bottom = el.scrollTop + el.clientHeight + overscan;
     const live = new Set<string>();
@@ -256,6 +270,7 @@ export function createList<T>(opts: ListOptions<T>): List<T> {
       const k = keys[i] as string;
       live.add(k);
       let node = rendered.get(k);
+      const fresh = !node;
       if (!node) {
         node = opts.create(row);
         node.classList.add("list-row");
@@ -267,6 +282,7 @@ export function createList<T>(opts: ListOptions<T>): List<T> {
       }
       node.style.transform = `translateY(${tops[i]}px)`;
       node.style.height = `${opts.height(row)}px`;
+      if (!full && !fresh) continue;
       const selectable = opts.selectable?.(row) ?? true;
       const state = { index: i, selected: selection.isSelected(k), focused: selection.focus === k };
       node.setAttribute("aria-selected", selectable ? String(state.selected) : "false");
@@ -291,7 +307,7 @@ export function createList<T>(opts: ListOptions<T>): List<T> {
     if (!frame) {
       frame = requestAnimationFrame(() => {
         frame = 0;
-        render();
+        render(false);
       });
     }
   };
@@ -299,7 +315,7 @@ export function createList<T>(opts: ListOptions<T>): List<T> {
   new ResizeObserver(schedule).observe(el);
 
   function ensureVisible(key: string) {
-    const i = keys.indexOf(key);
+    const i = indexOfKey(key);
     const row = rows[i];
     if (i < 0 || row === undefined) return;
     const t = tops[i] ?? 0;
@@ -310,13 +326,13 @@ export function createList<T>(opts: ListOptions<T>): List<T> {
 
   function changed(didChange: boolean, reveal = true) {
     if (reveal && selection.focus) ensureVisible(selection.focus);
-    render();
+    render(true);
     if (didChange) opts.onSelectionChange?.(selection.selected);
   }
 
   const rowOf = (target: EventTarget | null): T | undefined => {
     const node = (target as Element | null)?.closest<HTMLElement>(".list-row");
-    const i = node?.dataset.key === undefined ? -1 : keys.indexOf(node.dataset.key);
+    const i = node?.dataset.key === undefined ? -1 : indexOfKey(node.dataset.key);
     return rows[i];
   };
   const toggleMod = (e: MouseEvent | KeyboardEvent) => (isMac() ? e.metaKey : e.ctrlKey);
@@ -361,7 +377,7 @@ export function createList<T>(opts: ListOptions<T>): List<T> {
         moved = selection.move({ page: -page }, e.shiftKey);
         break;
       case "Enter": {
-        const row = rows[keys.indexOf(selection.focus ?? "")];
+        const row = rows[indexOfKey(selection.focus ?? "")];
         if (row !== undefined) opts.onActivate?.(row, e);
         e.preventDefault();
         return;
@@ -378,20 +394,27 @@ export function createList<T>(opts: ListOptions<T>): List<T> {
     el,
     selection,
     setRows(next) {
+      // the very same rows (an update elsewhere): layout, selection and every row stay as they are
+      if (next.length === rows.length && next.every((r, i) => r === rows[i])) {
+        rows = next;
+        return;
+      }
       rows = next;
       layout();
       const didChange = selection.setRows(
-        rows.map((r) => ({ key: opts.key(r), selectable: opts.selectable?.(r) ?? true })),
+        rows.map((r, i) => ({ key: keys[i] as string, selectable: opts.selectable?.(r) ?? true })),
       );
       changed(didChange, false);
     },
     rows: () => rows,
+    rowByKey: (key) => rows[indexOfKey(key)],
+    indexOfKey,
     select(next) {
       selection.set(next);
       changed(false);
     },
     scrollToKey: ensureVisible,
-    refresh: render,
+    refresh: () => render(true),
     focus: () => el.focus({ preventScroll: true }),
   };
 }

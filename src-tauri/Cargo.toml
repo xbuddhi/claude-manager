@@ -10,7 +10,8 @@ publish = false
 [lib]
 # The `_lib` suffix keeps the lib name distinct from the bin name (https://github.com/rust-lang/cargo/issues/8519).
 name = "claude_manager_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop only: the binary links the rlib. staticlib/cdylib are for mobile targets and only add build output.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -49,6 +50,8 @@ trash = "5"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
 sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# file tree: .gitignore-aware listing (files)
+ignore = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
