@@ -160,6 +160,8 @@ pub struct Group {
 pub struct Settings {
     /// Pinned project folders, shown even without sessions.
     pub pinned: Vec<String>,
+    /// Folders hidden from the sidebar's FOLDERS list (shown again from its "Show N hidden" row).
+    pub hidden: Vec<String>,
     /// Profile folder of the account last used for new sessions.
     pub account: Option<String>,
     pub open_in: OpenIn,
@@ -198,6 +200,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             pinned: Vec::new(),
+            hidden: Vec::new(),
             account: None,
             open_in: OpenIn::External,
             show_picker: true,

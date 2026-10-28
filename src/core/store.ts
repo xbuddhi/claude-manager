@@ -147,6 +147,7 @@ export interface AppState extends CoreState {}
 /** Same defaults as the backend's Settings::default(); replaced by get_settings during startup. */
 export const DEFAULT_SETTINGS: Settings = {
   pinned: [],
+  hidden: [],
   account: null,
   openIn: "external",
   showPicker: true,

@@ -102,6 +102,23 @@ describe("buildTree", () => {
     expect(rows[rows.length - 1]?.open).toBe(false);
   });
 
+  it("leaves hidden folders out of FOLDERS behind a 'Show N hidden' row, but never out of a project", () => {
+    const base = input({
+      projects: [project("C:\\a"), project("C:\\b"), project("C:\\c")],
+      groups: [group("Work", ["C:\\c"])],
+      hidden: ["C:\\b\\", "C:\\c"],
+    });
+    const rows = buildTree(base);
+    expect(titles(rows).slice(-3)).toEqual(["FOLDERS  ·  1", "a", "Show 1 hidden"]);
+    expect(rows.some((r) => r.title === "c")).toBe(true);
+
+    const shown = buildTree({ ...base, showHidden: true });
+    expect(titles(shown).slice(-3)).toEqual(["a", "HIDDEN  ·  1", "b"]);
+    expect(shown.find((r) => r.title === "b")?.dim).toBe(true);
+
+    expect(titles(buildTree({ ...base, query: "b" })).slice(-1)).toEqual(["b"]);
+  });
+
   it("shows 5 of more than 6 folders with 'Show N more', all of them with 'Show less'", () => {
     const paths = Array.from({ length: 8 }, (_, i) => `C:\\p\\f${i}`);
     const base = input({ projects: paths.map((p, i) => project(p, [100 - i])), groups: [group("Big", paths)] });

@@ -16,12 +16,14 @@ import { continueLast as continueSession, deleteSessions } from "../sessions/api
 import {
   deleteProject,
   groupOf,
+  hide,
   isPinned,
   moveFolder,
   newProject,
   pin,
   renameProject,
   togglePin,
+  unhide,
   unpin,
 } from "./groups";
 import { S } from "./strings";
@@ -72,6 +74,14 @@ function openGroupInCode(g: GroupInfo) {
 // ---------- menus ----------
 
 const sep: MenuItem = { kind: "separator" };
+
+/** Hide / show in sidebar (only this menu uses them). */
+function eye(off: boolean): Element {
+  const t = document.createElement("template");
+  const slash = off ? `<path d="M2.5 2.5l11 11"/>` : "";
+  t.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/>${slash}</svg>`;
+  return t.content.firstElementChild as Element;
+}
 
 /** Rename (only this menu uses it). */
 function pencil(): Element {
@@ -126,11 +136,16 @@ export function folderMenu(f: FolderInfo): MenuItem[] {
   ];
   if (current !== undefined)
     items.push({ label: S.removeFrom, icon: "minus", run: () => void moveFolder(f.path, null) });
-  items.push(
-    sep,
-    { label: pinned ? S.unpin : S.pin, icon: "star", run: () => void togglePin(f.path) },
-    { label: S.deleteAll, icon: "trash", danger: true, run: () => void deleteAllSessions(f) },
-  );
+  // only FOLDERS hides folders: a project's folders were put there on purpose
+  const hidden = current === undefined && isPinned(settings().hidden, f.path, os);
+  items.push(sep, { label: pinned ? S.unpin : S.pin, icon: "star", run: () => void togglePin(f.path) });
+  if (current === undefined)
+    items.push({
+      label: hidden ? S.unhide : S.hide,
+      icon: eye(!hidden),
+      run: () => void (hidden ? unhide(f.path) : hide(f.path)),
+    });
+  items.push({ label: S.deleteAll, icon: "trash", danger: true, run: () => void deleteAllSessions(f) });
   return items;
 }
 

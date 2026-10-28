@@ -76,6 +76,10 @@ export interface TreeInput extends FolderInput {
   groups: readonly Group[];
   /** settings.ungroupedCollapsed */
   foldersCollapsed: boolean;
+  /** settings.hidden: folders left out of FOLDERS (a project's folders are always shown). */
+  hidden?: readonly string[];
+  /** The hidden folders are listed (dimmed) after the others (session only). */
+  showHidden?: boolean;
   /** Lower-cased names of groups showing all their folders (session only). */
   showAll: ReadonlySet<string>;
   /** Search text; '' in the sidebar (search shows its results in its own dropdown). */
@@ -96,6 +100,8 @@ export const folderKey = (path: string, os: string) => `f:${pathKey(path, os)}`;
 export const moreKey = (name: string) => `m:${name.toLowerCase()}`;
 export const PROJECTS_KEY = "s:projects";
 export const FOLDERS_KEY = "s:folders";
+/** The "Show N hidden" row at the end of FOLDERS. */
+export const HIDDEN_KEY = "m:hidden";
 
 const missingKind = (kind: PathKind | undefined) => kind !== undefined && kind !== "dir";
 
@@ -264,12 +270,25 @@ export function buildTree(input: TreeInput): TreeRow[] {
   }
   if (shownGroups === 0) rows.push(plain("hint", "h:projects", searching ? S.noMatches : S.noProjects, 30));
 
-  const rest = list
-    .filter((f) => !used.has(pathKey(f.path, os)) && matches(f, q))
-    .map((f) => folderRow(f, input, undefined, 0));
+  const hidden = new Set((input.hidden ?? []).map((p) => pathKey(p, os)));
+  const ungrouped = list.filter((f) => !used.has(pathKey(f.path, os)) && matches(f, q));
+  const rest = ungrouped.filter((f) => !hidden.has(pathKey(f.path, os))).map((f) => folderRow(f, input, undefined, 0));
+  const out = ungrouped
+    .filter((f) => hidden.has(pathKey(f.path, os)))
+    .map((f) => ({ ...folderRow(f, input, undefined, 0), dim: true }));
   const openRest = searching || !input.foldersCollapsed;
   rows.push({ ...plain("section", FOLDERS_KEY, S.folders(rest.length), 30), open: openRest, acceptsDrop: true });
-  if (openRest) rows.push(...rest);
+  if (openRest) {
+    rows.push(...rest);
+    // listed under their own divider, which also folds them away; searching lists them anyway (a hidden
+    // folder can still be found)
+    const showHidden = searching || !!input.showHidden;
+    if (out.length && !searching) {
+      const title = showHidden ? S.hiddenHeading(out.length) : S.showHidden(out.length);
+      rows.push({ ...plain("more", HIDDEN_KEY, title, 28), open: showHidden });
+    }
+    if (showHidden) rows.push(...out);
+  }
 
   rows.forEach((r, i) => {
     r.lastChild = r.indent > 0 && (rows[i + 1]?.indent ?? 0) < r.indent;

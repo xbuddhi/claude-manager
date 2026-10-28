@@ -16,6 +16,10 @@ export type Settings = {
  */
 pinned: Array<string>, 
 /**
+ * Folders hidden from the sidebar's FOLDERS list (shown again from its "Show N hidden" row).
+ */
+hidden: Array<string>, 
+/**
  * Profile folder of the account last used for new sessions.
  */
 account: string | null, openIn: OpenIn, showPicker: boolean, 

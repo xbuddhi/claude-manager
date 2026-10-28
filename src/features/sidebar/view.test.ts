@@ -183,6 +183,7 @@ describe("sidebar view", () => {
       "Copy path",
       "Move to project",
       "Pin",
+      "Hide from sidebar",
       "Delete all sessions...",
     ]);
     expect(store.get().sidebarSelection?.path).toBe("C:\\src\\tools");

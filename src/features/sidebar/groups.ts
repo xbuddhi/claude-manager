@@ -129,6 +129,16 @@ export async function unpin(path: string): Promise<void> {
   await updateSettings({ pinned: withoutPin(settings().pinned, path, os()) });
 }
 
+/** Leaves the folder out of FOLDERS; a hidden folder is unpinned too (pinning is for keeping it in view). */
+export async function hide(path: string): Promise<void> {
+  const s = settings();
+  await updateSettings({ hidden: withPins(s.hidden, [path], os()), pinned: withoutPin(s.pinned, path, os()) });
+}
+
+export async function unhide(path: string): Promise<void> {
+  await updateSettings({ hidden: withoutPin(settings().hidden, path, os()) });
+}
+
 export async function togglePin(path: string): Promise<void> {
   if (isPinned(settings().pinned, path, os())) await unpin(path);
   else await pin([path]);
