@@ -2,6 +2,36 @@
 
 All notable changes to Claude Manager. Versions are `X.Y.Z`; each release is tagged `vX.Y.Z`.
 
+## 0.1.3 - 2026-10-29
+
+### Added
+
+- Interface skins (Settings → Appearance): Claude, Modern, Mono, Paper, Linear and Graphite, each dark and
+  light. Terminal colours set to "Default" follow the skin; new Graphite terminal scheme.
+- macOS: optional window glass (the desktop blurs through the title bar and sidebar).
+- Files view: a .gitignore-aware tree of the selected folder with a read-only preview; new, rename, move,
+  duplicate and move to trash. Drag a file onto a terminal to paste its path.
+- Collapsible files and source control panels beside a terminal.
+- Profile companions: each profile gets its own small companion as its avatar (choose another from the
+  picker card); All profiles shows them huddled together.
+- Rename profiles, and remove a profile from the app (only hidden; its files stay as they are).
+- Archive sessions: they leave the list and come back from Archived · N.
+- Hide folders from the sidebar's FOLDERS list; a "Show N hidden" row lists them.
+- Source control: a Claude-written commit message (sparkle button, Sonnet through your `claude`); a commit
+  hover card and a compact, VS Code-like history graph; Sync Changes / Publish Branch when there is nothing
+  to commit; pull and push counts as badges on the icons.
+- Branches: search the branch menu, and switch branch from a terminal's bar (refuses with conflicts, asks
+  about uncommitted changes or a working Claude).
+- Open the repository on GitHub from the Open menu and a folder's menu.
+- Title bar counts shown as icons, with a tooltip.
+
+### Changed
+
+- Faster and lighter: the session index sends only what changed, session text loads on demand and is
+  searched in Rust, fewer redraws, and lower idle CPU (PTY, live scan, git).
+- macOS: the traffic lights are centred on the title bar; a larger profile chip.
+- Undo last commit puts the message back in the commit box.
+
 ## 0.1.2 - 2026-10-28
 
 ### Fixed
