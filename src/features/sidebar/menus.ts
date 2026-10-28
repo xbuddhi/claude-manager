@@ -10,6 +10,7 @@ import { store } from "../../core/store";
 import { avatar } from "../../ui/avatar";
 import { type MenuItem, type MenuPosition, showMenu } from "../../ui/menu";
 import { toast } from "../../ui/toast";
+import { webMenuItem } from "../git/api";
 import { copyText, folderLabel, openFolder, openInCode, terminalHere, terminalHereLabel } from "../os/api";
 import { profileColor, profileInitial, startProfile } from "../profiles/api";
 import { continueLast as continueSession, deleteSessions } from "../sessions/api";
@@ -113,7 +114,8 @@ function moveItems(f: FolderInfo, current: string | undefined): MenuItem[] {
   return items;
 }
 
-export function folderMenu(f: FolderInfo): MenuItem[] {
+/** `web`: the page of the folder's repository (repoWebUrl), listed when there is one. */
+export function folderMenu(f: FolderInfo, web: string | null = null): MenuItem[] {
   const os = store.get().platform.os;
   const current = groupOf(settings().groups, f.path, os)?.name;
   const pinned = f.pinned || isPinned(settings().pinned, f.path, os);
@@ -130,6 +132,7 @@ export function folderMenu(f: FolderInfo): MenuItem[] {
     { label: terminalHereLabel(), icon: "terminal", disabled: gone, run: () => void terminalHere(f.path) },
     { label: folderLabel(), icon: "folder", disabled: gone, run: () => void openFolder(f.path) },
     { label: S.openCode, icon: "vscode", disabled: gone, run: () => void openInCode([f.path]) },
+    ...(web && !gone ? [webMenuItem(web, S.openOn)] : []),
     { label: S.copyPath, icon: "copy", run: () => void copyText(f.path) },
     sep,
     { label: S.moveTo, icon: "group", submenu: moveItems(f, current) },

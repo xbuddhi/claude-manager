@@ -214,7 +214,7 @@ mod mac {
 
 /// The git command for `dir` with the runner's environment. `poll` marks a background status refresh,
 /// which must not take locks the user's own git commands could trip over.
-fn command(git: &Path, dir: &Path, poll: bool) -> Command {
+pub(super) fn command(git: &Path, dir: &Path, poll: bool) -> Command {
     let mut cmd = spawn::hidden_command(git);
     cmd.current_dir(dir)
         // never wait for a password in a window nobody sees; English output for parsing

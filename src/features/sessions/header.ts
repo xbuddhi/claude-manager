@@ -7,8 +7,9 @@ import { store } from "../../core/store";
 import { button, setButtonLabel } from "../../ui/button";
 import { showMenu } from "../../ui/menu";
 import { splitButton } from "../../ui/splitbutton";
+import { repoWebUrl } from "../git/api";
 import { doNew } from "./actions";
-import { newSessionMenuItems, openMenuItems } from "./menus";
+import { newSessionMenuItems, openMenuItems, openTarget } from "./menus";
 import { archivedText, countText, TIP_ARCHIVED, TIP_ARCHIVED_BACK, TIP_NEW } from "./strings";
 
 export interface Header {
@@ -31,7 +32,12 @@ export function mountHeader(el: HTMLElement): Header {
     label: "Open",
     icon: "external",
     kind: "secondary",
-    onClick: () => void showMenu(openMenuItems(), { at: { anchor: openBtn }, label: "Open" }),
+    onClick: async () => {
+      // the repository's page is looked up as the menu opens (a quick local git call)
+      const path = openTarget().path;
+      const web = path ? await repoWebUrl(path) : null;
+      void showMenu(openMenuItems(web), { at: { anchor: openBtn }, label: "Open" });
+    },
   });
   openBtn.setAttribute("aria-haspopup", "menu");
   openBtn.append(iconNode("chevronDown"));

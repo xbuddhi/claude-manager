@@ -20,6 +20,7 @@ import { button } from "../../ui/button";
 import { createList, type List } from "../../ui/list";
 import { showMenu } from "../../ui/menu";
 import { toast } from "../../ui/toast";
+import { repoWebUrl } from "../git/api";
 import { projectsFor, refreshIndex } from "../index-data/api";
 import { liveDot } from "../live/api";
 import { attachDrag } from "./drag";
@@ -299,8 +300,13 @@ function remove(r: TreeRow | undefined) {
 
 function openMenu(r: TreeRow | undefined, x: number, y: number) {
   const at = { x, y };
-  if (r?.kind === "folder" && r.folder) void showMenu(folderMenu(r.folder), { at, label: r.title });
-  else if (r?.kind === "group" && r.info) void showMenu(groupMenu(r.info, at), { at, label: r.title });
+  if (r?.kind === "folder" && r.folder) {
+    const f = r.folder;
+    // the repository's page is looked up as the menu opens (a quick local git call); a gone folder has none
+    void (f.missing ? Promise.resolve(null) : repoWebUrl(f.path)).then((web) =>
+      showMenu(folderMenu(f, web), { at, label: r.title }),
+    );
+  } else if (r?.kind === "group" && r.info) void showMenu(groupMenu(r.info, at), { at, label: r.title });
   else void showMenu(emptyMenu(), { at });
 }
 

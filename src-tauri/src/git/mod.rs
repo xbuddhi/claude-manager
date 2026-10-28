@@ -6,6 +6,7 @@ pub mod guard;
 pub mod repos;
 pub mod run;
 pub mod status;
+pub mod web;
 
 use crate::core::error::{AppError, AppResult, blocking};
 use files::NewFile;
@@ -49,6 +50,12 @@ pub async fn git_status(repo: String, poll: Option<bool>) -> AppResult<GitStatus
 #[tauri::command]
 pub async fn find_repos(path: String) -> AppResult<Vec<String>> {
     blocking(move || Ok(repos::find(&path))).await
+}
+
+/// The web page (https) of the repository `dir` is in, from its remote; None without one.
+#[tauri::command]
+pub async fn git_web_url(dir: String) -> AppResult<Option<String>> {
+    blocking(move || web::of_folder(&dir)).await
 }
 
 /// An untracked file of `repo` for the diff view.

@@ -7,6 +7,7 @@ import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
 import { avatar } from "../../ui/avatar";
 import { type MenuItem, type MenuPosition, showMenu } from "../../ui/menu";
+import { webMenuItem } from "../git/api";
 import { copyText, openFolder, openInCode, reveal, revealLabel, terminalHere } from "../os/api";
 import { profileColor, profileInitial } from "../profiles/api";
 import { archiveSelected, deleteSelected, doNew, doResume, isArchived, startNew } from "./actions";
@@ -80,14 +81,15 @@ export function newSessionMenuItems(anchor?: HTMLElement): MenuItem[] {
 }
 
 /** The folder the Open menu acts on: the selected folder, or a project's first folder. */
-function openTarget(): { path: string | null; folders: string[]; isFolder: boolean } {
+export function openTarget(): { path: string | null; folders: string[]; isFolder: boolean } {
   const scope = store.get().sessionsScope;
   if (scope?.kind === "folder") return { path: scope.path, folders: [scope.path], isFolder: true };
   if (scope?.kind === "group") return { path: scope.folders[0] ?? null, folders: scope.folders, isFolder: false };
   return { path: null, folders: [], isFolder: false };
 }
 
-export function openMenuItems(): MenuItem[] {
+/** `web`: the page of the folder's repository (repoWebUrl), listed when there is one. */
+export function openMenuItems(web: string | null = null): MenuItem[] {
   const t = openTarget();
   const mac = isMac();
   const folderOnly = !t.isFolder || t.path === null;
@@ -105,6 +107,7 @@ export function openMenuItems(): MenuItem[] {
       disabled: folderOnly,
       run: () => void (t.path && terminalHere(t.path)),
     },
+    ...(web ? [webMenuItem(web)] : []),
     { kind: "separator" },
     { label: "Copy path", icon: "copy", disabled: folderOnly, run: () => void (t.path && copyText(t.path)) },
   ];

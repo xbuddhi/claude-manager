@@ -39,6 +39,7 @@ export const S = {
   continueLast: "Continue last session",
   openCode: "Open in VS Code",
   copyPath: "Copy path",
+  openOn: "Open on",
   moveTo: "Move to project",
   removeFrom: "Remove from project",
   pin: "Pin",
