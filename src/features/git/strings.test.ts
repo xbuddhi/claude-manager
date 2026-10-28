@@ -1,17 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  bodyParagraphs,
   branchName,
   changeCount,
   changesTab,
   commitLabel,
+  commitUrl,
   errorText,
   isHead,
   largeFile,
+  longAge,
   parseLog,
+  parseShortstat,
   pullTip,
   pushTip,
   refPills,
-  shortAge,
   stashMessage,
   successText,
   switchAsk,
@@ -32,29 +35,6 @@ describe("ref pills", () => {
     expect(isHead("tag: v1, HEAD")).toBe(true);
     expect(isHead("origin/HEAD, origin/main")).toBe(false);
     expect(isHead("")).toBe(false);
-  });
-});
-
-describe("short ages (git's %ar, shortened)", () => {
-  const now = 1_800_000_000_000;
-  const ago = (seconds: number) => shortAge(Math.floor(now / 1000) - seconds, now);
-  it("follows git's thresholds and rounding", () => {
-    expect(ago(0)).toBe("0s");
-    expect(ago(89)).toBe("89s");
-    expect(ago(90)).toBe("2m");
-    expect(ago(89 * 60)).toBe("89m");
-    expect(ago(90 * 60)).toBe("2h");
-    expect(ago(35 * 3600)).toBe("35h");
-    expect(ago(36 * 3600)).toBe("2d");
-    expect(ago(13 * 86400)).toBe("13d");
-    expect(ago(14 * 86400)).toBe("2w");
-    expect(ago(69 * 86400)).toBe("10w");
-    expect(ago(70 * 86400)).toBe("2mo");
-    expect(ago(364 * 86400)).toBe("12mo");
-    expect(ago(365 * 86400)).toBe("1y");
-    expect(ago(430 * 86400)).toBe("1y 2mo");
-    expect(ago(1825 * 86400)).toBe("5y");
-    expect(ago(-10)).toBe("now");
   });
 });
 
@@ -117,5 +97,36 @@ describe("switchAsk", () => {
       "Switch to dev?\nClaude is working in this folder: its files change under it when you switch.",
     );
     expect(switchAsk("dev", 3, true).split("\n\n")).toHaveLength(2);
+  });
+});
+
+describe("commit hover card texts", () => {
+  it("says how long ago, in words", () => {
+    const now = 1_000_000 * 1000;
+    expect(longAge(1_000_000 - 15 * 60, now)).toBe("15 minutes ago");
+    expect(longAge(1_000_000 - 3 * 3600, now)).toBe("3 hours ago");
+    expect(longAge(1_000_000 - 60 * 86400, now)).toBe("2 months ago");
+  });
+
+  it("reads the short stat, and none for a merge", () => {
+    expect(parseShortstat(" 14 files changed, 141 insertions(+), 22 deletions(-)\n")).toEqual({
+      files: 14,
+      insertions: 141,
+      deletions: 22,
+    });
+    expect(parseShortstat(" 1 file changed, 1 deletion(-)")).toEqual({ files: 1, insertions: 0, deletions: 1 });
+    expect(parseShortstat("")).toBeNull();
+  });
+
+  it("joins hard-wrapped lines but keeps bullets apart", () => {
+    expect(bodyParagraphs("Archive leaves sessions\nout of the list.\n\n- one\n- two that\n  wraps\n")).toEqual([
+      "Archive leaves sessions out of the list.",
+      "- one\n- two that wraps",
+    ]);
+  });
+
+  it("links the commit on its site", () => {
+    expect(commitUrl("https://github.com/a/b", "abc")).toBe("https://github.com/a/b/commit/abc");
+    expect(commitUrl("https://gitlab.com/a/b", "abc")).toBe("https://gitlab.com/a/b/-/commit/abc");
   });
 });

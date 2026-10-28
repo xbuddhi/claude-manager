@@ -75,7 +75,10 @@ let historySeq = 0;
 
 let header: Header;
 const changes = createChanges({ onSelect: () => void showSelectedDiff(), onOpen: (r) => openFile(r), onAction });
-const history = createHistory((hash) => void showCommit(hash));
+const history = createHistory(
+  (hash) => void showCommit(hash),
+  () => st.repo,
+);
 const diff = createDiff();
 const commit = createCommitBox({ onCommit: () => void doCommit(), menu: commitMenu, generate: generateMessage });
 const tabs = textTabs<Tab>({
@@ -389,8 +392,14 @@ function commitMenu(): MenuItem[] {
       label: "Undo last commit",
       icon: "undo",
       run: async () => {
-        if (await ask(TEXT.undoCommit, "Undo commit"))
-          void runOp(["reset", "--soft", "HEAD~1"], "Undoing last commit...");
+        const repo = st.repo;
+        if (!repo || !(await ask(TEXT.undoCommit, "Undo commit"))) return;
+        // like VS Code: the undone commit's message comes back into the box, to edit and commit again
+        const last = await git(repo, ["log", "-1", "--format=%B"]);
+        const ok = await runOp(["reset", "--soft", "HEAD~1"], "Undoing last commit...");
+        if (ok && last.code === 0 && repo === st.repo && !commit.message().trim()) {
+          commit.setMessage(last.stdout.trim());
+        }
       },
     },
     { kind: "separator" },

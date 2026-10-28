@@ -14,7 +14,8 @@ export const TEXT = {
   typeMessage: "Type a commit message first.",
   nothingToCommit: "There is nothing to commit.",
   stageAllAndCommit: "There are no staged changes. Stage all changes and commit them?",
-  undoCommit: "Undo the last commit? Its changes stay in your working tree, staged.",
+  undoCommit:
+    "Undo the last commit? Its changes stay in your working tree, staged, and its message goes back into the message box.",
   discardAll: "Discard ALL changes to tracked files?\n\nNew (untracked) files are kept. This cannot be undone.",
   newBranch: "New branch\nName for the new branch (created from the current one):",
   createBranch: "Create new branch...",
@@ -146,31 +147,6 @@ export function refPills(refs: string): string[] {
     });
 }
 
-/**
- * git's relative date (%ar) for a commit time in Unix seconds, shortened like the Windows app:
- * "45s", "5m", "2h", "3d", "1w", "2mo", "1y 2mo", "6y". Same thresholds and rounding as git.
- */
-export function shortAge(at: number, nowMs = Date.now()): string {
-  let diff = Math.floor(nowMs / 1000) - at;
-  if (diff < 0) return "now";
-  if (diff < 90) return `${diff}s`;
-  diff = Math.floor((diff + 30) / 60); // minutes
-  if (diff < 90) return `${diff}m`;
-  diff = Math.floor((diff + 30) / 60); // hours
-  if (diff < 36) return `${diff}h`;
-  diff = Math.floor((diff + 12) / 24); // days
-  if (diff < 14) return `${diff}d`;
-  if (diff < 70) return `${Math.floor((diff + 3) / 7)}w`;
-  if (diff < 365) return `${Math.floor((diff + 15) / 30)}mo`;
-  if (diff < 1825) {
-    const total = Math.floor((diff * 12 * 2 + 365) / (365 * 2));
-    const years = Math.floor(total / 12);
-    const months = total % 12;
-    return months ? `${years}y ${months}mo` : `${years}y`;
-  }
-  return `${Math.floor((diff + 183) / 365)}y`;
-}
-
 /** One record of the history query (fields split by 0x1F, records by 0x1E). */
 export interface Commit {
   hash: string;
@@ -187,7 +163,8 @@ export const LOG_ARGS = [
   "--remotes",
   "--tags",
   "HEAD",
-  "--date-order",
+  // a merge sits right above the commits it brought in (VS Code's order)
+  "--topo-order",
   "-n",
   "400",
   "--pretty=format:%H%x1f%P%x1f%s%x1f%an%x1f%at%x1f%D%x1e",
@@ -202,4 +179,79 @@ export function parseLog(out: string): Commit[] {
       const [hash = "", parents = "", subject = "", author = "", at = "0", refs = ""] = r.split("\x1f");
       return { hash, parents, subject, author, at: Number(at) || 0, refs };
     });
+}
+
+// ---------- commit hover card ----------
+
+const RELATIVE = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+const STEPS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+  ["second", 60],
+  ["minute", 60],
+  ["hour", 24],
+  ["day", 7],
+  ["week", 4.35],
+  ["month", 12],
+  ["year", Number.POSITIVE_INFINITY],
+];
+
+/** "15 minutes ago", "yesterday", "3 months ago" for a commit time in seconds. */
+export function longAge(at: number, nowMs = Date.now()): string {
+  let n = Math.max(0, Math.floor(nowMs / 1000) - at);
+  for (const [unit, size] of STEPS) {
+    if (n < size) return RELATIVE.format(-Math.round(n), unit);
+    n /= size;
+  }
+  return "";
+}
+
+/** "October 28, 2026 at 9:13 PM" (the user's locale). */
+export function fullDate(at: number): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "long", timeStyle: "short" }).format(new Date(at * 1000));
+}
+
+export interface CommitStats {
+  files: number;
+  insertions: number;
+  deletions: number;
+}
+
+/** `git show --shortstat`'s " 14 files changed, 141 insertions(+), 22 deletions(-)"; null for none (merges). */
+export function parseShortstat(text: string): CommitStats | null {
+  const num = (re: RegExp) => Number(text.match(re)?.[1] ?? 0);
+  const files = num(/(\d+) files? changed/);
+  if (!files) return null;
+  return { files, insertions: num(/(\d+) insertions?\(\+\)/), deletions: num(/(\d+) deletions?\(-\)/) };
+}
+
+/**
+ * A commit body as paragraphs for the card: hard-wrapped lines of a paragraph join into one; bullet lists
+ * keep one line per bullet (a wrapped bullet's next lines join it).
+ */
+export function bodyParagraphs(body: string): string[] {
+  const bullet = /^\s*(?:[-*•]|\d+[.)])\s/;
+  return body
+    .replace(/\r/g, "")
+    .split(/\n\s*\n/)
+    .map((para) => {
+      const lines = para.split("\n").filter((l) => l.trim());
+      const out: string[] = [];
+      for (const line of lines) {
+        const last = out.length - 1;
+        if (last >= 0 && !bullet.test(line)) out[last] = `${out[last]} ${line.trim()}`;
+        else out.push(line.trim());
+      }
+      return out.join("\n");
+    })
+    .filter(Boolean);
+}
+
+/** The page of `hash` on the repository's site (GitLab spells it /-/commit/). */
+export function commitUrl(web: string, hash: string): string {
+  const gitlab = new URL(web).hostname.replace(/^www\./, "") === "gitlab.com";
+  return `${web}/${gitlab ? "-/commit" : "commit"}/${hash}`;
+}
+
+/** `git show` for the card: the full message, a 0x1E, then the short stat. */
+export function commitDetailArgs(hash: string): string[] {
+  return ["show", "--shortstat", "--format=%B%x1e", hash];
 }

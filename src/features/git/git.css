@@ -325,7 +325,7 @@
 }
 .git-graph path,
 .git-graph circle {
-  stroke-width: 1.6;
+  stroke-width: 1.5;
 }
 .git-halo {
   fill: var(--card);
@@ -338,14 +338,31 @@
   fill: var(--ctrl-hover);
 }
 .git-subject {
-  /* basis 0: the subject gives way before the ref pills do */
-  flex: 1 1 0;
+  /* as wide as its text; the author (basis 0) only gets the room left, and pills and age stay right */
+  flex: 0 1 auto;
   min-width: 70px;
+  padding-left: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 /* the last pill at the right; pills that do not fit wrap onto a hidden second line */
+.git-subject.head {
+  font-weight: 600;
+}
+.git-author {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-left: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list:focus-within .list-row.selected .git-author {
+  color: inherit;
+}
 .git-pills {
   flex: 0 1 auto;
   min-width: 0;
@@ -377,18 +394,6 @@
 }
 .list-row.selected .git-pill {
   background: rgb(255 255 255 / 0.24);
-  color: inherit;
-}
-.git-age {
-  flex: none;
-  width: 52px;
-  padding-left: 8px;
-  color: var(--muted);
-  font-size: 12px;
-  text-align: right;
-  white-space: nowrap;
-}
-.list:focus-within .list-row.selected .git-age {
   color: inherit;
 }
 
@@ -644,16 +649,6 @@ html.os-macos .git-diff {
   cursor: default;
 }
 
-/* Refresh: the icon turns while it runs */
-.git-hbtn.spinning svg {
-  animation: git-spin 0.6s linear infinite;
-}
-@keyframes git-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* Generate (top right of the message box): it pulses while Claude writes */
 .git-gen {
   position: absolute;
@@ -673,5 +668,100 @@ html.os-macos .git-diff {
 @keyframes git-gen-pulse {
   50% {
     opacity: 0.35;
+  }
+}
+
+/* ---------- commit card (hovering a history row) ---------- */
+#overlay-root > .git-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(520px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  border-radius: 9px;
+  background: var(--menu);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  font-size: 13px;
+  line-height: 1.45;
+  z-index: 50;
+}
+.git-card-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 14px 0;
+  color: var(--muted);
+}
+.git-card svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.git-card-author {
+  color: var(--git-modified);
+  font-weight: 600;
+  margin-right: 6px;
+}
+.git-card-subject {
+  padding: 6px 14px 0;
+  font-weight: 600;
+}
+.git-card-body {
+  margin: 6px 0 0;
+  padding: 0 14px;
+  white-space: pre-line;
+}
+.git-card-stats {
+  margin-top: 10px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--border);
+}
+.git-card-ins {
+  color: var(--git-added);
+}
+.git-card-del {
+  color: var(--git-deleted);
+}
+.git-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+}
+.git-card-head + .git-card-subject:last-child,
+.git-card-subject + .git-card-foot,
+.git-card-body + .git-card-foot {
+  margin-top: 10px;
+}
+.git-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--git-modified);
+  font: inherit;
+  cursor: pointer;
+}
+.git-card-link:hover {
+  background: var(--hover);
+}
+.git-card-sep {
+  color: var(--muted);
+}
+
+/* Refresh: the icon turns while it runs */
+.git-hbtn.spinning svg {
+  animation: git-spin 0.6s linear infinite;
+}
+@keyframes git-spin {
+  to {
+    transform: rotate(360deg);
   }
 }

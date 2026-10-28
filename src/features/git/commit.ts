@@ -32,6 +32,8 @@ export interface CommitBox {
   els: HTMLElement[];
   message(): string;
   clear(): void;
+  /** Puts `text` in the box (the box grows to fit). */
+  setMessage(text: string): void;
   focus(): void;
   setStaged(n: number): void;
   setBusy(busy: boolean): void;
@@ -92,6 +94,10 @@ export function createCommitBox(opts: CommitOptions): CommitBox {
     message: () => box.value,
     clear() {
       box.value = "";
+      grow();
+    },
+    setMessage(text) {
+      box.value = text;
       grow();
     },
     focus: () => box.focus(),
