@@ -229,8 +229,13 @@ class MenuSession {
   constructor(items: MenuItem[], opts: MenuOptions) {
     this.top = new Level(items, this, null, opts.label);
     this.mountTop(opts.at);
+    const anchor = "anchor" in opts.at ? opts.at.anchor : null;
     const outside = (e: Event) => {
-      if (!(e.target instanceof Node) || !this.contains(e.target)) this.close();
+      if (e.target instanceof Node && this.contains(e.target)) return;
+      this.close();
+      // a press on the button that opened it closes it, like a toggle: its click must not open it again
+      if (e.type === "pointerdown" && anchor && e.target instanceof Node && anchor.contains(e.target))
+        swallowClick(anchor);
     };
     const listen = <K extends keyof WindowEventMap>(type: K, fn: (e: WindowEventMap[K]) => void, capture = true) => {
       window.addEventListener(type, fn, capture);
@@ -296,6 +301,17 @@ class MenuSession {
     this.chosen?.run?.();
     this.resolve(this.chosen !== null);
   }
+}
+
+/** Drops the next click on `el` (the one finishing a press that closed its menu); gone after a second anyway. */
+function swallowClick(el: HTMLElement) {
+  const drop = (e: MouseEvent) => {
+    if (!(e.target instanceof Node) || !el.contains(e.target)) return;
+    e.stopPropagation();
+    e.preventDefault();
+  };
+  window.addEventListener("click", drop, { capture: true, once: true });
+  setTimeout(() => window.removeEventListener("click", drop, true), 1000);
 }
 
 let current: MenuSession | null = null;
