@@ -8,7 +8,7 @@
 use super::args::TASK_FLAG;
 use super::menu::{NEW_WINDOW, TRAY_NEW_SESSION};
 use windows::Win32::Storage::EnhancedStorage::PKEY_Title;
-use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
+use windows::Win32::System::Com::StructuredStorage::{PROPVARIANT, PropVariantClear};
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
 };
@@ -16,9 +16,9 @@ use windows::Win32::System::Variant::VT_LPWSTR;
 use windows::Win32::UI::Shell::Common::{IObjectArray, IObjectCollection};
 use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
 use windows::Win32::UI::Shell::{
-    DestinationList, EnumerableObjectCollection, ICustomDestinationList, IShellLinkW, ShellLink,
+    DestinationList, EnumerableObjectCollection, ICustomDestinationList, IShellLinkW, SHStrDupW, ShellLink,
 };
-use windows::core::{HSTRING, Interface, PWSTR};
+use windows::core::{HSTRING, Interface};
 
 const TASKS: [(&str, &str); 2] = [(TRAY_NEW_SESSION, "New Session"), (NEW_WINDOW, "New Window")];
 
@@ -69,14 +69,16 @@ unsafe fn link(exe: &HSTRING, id: &str, title: &str) -> windows::core::Result<IS
         link.SetPath(exe)?;
         link.SetArguments(&HSTRING::from(format!("{TASK_FLAG} {id}")))?;
         link.SetIconLocation(exe, 0)?;
-        // a task shows its PKEY_Title; SetValue copies the string, so it can stay borrowed
-        let title: Vec<u16> = title.encode_utf16().chain([0]).collect();
+        // a task shows its PKEY_Title. A VT_LPWSTR PROPVARIANT owns its string, which COM frees with
+        // CoTaskMemFree, so it must come from the COM allocator (SHStrDupW, as InitPropVariantFromString
+        // does); a string from Rust's allocator corrupts the heap (STATUS_HEAP_CORRUPTION at startup)
         let mut value = PROPVARIANT::default();
         (*value.Anonymous.Anonymous).vt = VT_LPWSTR;
-        (*value.Anonymous.Anonymous).Anonymous.pwszVal = PWSTR(title.as_ptr().cast_mut());
+        (*value.Anonymous.Anonymous).Anonymous.pwszVal = SHStrDupW(&HSTRING::from(title))?;
         let store: IPropertyStore = link.cast()?;
-        store.SetValue(&PKEY_Title, &value)?;
-        store.Commit()?;
+        let set = store.SetValue(&PKEY_Title, &value).and_then(|()| store.Commit());
+        PropVariantClear(&mut value)?;
+        set?;
         Ok(link)
     }
 }

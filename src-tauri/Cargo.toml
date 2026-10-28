@@ -1,6 +1,6 @@
 [package]
 name = "claude-manager"
-version = "0.1.1"
+version = "0.1.2"
 description = "Claude Code session manager"
 authors = ["xbuddhi"]
 edition = "2024"

@@ -2,6 +2,13 @@
 
 All notable changes to Claude Manager. Versions are `X.Y.Z`; each release is tagged `vX.Y.Z`.
 
+## 0.1.2 - 2026-10-28
+
+### Fixed
+
+- Windows: the app no longer crashes at startup (heap corruption while writing the taskbar Jump List). 0.1.1
+  cannot start on Windows, so it cannot update itself: install 0.1.2 from the release.
+
 ## 0.1.1 - 2026-10-28
 
 First cross-platform release: the Windows PowerShell app rebuilt with Tauri 2 for Windows and macOS.
