@@ -151,6 +151,10 @@ pub enum AppColors {
     #[default]
     Claude,
     Graphite,
+    Modern,
+    Mono,
+    Paper,
+    Linear,
 }
 
 /// A named sidebar group. It only references folders; nothing on disk moves.

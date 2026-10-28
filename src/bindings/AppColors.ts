@@ -3,4 +3,4 @@
 /**
  * Colours of the app itself (an interface skin); each has a dark and a light version (the theme picks one).
  */
-export type AppColors = "claude" | "graphite";
+export type AppColors = "claude" | "graphite" | "modern" | "mono" | "paper" | "linear";
