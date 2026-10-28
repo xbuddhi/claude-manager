@@ -30,6 +30,12 @@ const SKIP: [&str; 8] = [
     "DerivedData",
 ];
 
+/// A folder the CLAUDE.md search does not enter: hidden, or a build/dependency folder. Listing and the
+/// read check share it, so whatever is listed can be opened. Exact case, as the listing always matched.
+fn skipped(name: &str) -> bool {
+    name.starts_with('.') || SKIP.contains(&name)
+}
+
 #[derive(Serialize, TS, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -108,7 +114,7 @@ fn subfolder_memory(root: &Path) -> Vec<PathBuf> {
                 .filter(|e| {
                     let name = e.file_name();
                     let name = name.to_string_lossy();
-                    !name.starts_with('.') && !SKIP.contains(&name.as_ref())
+                    !skipped(&name)
                 })
                 .map(|e| e.path())
                 .collect();
@@ -249,7 +255,7 @@ fn subfolder_at(folder: &Path, want: &Path) -> Option<PathBuf> {
     for c in dirs {
         let Component::Normal(name) = c else { return None };
         let shown = name.to_string_lossy();
-        if shown.starts_with('.') || SKIP.iter().any(|s| s.eq_ignore_ascii_case(&shown)) {
+        if skipped(&shown) {
             return None;
         }
         dir.push(name);
@@ -442,6 +448,8 @@ mod tests {
             repo.join(".hidden"),
             repo.join("node_modules"),
             repo.join(".claude"),
+            // only the exact name is skipped: a capitalised one is listed, and must open too
+            repo.join("Build"),
         ] {
             fs::create_dir_all(&dir).unwrap();
             fs::write(dir.join("CLAUDE.md"), "x").unwrap();
@@ -460,7 +468,8 @@ mod tests {
 
         // everything listed is found, as listed
         let files = list(&profile, &repo);
-        assert_eq!(files.len(), 9);
+        assert_eq!(files.len(), 10);
+        assert!(files.iter().any(|f| f.path.contains("Build")));
         for f in &files {
             assert_eq!(find_listed(&profile, &repo, Path::new(&f.path)).as_ref(), Some(f));
         }

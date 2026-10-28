@@ -56,6 +56,8 @@ pub struct Index {
     scan_lock: Mutex<()>,
     generation: AtomicU64,
     ready: AtomicBool,
+    /// The file watcher runs, so new transcripts reach the index without a rescan.
+    watching: AtomicBool,
     pinned: Mutex<Vec<String>>,
     /// Projects grouped for the last few generations asked for, newest last.
     grouped: Mutex<VecDeque<Generation>>,
@@ -70,6 +72,7 @@ impl Index {
             scan_lock: Mutex::new(()),
             generation: AtomicU64::new(0),
             ready: AtomicBool::new(false),
+            watching: AtomicBool::new(false),
             pinned: Mutex::new(pinned),
             grouped: Mutex::new(VecDeque::new()),
             dirs: Mutex::new(Dirs {
@@ -312,8 +315,15 @@ impl Index {
 
     /// Transcripts of `profile` last written after `since` (path, last write). None until the first scan
     /// is done. Only listed sessions (with a user message) are included.
+    /// Whether the file watcher runs (it keeps the index current between scans).
+    pub fn set_watching(&self, on: bool) {
+        self.watching.store(on, Ordering::SeqCst);
+    }
+
+    /// Transcripts of `profile` written after `since`. None until the first scan, and while no file watcher
+    /// keeps the index current: a new session would then be missing, so the caller lists the disk instead.
     pub fn transcripts_since(&self, profile: &Path, since: SystemTime) -> Option<Vec<(PathBuf, SystemTime)>> {
-        if !self.ready.load(Ordering::SeqCst) {
+        if !self.ready.load(Ordering::SeqCst) || !self.watching.load(Ordering::SeqCst) {
             return None;
         }
         let since_ms = since.duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
@@ -653,6 +663,9 @@ mod tests {
         let index = Index::new(None, vec![]);
         assert!(index.transcripts_since(&profile, UNIX_EPOCH).is_none());
         index.full_scan(std::slice::from_ref(&profile), false, |_| {});
+        // scanned, but nothing keeps it current: the caller lists the disk
+        assert!(index.transcripts_since(&profile, UNIX_EPOCH).is_none());
+        index.set_watching(true);
         let all = index.transcripts_since(&profile, UNIX_EPOCH).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].0, file);

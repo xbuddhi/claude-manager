@@ -8,7 +8,7 @@ import { iconNode } from "../../core/icons";
 import { isMac } from "../../core/platform";
 import { button } from "../../ui/button";
 import { setTip } from "../../ui/tooltip";
-import { sessionText, sessionTextCached } from "../index-data/api";
+import { sessionText, sessionTextCached, sessionTextLast } from "../index-data/api";
 import { playIcon } from "./icons";
 import type { Scope } from "./model";
 import {
@@ -98,12 +98,14 @@ export function createDetails(opts: DetailsOptions): Details {
     render(scope, selected, level, profileName, hint) {
       const s = selected[0];
       const known = s ? sessionTextCached(s) : undefined;
-      const content = detailsFor(scope, selected, level, profileName, hint, known);
+      // until the current text arrives, the last one fetched (so a running session does not flick back to
+      // its short label on every write), else the label
+      const content = detailsFor(scope, selected, level, profileName, hint, known ?? (s && sessionTextLast(s)));
       text.textContent = content.text;
       meta.textContent = content.meta;
       const render = ++renders;
       if (s && known === undefined) {
-        // the label is up until the full text arrives (same text, so nothing flashes)
+        // the label or the last text is up until the current one arrives
         void sessionText(s).then((full) => {
           if (full !== null && render === renders) text.textContent = detailText(full, level);
         });

@@ -151,6 +151,14 @@ export function sessionTextCached(s: Session): string | undefined {
 }
 
 /**
+ * The text last fetched for this session, current or not. A running session changes on every write, and
+ * its text almost never does: the pane keeps showing this while the current one is fetched.
+ */
+export function sessionTextLast(s: Session): string | undefined {
+  return texts.get(textKey(s))?.text;
+}
+
+/**
  * The session's full text, fetched on demand (the index only carries the 140-character label); null when
  * the backend no longer lists it. Kept for the next look at the same session.
  */
@@ -170,6 +178,9 @@ export function sessionText(s: Session): Promise<string | null> {
 async function fetchText(s: Session): Promise<string | null> {
   const res = await call("session_text", { profile: s.profile, id: s.id }, { quiet: true });
   if (!res.ok || res.value === null) return null;
+  // a transcript read only partly may still show a different text once read to the end, at the same
+  // modified time: shown, not kept as current
+  if (s.partial) return res.value;
   const key = textKey(s);
   texts.delete(key);
   texts.set(key, { modified: s.modified, text: res.value });

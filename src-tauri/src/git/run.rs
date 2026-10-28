@@ -303,9 +303,11 @@ pub(super) fn execute(cmd: &mut Command, stdin: Option<&str>, limit: Duration) -
             text
         })
     };
+    // NUL-separated output (`-z`) is parsed record by record: a note would read as one more record
+    let nul = cmd.get_args().any(|a| a == "-z");
     let stdout = drain(
         child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>),
-        CUT_NOTE,
+        if nul { "" } else { CUT_NOTE },
     );
     let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>), "");
     // on a timeout the whole tree is ended: git may be waiting on an ssh or credential helper it started
@@ -525,6 +527,11 @@ mod tests {
         assert_eq!(out.stdout.len(), MAX_OUTPUT as usize + CUT_NOTE.len());
         assert!(out.stdout.ends_with(CUT_NOTE));
         assert_eq!(out.stderr.trim(), "err");
+        // NUL-separated output gets no note: it would read as one more record
+        let mut z = sh(&format!("head -c {} /dev/zero | tr '\\0' x", MAX_OUTPUT + 10));
+        z.arg("-z");
+        let out = execute(&mut z, None, Duration::from_secs(60)).unwrap();
+        assert_eq!(out.stdout.len(), MAX_OUTPUT as usize);
         let exact = format!("head -c {MAX_OUTPUT} /dev/zero | tr '\\0' x");
         let out = execute(&mut sh(&exact), None, Duration::from_secs(60)).unwrap();
         assert_eq!(out.stdout.len(), MAX_OUTPUT as usize);

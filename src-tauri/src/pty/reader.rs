@@ -117,7 +117,11 @@ impl Output {
     pub fn close(&self) {
         let mut st = self.state();
         st.closing = true;
-        st.wake = None;
+        // wake an idle pump so it goes back to waiting with a timeout: the exit can no longer wake it (the
+        // sender is dropped here), and a child's leftover process may keep the PTY open
+        if let Some(wake) = st.wake.take() {
+            let _ = wake.try_send(Vec::new());
+        }
         drop(st);
         self.changed.notify_all();
     }
@@ -163,6 +167,11 @@ impl Output {
 
     fn exited(&self) -> bool {
         self.state().exit.is_some()
+    }
+
+    /// Closed, or the child exited: nothing will wake an idle pump any more.
+    fn closing(&self) -> bool {
+        self.state().closing
     }
 
     fn wait_while_paused(&self) {
@@ -221,7 +230,7 @@ fn pump(rx: Receiver<Vec<u8>>, out: Arc<Output>) {
     loop {
         out.wait_while_paused();
         if !eof {
-            let got = if pending.is_empty() && exited_at.is_none() && !out.exited() {
+            let got = if pending.is_empty() && exited_at.is_none() && !out.closing() {
                 // idle: sleep until output comes, the PTY closes, or the exit wakes this up
                 rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
             } else if pending.is_empty() {
@@ -423,6 +432,18 @@ pub mod tests {
         out.set_exit(None);
         drop(tx);
         assert!(rec.wait(5, |r| r.exit() == Some(None)));
+    }
+
+    #[test]
+    fn a_closed_pump_still_ends_while_the_pty_stays_open() {
+        let (tx, out, rec) = pumped();
+        std::thread::sleep(Duration::from_millis(100)); // the pump is blocked on the queue now
+        out.close();
+        // a leftover process keeps the PTY open (tx kept): the exit must still end the pump
+        std::thread::sleep(Duration::from_millis(100));
+        out.set_exit(Some(0));
+        assert!(rec.wait(5, |r| r.exit() == Some(Some(0))));
+        drop(tx);
     }
 
     #[test]

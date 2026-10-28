@@ -7,8 +7,19 @@ import { store } from "../../core/store";
 const callMock = vi.fn();
 vi.mock("../../core/api", () => ({ call: (...args: unknown[]) => callMock(...args) }));
 
-const { countFor, fillCwd, findSession, mergeIndex, projectsFor, refreshIndex, resetIndexClient, visibleProjects } =
-  await import("./api");
+const {
+  countFor,
+  fillCwd,
+  findSession,
+  mergeIndex,
+  projectsFor,
+  refreshIndex,
+  resetIndexClient,
+  sessionText,
+  sessionTextCached,
+  sessionTextLast,
+  visibleProjects,
+} = await import("./api");
 
 const session = (id: string, profile: string, label = id): Session => ({
   id,
@@ -203,6 +214,31 @@ describe("index queries", () => {
     );
     await refreshIndex();
     expect([countFor(null), countFor("/home"), countFor("/work")]).toEqual([5, 5, 0]);
+  });
+});
+
+describe("session text", () => {
+  it("asks once for renders close together, and keeps the last text while a running session changes", async () => {
+    resetIndexClient();
+    callMock.mockReset();
+    callMock.mockResolvedValue(ok("full text"));
+    const s = session("t1", "/p");
+    const [a, b] = await Promise.all([sessionText(s), sessionText(s)]);
+    expect([a, b]).toEqual(["full text", "full text"]);
+    expect(callMock).toHaveBeenCalledTimes(1);
+    expect(sessionTextCached(s)).toBe("full text");
+    const later = { ...s, modified: 2 };
+    expect(sessionTextCached(later)).toBeUndefined();
+    expect(sessionTextLast(later)).toBe("full text");
+  });
+
+  it("does not keep the text of a transcript read only partly", async () => {
+    resetIndexClient();
+    callMock.mockReset();
+    callMock.mockResolvedValue(ok("first prompt"));
+    const s = { ...session("t2", "/p"), partial: true };
+    expect(await sessionText(s)).toBe("first prompt");
+    expect(sessionTextCached({ ...s, partial: false })).toBeUndefined();
   });
 });
 
