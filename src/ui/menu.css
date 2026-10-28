@@ -82,3 +82,28 @@
   font-size: 11.5px;
   font-weight: 600;
 }
+.menu-filter {
+  position: sticky;
+  top: -5px;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 30px;
+  margin: -5px 0 5px;
+  padding: 0 10px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 9px 9px 0 0;
+  background: var(--menu);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+.menu.has-filter {
+  scroll-padding-top: 36px;
+}
+.menu-empty {
+  padding: 6px 10px 6px 32px;
+  color: var(--muted);
+  font-size: 12px;
+}

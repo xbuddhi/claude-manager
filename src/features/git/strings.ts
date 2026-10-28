@@ -18,6 +18,8 @@ export const TEXT = {
   discardAll: "Discard ALL changes to tracked files?\n\nNew (untracked) files are kept. This cannot be undone.",
   newBranch: "New branch\nName for the new branch (created from the current one):",
   createBranch: "Create new branch...",
+  findBranch: "Find a branch",
+  switchConflicts: "This repository has merge conflicts\nResolve them, or abort the merge, before switching branches.",
   badBranch: "A branch name cannot start with '-'.",
 } as const;
 
@@ -99,6 +101,17 @@ export function successText(stdout: string, stderr: string): string {
 export function stashMessage(now = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())} from Claude Manager`;
+}
+
+/** The question before switching with uncommitted files (`changed`) or while Claude works in the folder. */
+export function switchAsk(name: string, changed: number, working: boolean): string {
+  const parts: string[] = [];
+  if (working) parts.push("Claude is working in this folder: its files change under it when you switch.");
+  if (changed)
+    parts.push(
+      `${changed} uncommitted file${changed === 1 ? "" : "s"}: bring them along (git stops, changing nothing, if they clash with ${name}), or stash them first (Pop latest stash in Source control brings them back).`,
+    );
+  return `Switch to ${name}?\n${parts.join("\n\n")}`;
 }
 
 /** Whitespace runs become "-" ("my feature" -> "my-feature"). */

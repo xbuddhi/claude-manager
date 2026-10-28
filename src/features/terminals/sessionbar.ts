@@ -1,5 +1,5 @@
 // The bar above the terminal in front: the session's folder (its full path; a click copies it), the git
-// branch there with how many files changed, and buttons to open the folder in VS Code, in Explorer / Finder,
+// branch there with how many files changed (a click lists the branches to switch to), and buttons to open the folder in VS Code, in Explorer / Finder,
 // or in Source control (Home, with that folder selected and the Source control view in front).
 
 import { call } from "../../core/api";
@@ -9,6 +9,7 @@ import { iconNode } from "../../core/icons";
 import { showView } from "../../core/views";
 import { button } from "../../ui/button";
 import { toast } from "../../ui/toast";
+import { showBranchSwitcher } from "../git/api";
 import { copyText, folderLabel, openFolder, openInCode } from "../os/api";
 import { folderKey } from "../sidebar/api";
 
@@ -29,7 +30,10 @@ export class SessionBar {
     this.path = h("button", { type: "button", class: "ses-path" });
     this.path.addEventListener("click", () => void this.copyPath());
     this.git = h("button", { type: "button", class: "ses-git", hidden: true }, iconNode("branch"), this.gitText);
-    this.git.addEventListener("click", () => this.sourceControl());
+    this.git.setAttribute("aria-haspopup", "menu");
+    this.git.addEventListener("click", () => {
+      if (this.dir) void showBranchSwitcher(this.git, this.dir, () => void this.readGit());
+    });
     const code = button({
       icon: "vscode",
       kind: "plain",
@@ -94,7 +98,7 @@ export class SessionBar {
     const changed = s.staged.length + s.changes.length;
     const sync = [s.ahead ? `↑${s.ahead}` : "", s.behind ? `↓${s.behind}` : ""].filter(Boolean).join(" ");
     this.gitText.textContent = [s.branch, changed ? `${changed} changed` : "", sync].filter(Boolean).join("  ·  ");
-    this.git.dataset.tip = "Open in Source control";
+    this.git.dataset.tip = "Switch branch";
     this.git.hidden = false;
   }
 

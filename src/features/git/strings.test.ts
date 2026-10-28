@@ -14,6 +14,7 @@ import {
   shortAge,
   stashMessage,
   successText,
+  switchAsk,
   syncLabel,
 } from "./strings";
 
@@ -102,5 +103,15 @@ describe("parseLog", () => {
       { hash: "b2", parents: "", subject: "Root", author: "Bo", at: 1_600_000_000, refs: "" },
     ]);
     expect(parseLog("")).toEqual([]);
+  });
+});
+
+describe("switchAsk", () => {
+  it("names what makes switching risky: changed files, Claude working, or both", () => {
+    expect(switchAsk("dev", 1, false)).toMatch(/^Switch to dev\?\n1 uncommitted file: bring them along/);
+    expect(switchAsk("dev", 0, true)).toBe(
+      "Switch to dev?\nClaude is working in this folder: its files change under it when you switch.",
+    );
+    expect(switchAsk("dev", 3, true).split("\n\n")).toHaveLength(2);
   });
 });

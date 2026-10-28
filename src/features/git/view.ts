@@ -16,7 +16,7 @@ import { textTabs } from "../../ui/texttabs";
 import { openInCode, trashName } from "../os/api";
 import { trashPath } from "../sessions/api";
 import { git } from "./backend";
-import { showBranchMenu, showRepoMenu } from "./branch";
+import { planSwitch, showBranchMenu, showRepoMenu } from "./branch";
 import { type Action, type ChangeRow, createChanges } from "./changes";
 import { createCommitBox } from "./commit";
 import { createDiff } from "./diff";
@@ -291,9 +291,10 @@ interface OpOptions {
 }
 
 /** Runs one git operation: ignored while another runs (no queue); then the lists refresh. */
-async function runOp(args: string[], busyText = "", opts: OpOptions = {}) {
+/** Runs git on the repository in view, shows how it went, and reloads. Resolves true when git succeeded. */
+async function runOp(args: string[], busyText = "", opts: OpOptions = {}): Promise<boolean> {
   const repo = st.repo;
-  if (!repo || st.busy) return;
+  if (!repo || st.busy) return false;
   setBusy(true);
   if (busyText) message(busyText);
   const out = await git(repo, args, { stdin: opts.stdin });
@@ -307,6 +308,7 @@ async function runOp(args: string[], busyText = "", opts: OpOptions = {}) {
   }
   void loadStatus();
   if (st.tab === "history") void loadHistory();
+  return out.code === 0;
 }
 
 function push() {
@@ -461,7 +463,15 @@ function headerActions(el: HTMLElement) {
     onBranchMenu: (anchor) => {
       if (!st.repo) return;
       void showBranchMenu(anchor, st.repo, {
-        switchTo: (name) => void runOp(["switch", name], `Switching to ${name}...`),
+        switchTo: async (name) => {
+          const repo = st.repo;
+          const steps = repo ? await planSwitch(repo, name) : null;
+          if (!steps || repo !== st.repo) return;
+          for (const args of steps) {
+            const ok = await runOp(args, args[0] === "stash" ? "Stashing..." : `Switching to ${name}...`);
+            if (!ok) break;
+          }
+        },
         create: (name) => void runOp(["switch", "-c", name], `Creating ${name}...`),
         error: (text) => message(text, true),
       });
