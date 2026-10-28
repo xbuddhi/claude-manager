@@ -47,7 +47,7 @@ function profileRow(dir: string | null, pick: (run: () => void) => void): HTMLEl
       attrs: { role: "menuitem" },
       onclick: () => pick(() => enterProfile(dir)),
     },
-    profileAvatar(dir, 32),
+    profileAvatar(dir, 32, undefined, true),
     h(
       "span",
       { class: "prof-pop-text" },
@@ -83,7 +83,7 @@ async function build(pick: (run: () => void) => void): Promise<HTMLElement> {
   const header = h(
     "div",
     { class: "prof-pop-head" },
-    profileAvatar(cur, 64),
+    profileAvatar(cur, 64, undefined, true),
     h("span", { class: "prof-pop-name" }, profileLabel(cur)),
     h("span", { class: "prof-pop-mail" }, profileEmail(cur)),
   );

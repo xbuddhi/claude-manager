@@ -80,11 +80,13 @@ describe("picker and avatar in the DOM", () => {
     mountAvatarButton(slot);
     const btn = slot.querySelector("button");
     expect(btn?.dataset.tip).toBe("work  -  me@work.test");
-    expect(btn?.querySelector(".avatar")?.textContent).toBe("W");
+    // the title bar's chip shows the companion, still
+    expect(btn?.querySelector(".avatar.prof-companion svg")).not.toBeNull();
+    expect(btn?.querySelector(".pc-breath")).toBeNull();
     expect(btn?.querySelector(".prof-chip-name")?.textContent).toBe("work");
     store.set({ currentProfile: null });
     expect(btn?.dataset.tip).toBe("All profiles  -  Sessions from every profile");
-    expect(btn?.querySelector(".avatar")?.textContent).toBe("All");
+    expect(btn?.querySelector(".avatar.prof-all svg")).not.toBeNull();
     expect(btn?.querySelector(".prof-chip-name")?.textContent).toBe("All profiles");
   });
 });

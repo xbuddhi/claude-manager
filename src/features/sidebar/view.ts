@@ -20,13 +20,14 @@ import { button } from "../../ui/button";
 import { createList, type List } from "../../ui/list";
 import { showMenu } from "../../ui/menu";
 import { toast } from "../../ui/toast";
+import { repoWebUrl } from "../git/api";
 import { projectsFor, refreshIndex } from "../index-data/api";
 import { liveDot } from "../live/api";
 import { attachDrag } from "./drag";
-import { deleteProject, groupOf, moveFolder, toggleFolders, toggleGroup } from "./groups";
+import { deleteProject, groupOf, isPinned, moveFolder, toggleFolders, toggleGroup } from "./groups";
 import { addMenu, deleteAllSessions, emptyMenu, folderMenu, groupMenu, newSession } from "./menus";
 import { S } from "./strings";
-import { buildTree, counts, FOLDERS_KEY, folderKey, folderList, type TreeRow, unlistedPaths } from "./tree";
+import { buildTree, counts, FOLDERS_KEY, folderKey, folderList, HIDDEN_KEY, type TreeRow, unlistedPaths } from "./tree";
 
 declare module "../../core/api" {
   interface Commands {
@@ -58,6 +59,8 @@ function treeInput(s: AppState) {
     kinds: s.sidebarKinds,
     groups: s.settings.groups,
     foldersCollapsed: s.settings.ungroupedCollapsed,
+    hidden: s.settings.hidden,
+    showHidden: s.sidebarShowHidden,
     showAll: new Set(s.sidebarShowAll),
     query: "", // search shows its results in its own dropdown; the tree stays as it is
     liveCwd: s.liveCwd,
@@ -87,7 +90,15 @@ function rebuild() {
   // the picker owns the subtitle while it shows ("Choose a profile"); the 60 s rebuild must not overwrite it
   if (s.index.loaded !== "loading" && s.screen !== "picker") {
     const c = counts(folderList(input));
-    setSubtitle(S.subtitle("", c.sessions, c.folders, s.settings.groups.length));
+    const projects = s.settings.groups.length;
+    setSubtitle(
+      [
+        { icon: chatIcon(), text: String(c.sessions) },
+        { icon: "folder", text: String(c.folders) },
+        ...(projects ? [{ icon: "group" as const, text: String(projects) }] : []),
+      ],
+      S.subtitle("", c.sessions, c.folders, projects),
+    );
   }
   void checkKinds(false);
 }
@@ -224,6 +235,14 @@ function updateRow(el: HTMLElement, r: TreeRow) {
   setIcon(chev, r.open === undefined ? undefined : r.open ? "chevronDown" : "chevron", () =>
     iconNode(r.open ? "chevronDown" : "chevron"),
   );
+  // rows are reused: the divider look is set (and cleared) on every row
+  el.classList.toggle("sb-divider", r.key === HIDDEN_KEY && !!r.open);
+  if (r.key === HIDDEN_KEY) {
+    el.setAttribute("aria-expanded", String(!!r.open));
+    if (r.open) el.dataset.tip = S.hiddenTip;
+    else delete el.dataset.tip;
+    return;
+  }
   if (r.kind === "section") {
     el.setAttribute("aria-label", r.key === FOLDERS_KEY ? r.title.replace(/\s+·\s+/, ", ") : r.title);
     if (r.open !== undefined) el.setAttribute("aria-expanded", String(r.open));
@@ -264,6 +283,7 @@ const rowOf = (node: Element | null): TreeRow | undefined => {
 function toggle(r: TreeRow) {
   if (r.kind === "group" && r.info) void toggleGroup(r.info.name);
   else if (r.kind === "section" && r.key === FOLDERS_KEY) void toggleFolders();
+  else if (r.kind === "more" && r.key === HIDDEN_KEY) store.set({ sidebarShowHidden: !store.get().sidebarShowHidden });
   else if (r.kind === "more" && r.group) {
     const name = r.group.toLowerCase();
     const showAll = store.get().sidebarShowAll;
@@ -288,9 +308,21 @@ function remove(r: TreeRow | undefined) {
 
 function openMenu(r: TreeRow | undefined, x: number, y: number) {
   const at = { x, y };
-  if (r?.kind === "folder" && r.folder) void showMenu(folderMenu(r.folder), { at, label: r.title });
-  else if (r?.kind === "group" && r.info) void showMenu(groupMenu(r.info, at), { at, label: r.title });
+  if (r?.kind === "folder" && r.folder) {
+    const f = r.folder;
+    // the repository's page is looked up as the menu opens (a quick local git call); a gone folder has none
+    void (f.missing ? Promise.resolve(null) : repoWebUrl(f.path)).then((web) =>
+      showMenu(folderMenu(f, web), { at, label: r.title }),
+    );
+  } else if (r?.kind === "group" && r.info) void showMenu(groupMenu(r.info, at), { at, label: r.title });
   else void showMenu(emptyMenu(), { at });
+}
+
+/** Sessions, in the title bar's counts (a speech bubble, like the session rows). */
+function chatIcon(): Element {
+  const t = document.createElement("template");
+  t.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg>`;
+  return t.content.firstElementChild as Element;
 }
 
 /** Selects a row by key, opening its project (and its full folder list) when it is inside one. */
@@ -301,6 +333,7 @@ function selectKey(key: string) {
     const path = key.slice(2);
     wanted = folderKey(path, os);
     const g = groupOf(settings().groups, path, os);
+    if (!g && isPinned(settings().hidden, path, os)) store.set({ sidebarShowHidden: true });
     if (g) {
       if (g.collapsed) void toggleGroup(g.name, false);
       const name = g.name.toLowerCase();
@@ -431,6 +464,8 @@ export function mountView(slot: HTMLElement): void {
         s.settings.pinned,
         s.settings.groups,
         s.settings.ungroupedCollapsed,
+        s.settings.hidden,
+        s.sidebarShowHidden,
         s.liveCwd,
         s.platform.os,
         s.sidebarShowAll,

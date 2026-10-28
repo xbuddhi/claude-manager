@@ -7,6 +7,14 @@
   font-size: 12px;
   white-space: nowrap;
 }
+.git-sync.unpublished {
+  display: grid;
+  place-items: center;
+}
+.git-sync svg {
+  width: 15px;
+  height: 15px;
+}
 .git-repo,
 .git-branch {
   height: 28px;
@@ -25,16 +33,22 @@
   display: flex;
   gap: 2px;
 }
+.git-hbtn {
+  position: relative;
+}
 .git-hbtn .git-num:empty {
   display: none;
 }
-.git-hbtn:has(.git-num:not(:empty)) {
-  width: auto;
-  padding: 0 8px 0 7px;
-  gap: 4px;
-}
+/* a small badge at the icon's top right corner; the button keeps its width */
 .git-num {
-  font-size: 12px;
+  position: absolute;
+  top: 3px;
+  left: calc(50% + 4px);
+  font-size: 9.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  pointer-events: none;
 }
 
 /* ---------- layout ---------- */
@@ -73,6 +87,61 @@
   min-width: 0;
   display: flex;
 }
+/* ---------- a narrow column (createSourceControlPanel): the head's controls, then lists over the diff ---------- */
+.git-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.git-panel-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 2px 4px 2px 10px;
+  overflow: hidden;
+}
+/* the controls that do not fit give way first: the count, then the branch name shortens */
+.git-panel-head .git-count {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-panel-head .git-hbtns {
+  margin-left: auto;
+}
+.git-panel-head .git-repo,
+.git-panel-head .git-branch {
+  height: 24px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.git-panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.git-panel .git-main {
+  flex-direction: column;
+}
+.git-panel .git-left {
+  flex: 1 1 50%;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+.git-panel .git-divider {
+  width: auto;
+  height: 1px;
+}
+.git-panel .git-right {
+  flex: 1 1 50%;
+  min-height: 0;
+}
 .git-status-line {
   flex: none;
   height: 26px;
@@ -91,9 +160,10 @@
 
 /* ---------- commit box ---------- */
 .git-msg {
+  position: relative;
   flex: none;
   margin: 12px 12px 0;
-  padding: 0 8px 0 10px;
+  padding: 0 32px 0 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--alt);
@@ -310,7 +380,7 @@
 }
 .git-graph path,
 .git-graph circle {
-  stroke-width: 1.6;
+  stroke-width: 1.5;
 }
 .git-halo {
   fill: var(--card);
@@ -323,14 +393,31 @@
   fill: var(--ctrl-hover);
 }
 .git-subject {
-  /* basis 0: the subject gives way before the ref pills do */
-  flex: 1 1 0;
+  /* as wide as its text; the author (basis 0) only gets the room left, and pills and age stay right */
+  flex: 0 1 auto;
   min-width: 70px;
+  padding-left: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 /* the last pill at the right; pills that do not fit wrap onto a hidden second line */
+.git-subject.head {
+  font-weight: 600;
+}
+.git-author {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-left: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list:focus-within .list-row.selected .git-author {
+  color: inherit;
+}
 .git-pills {
   flex: 0 1 auto;
   min-width: 0;
@@ -362,18 +449,6 @@
 }
 .list-row.selected .git-pill {
   background: rgb(255 255 255 / 0.24);
-  color: inherit;
-}
-.git-age {
-  flex: none;
-  width: 52px;
-  padding-left: 8px;
-  color: var(--muted);
-  font-size: 12px;
-  text-align: right;
-  white-space: nowrap;
-}
-.list:focus-within .list-row.selected .git-age {
   color: inherit;
 }
 
@@ -490,7 +565,7 @@ html.os-macos .git-diff {
   width: 38px;
   text-align: right;
 }
-/* syntax colours (highlight.ts: syn-* classes): Monokai Pro, the Spectrum filter in the dark theme and
+/* syntax colours (highlight.ts: syn-* classes, in diffs and any .syn-code element): Monokai Pro, the Spectrum filter in the dark theme and
    Monokai Pro Light in the light one */
 :root {
   --syn-red: #e14775;
@@ -514,52 +589,52 @@ html.os-macos .git-diff {
   --syn-comment-strong: #a8a5ad;
   --syn-punct: #8b888f;
 }
-.git-dl .syn-keyword,
-.git-dl .syn-operator,
-.git-dl .syn-tag {
+:is(.git-dl, .syn-code) .syn-keyword,
+:is(.git-dl, .syn-code) .syn-operator,
+:is(.git-dl, .syn-code) .syn-tag {
   color: var(--syn-red);
 }
-.git-dl .syn-storage,
-.git-dl .syn-type,
-.git-dl .syn-attribute,
-.git-dl .syn-link {
+:is(.git-dl, .syn-code) .syn-storage,
+:is(.git-dl, .syn-code) .syn-type,
+:is(.git-dl, .syn-code) .syn-attribute,
+:is(.git-dl, .syn-code) .syn-link {
   color: var(--syn-cyan);
   font-style: italic;
 }
-.git-dl .syn-type {
+:is(.git-dl, .syn-code) .syn-type {
   font-style: normal;
 }
-.git-dl .syn-string,
-.git-dl .syn-heading {
+:is(.git-dl, .syn-code) .syn-string,
+:is(.git-dl, .syn-code) .syn-heading {
   color: var(--syn-yellow);
 }
-.git-dl .syn-constant,
-.git-dl .syn-escape,
-.git-dl .syn-meta {
+:is(.git-dl, .syn-code) .syn-constant,
+:is(.git-dl, .syn-code) .syn-escape,
+:is(.git-dl, .syn-code) .syn-meta {
   color: var(--syn-purple);
 }
-.git-dl .syn-function {
+:is(.git-dl, .syn-code) .syn-function {
   color: var(--syn-green);
 }
-.git-dl .syn-comment {
+:is(.git-dl, .syn-code) .syn-comment {
   color: var(--syn-comment);
   font-style: italic;
 }
-.git-dl .syn-punct {
+:is(.git-dl, .syn-code) .syn-punct {
   color: var(--syn-punct);
 }
-.git-dl .syn-heading,
-.git-dl .syn-strong {
+:is(.git-dl, .syn-code) .syn-heading,
+:is(.git-dl, .syn-code) .syn-strong {
   font-weight: 600;
 }
-.git-dl .syn-emphasis {
+:is(.git-dl, .syn-code) .syn-emphasis {
   font-style: italic;
 }
-.git-dl .syn-param {
+:is(.git-dl, .syn-code) .syn-param {
   color: var(--syn-orange);
   font-style: italic;
 }
-.git-dl .syn-member {
+:is(.git-dl, .syn-code) .syn-member {
   color: var(--syn-purple);
 }
 /* the words that changed inside a replaced line */
@@ -627,4 +702,121 @@ html.os-macos .git-diff {
   white-space: pre-line;
   overflow-wrap: anywhere;
   cursor: default;
+}
+
+/* Generate (top right of the message box): it pulses while Claude writes */
+.git-gen {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  width: 26px;
+  height: 26px;
+  color: var(--muted);
+}
+.git-gen:hover:not(:disabled) {
+  color: var(--accent);
+}
+.git-gen.working {
+  color: var(--accent);
+  animation: git-gen-pulse 1s ease-in-out infinite;
+}
+@keyframes git-gen-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---------- commit card (hovering a history row) ---------- */
+#overlay-root > .git-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(520px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  border-radius: 9px;
+  background: var(--menu);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  font-size: 13px;
+  line-height: 1.45;
+  z-index: 50;
+}
+.git-card-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 14px 0;
+  color: var(--muted);
+}
+.git-card svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.git-card-author {
+  color: var(--git-modified);
+  font-weight: 600;
+  margin-right: 6px;
+}
+.git-card-subject {
+  padding: 6px 14px 0;
+  font-weight: 600;
+}
+.git-card-body {
+  margin: 6px 0 0;
+  padding: 0 14px;
+  white-space: pre-line;
+}
+.git-card-stats {
+  margin-top: 10px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--border);
+}
+.git-card-ins {
+  color: var(--git-added);
+}
+.git-card-del {
+  color: var(--git-deleted);
+}
+.git-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+}
+.git-card-head + .git-card-subject:last-child,
+.git-card-subject + .git-card-foot,
+.git-card-body + .git-card-foot {
+  margin-top: 10px;
+}
+.git-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--git-modified);
+  font: inherit;
+  cursor: pointer;
+}
+.git-card-link:hover {
+  background: var(--hover);
+}
+.git-card-sep {
+  color: var(--muted);
+}
+
+/* Refresh: the icon turns while it runs */
+.git-hbtn.spinning svg {
+  animation: git-spin 0.6s linear infinite;
+}
+@keyframes git-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

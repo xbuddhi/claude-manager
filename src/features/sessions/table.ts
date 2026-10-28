@@ -48,6 +48,8 @@ export interface Table {
   el: HTMLElement;
   list: List<Session>;
   setRows(rows: Session[], mode: Mode, oneProfile?: boolean): void;
+  /** The count badge after the Session column's title (null hides it); `tip` says what it counts. */
+  setCount(n: number | null, tip?: string): void;
   /** Redraws the visible rows (live levels or the clock changed). */
   refresh(): void;
 }
@@ -55,6 +57,7 @@ export interface Table {
 export function createTable(opts: TableOptions): Table {
   let mode: Mode = "folder";
   const head = h("div", { class: "ses-head", attrs: { role: "row" } });
+  const count = h("span", { class: "ses-badge", hidden: true });
 
   const selectedAt = (i: number) => {
     const row = list.rows()[i];
@@ -129,6 +132,7 @@ export function createTable(opts: TableOptions): Table {
     head.replaceChildren(
       ...COLUMNS[mode].map((t) => h("span", { class: "ses-cell", attrs: { role: "columnheader" } }, t)),
     );
+    head.firstElementChild?.append(count);
   }
   setMode("folder", false);
 
@@ -138,6 +142,12 @@ export function createTable(opts: TableOptions): Table {
     setRows(rows, next, oneProfile = false) {
       setMode(next, oneProfile);
       list.setRows(rows);
+    },
+    setCount(n, tip) {
+      count.hidden = n === null;
+      count.textContent = String(n ?? "");
+      if (tip) count.dataset.tip = tip;
+      else delete count.dataset.tip;
     },
     refresh: () => list.refresh(),
   };

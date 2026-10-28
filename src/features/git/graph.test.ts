@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type GraphSeg, graphSvg, graphWidth, laneX, layoutGraph } from "./graph";
 
-// Expected rows worked out by hand from MacUI.cs GitGraph.Layout.
+// Expected rows worked out by hand: lanes run on until their parent's row and bend into its dot there.
 const seg = (x1: number, y1: 0 | 1 | 2, x2: number, y2: 0 | 1 | 2, color: number): GraphSeg => ({
   x1,
   y1,
@@ -39,9 +39,10 @@ describe("layoutGraph", () => {
       lanes: 2,
       merge: false,
       head: false,
-      segs: [seg(0, 0, 0, 2, 0), seg(1, 0, 1, 1, 1), seg(1, 1, 0, 2, 0)],
+      segs: [seg(0, 0, 0, 2, 0), seg(1, 0, 1, 1, 1), seg(1, 1, 1, 2, 1)],
     });
-    expect(g.rows[2]?.segs).toEqual([seg(0, 0, 0, 1, 0), seg(0, 1, 0, 2, 0)]);
+    // both lanes wait for a: they meet at its dot
+    expect(g.rows[2]?.segs).toEqual([seg(0, 0, 0, 1, 0), seg(1, 0, 0, 1, 1), seg(0, 1, 0, 2, 0)]);
     expect(g.rows[3]?.segs).toEqual([seg(0, 0, 0, 1, 0)]);
   });
 
@@ -51,12 +52,13 @@ describe("layoutGraph", () => {
     expect(g.rows.map((r) => [r.lane, r.color, r.lanes, r.merge])).toEqual([
       [0, 0, 3, true],
       [2, 2, 3, false],
-      [1, 1, 2, false],
-      [0, 0, 1, false],
+      [1, 1, 3, false],
+      [0, 0, 3, false],
     ]);
     expect(g.rows[0]?.segs).toEqual([seg(0, 1, 0, 2, 0), seg(0, 1, 1, 2, 1), seg(0, 1, 2, 2, 2)]);
-    expect(g.rows[1]?.segs).toEqual([seg(0, 0, 0, 2, 0), seg(1, 0, 1, 2, 1), seg(2, 0, 2, 1, 2), seg(2, 1, 0, 2, 0)]);
-    expect(g.rows[2]?.segs).toEqual([seg(0, 0, 0, 2, 0), seg(1, 0, 1, 1, 1), seg(1, 1, 0, 2, 0)]);
+    expect(g.rows[1]?.segs).toEqual([seg(0, 0, 0, 2, 0), seg(1, 0, 1, 2, 1), seg(2, 0, 2, 1, 2), seg(2, 1, 2, 2, 2)]);
+    expect(g.rows[2]?.segs).toEqual([seg(0, 0, 0, 2, 0), seg(1, 0, 1, 1, 1), seg(2, 0, 2, 2, 2), seg(1, 1, 1, 2, 1)]);
+    expect(g.rows[3]?.segs).toEqual([seg(0, 0, 0, 1, 0), seg(1, 0, 0, 1, 1), seg(2, 0, 0, 1, 2)]);
   });
 
   it("starts a new lane for a second branch tip", () => {
@@ -67,7 +69,7 @@ describe("layoutGraph", () => {
       lanes: 2,
       merge: false,
       head: false,
-      segs: [seg(0, 0, 0, 2, 0), seg(1, 1, 0, 2, 0)],
+      segs: [seg(0, 0, 0, 2, 0), seg(1, 1, 1, 2, 1)],
     });
     expect(g.rows[2]?.lane).toBe(0);
   });
@@ -79,20 +81,21 @@ describe("layoutGraph", () => {
 
 describe("graph drawing", () => {
   it("places lanes like the Windows app", () => {
-    expect(laneX(0)).toBe(22);
-    expect(laneX(2)).toBe(50);
-    expect(graphWidth(0)).toBe(38);
-    expect(graphWidth(3)).toBe(66);
+    expect(laneX(0)).toBe(10);
+    expect(laneX(2)).toBe(32);
+    expect(graphWidth(0)).toBe(19);
+    expect(graphWidth(3)).toBe(41);
   });
 
   it("draws curves between lanes, rings for merges and a dot in a ring for HEAD", () => {
     const g = layoutGraph(["m", "x", "a"], ["a x", "a", ""], [true, false, false]);
     const head = graphSvg(g.rows[0] as never, 60);
-    expect(head).toContain('<path d="M22 17L22 34" stroke="var(--lane-1)"/>');
-    expect(head).toContain('<path d="M22 17C22 25.5 36 25.5 36 34" stroke="var(--lane-2)"/>');
-    expect(head).toContain('r="5.5" stroke="var(--lane-1)" fill="none"');
-    expect(head).toContain(`r="${5.5 / 2.2}" fill="var(--lane-1)"`);
+    expect(head).toContain('<path d="M10 12L10 24" stroke="var(--lane-1)"/>');
+    // out of the merge dot: across, a rounded corner, then down the other lane
+    expect(head).toContain('<path d="M10 12L15 12Q21 12 21 18L21 24" stroke="var(--lane-2)"/>');
+    expect(head).toContain('r="4.5" stroke="var(--lane-1)" fill="none"');
+    expect(head).toContain('r="2" fill="var(--lane-1)"');
     const plain = graphSvg(g.rows[2] as never, 60);
-    expect(plain).toContain('r="4" fill="var(--lane-1)"');
+    expect(plain).toContain('r="3.5" fill="var(--lane-1)"');
   });
 });

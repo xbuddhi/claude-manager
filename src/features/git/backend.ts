@@ -14,6 +14,10 @@ declare module "../../core/api" {
     find_repos: { args: { path: string }; result: string[] };
     /** An untracked file of `repo` for the diff view. */
     read_new_file: { args: { repo: string; path: string }; result: NewFile };
+    /** The https page of the repository a folder is in, from its remote; null without one. */
+    git_web_url: { args: { dir: string }; result: string | null };
+    /** A commit message for what a commit of `repo` would take, by `claude -p` (Sonnet) with `profile`. */
+    git_commit_message: { args: { repo: string; profile: string | null }; result: string };
   }
 }
 

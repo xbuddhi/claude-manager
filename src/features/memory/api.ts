@@ -2,6 +2,9 @@
 
 import type { MemoryFile } from "../../bindings/MemoryFile";
 
+/** Markdown as a document element (class `mem-doc`); links go to `onLink`. */
+export { renderMarkdown } from "./markdown";
+
 declare module "../../core/api" {
   interface Commands {
     /** Claude Code's memory files for `folder` under the profile `profile`, broadest first. */

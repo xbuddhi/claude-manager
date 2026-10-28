@@ -107,11 +107,27 @@ html.window-inactive .tb-cap:not(:hover) {
   display: none;
 }
 .tb-sub {
+  /* hover for the counts' tooltip; a press still drags the window ("deep" drag region, plain text) */
+  pointer-events: auto;
+  width: fit-content;
+  max-width: 100%;
   color: var(--muted);
   font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.tb-sub-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tb-sub-item svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0.85;
 }
 #tb-search-slot {
   min-width: 0;

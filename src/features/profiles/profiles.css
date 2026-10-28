@@ -84,6 +84,31 @@ html.prof-picker-open #tb-profile-slot {
   white-space: nowrap;
   text-align: center;
 }
+.prof-card > span.prof-card-edit {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.15s var(--ease);
+}
+.prof-card:hover > .prof-card-edit,
+.prof-card:focus-visible > .prof-card-edit {
+  opacity: 1;
+}
+.prof-card > span.prof-card-edit:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.prof-card-edit svg {
+  width: 14px;
+  height: 14px;
+}
 .prof-card-name {
   margin-top: 10px;
   height: 24px;
@@ -100,6 +125,27 @@ html.prof-picker-open #tb-profile-slot {
 }
 .prof-card-mail {
   margin-top: 2px;
+}
+.prof-card-hidden {
+  opacity: 0.5;
+}
+.prof-card-hidden:hover,
+.prof-card-hidden:focus-visible {
+  opacity: 0.85;
+}
+.prof-more {
+  margin-top: 6px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.prof-more:hover {
+  background: var(--hover);
 }
 .prof-toggle {
   margin-top: 26px;
@@ -270,4 +316,350 @@ button.prof-pop-row:focus-visible,
 .prof-pop-side {
   color: var(--muted);
   font-size: 12px;
+}
+
+/* ---------- companions (companions.ts) ----------
+   No backdrop and no ring: the companion stands on its own. Each breathes and blinks on its own clock,
+   then has one slow habit. Only the picker and the open profile menu draw them with the animation classes. */
+.avatar.prof-companion,
+.avatar.prof-companion.ring,
+:hover > .avatar.prof-companion,
+.avatar.prof-companion:hover {
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+.prof-companion > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.prof-companion > svg {
+  overflow: visible;
+}
+/* base.css strokes every svg in the text colour for line icons: that traced a white outline round them */
+svg.pc {
+  stroke: none;
+}
+.pc [class] {
+  transform-box: view-box;
+}
+.pc .pc-breath {
+  transform-origin: 50px 86px;
+  animation: pc-breath 4.6s ease-in-out infinite;
+}
+.pc .pc-blink {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: pc-blink var(--pc-b, 5s) var(--pc-bd, 0s) infinite;
+}
+@keyframes pc-breath {
+  0%,
+  100% {
+    transform: scale(1, 1);
+  }
+  50% {
+    transform: scale(1.012, 1.018);
+  }
+}
+@keyframes pc-blink {
+  0%,
+  93%,
+  100% {
+    transform: scaleY(1);
+  }
+  96% {
+    transform: scaleY(0.1);
+  }
+}
+/* SE: bobs to the music in its headphones */
+.pc .pc-groove {
+  transform-origin: 50px 86px;
+  animation: pc-groove 1.9s ease-in-out infinite alternate;
+}
+@keyframes pc-groove {
+  from {
+    transform: rotate(-2.5deg);
+  }
+  to {
+    transform: rotate(2.5deg);
+  }
+}
+/* QA: now and then leans in to look closer; the lens glints */
+.pc .pc-lean {
+  transform-origin: 50px 86px;
+  animation: pc-lean 7s ease-in-out infinite;
+}
+.pc .pc-glint {
+  animation: pc-glint 7s ease-in-out infinite;
+}
+@keyframes pc-lean {
+  0%,
+  62%,
+  100% {
+    transform: scale(1);
+  }
+  70%,
+  84% {
+    transform: scale(1.045) translateY(-1px);
+  }
+}
+@keyframes pc-glint {
+  0%,
+  68%,
+  86%,
+  100% {
+    opacity: 0;
+  }
+  74%,
+  80% {
+    opacity: 1;
+  }
+}
+/* PM: its flag sways in a slow breeze */
+.pc .pc-flag {
+  transform-box: fill-box;
+  transform-origin: 0% 100%;
+  animation: pc-flag 3.8s ease-in-out infinite alternate;
+}
+@keyframes pc-flag {
+  from {
+    transform: rotate(-5deg);
+  }
+  to {
+    transform: rotate(6deg);
+  }
+}
+/* UX: daydreams, eyes drifting up */
+.pc .pc-dream {
+  animation: pc-dream 8s ease-in-out infinite;
+}
+@keyframes pc-dream {
+  0%,
+  35%,
+  100% {
+    transform: translate(0, 0);
+  }
+  45%,
+  75% {
+    transform: translate(-1.6px, -1.8px);
+  }
+}
+/* Ops: sleepy on call; the eyelids drift down, then it snaps awake */
+.pc .pc-lids {
+  animation: pc-lids 9s ease-in infinite;
+}
+@keyframes pc-lids {
+  0%,
+  10% {
+    transform: translateY(-9px);
+  }
+  80% {
+    transform: translateY(-2.5px);
+  }
+  84%,
+  100% {
+    transform: translateY(-9px);
+  }
+}
+/* Data: the chart on its tummy moves and it glances up */
+.pc .pc-bar {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: pc-bar 3.2s ease-in-out infinite alternate;
+}
+.pc .pc-bar.pc-b2 {
+  animation-delay: -1.1s;
+}
+.pc .pc-bar.pc-b3 {
+  animation-delay: -2.2s;
+}
+.pc .pc-lookup {
+  animation: pc-lookup 6s ease-in-out infinite;
+}
+@keyframes pc-bar {
+  from {
+    transform: scaleY(0.55);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes pc-lookup {
+  0%,
+  35%,
+  100% {
+    transform: translateY(0);
+  }
+  50%,
+  72% {
+    transform: translateY(-1.8px);
+  }
+}
+/* Sec: the visor's eyes keep a slow watch, side to side */
+.pc .pc-watch {
+  animation: pc-watch 7s ease-in-out infinite;
+}
+@keyframes pc-watch {
+  0%,
+  20%,
+  100% {
+    transform: translateX(0);
+  }
+  32%,
+  48% {
+    transform: translateX(3px);
+  }
+  60%,
+  76% {
+    transform: translateX(-3px);
+  }
+}
+/* All profiles: the huddle bobs, each on its own beat */
+.pc .pc-huddle {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: pc-huddle 2.6s ease-in-out infinite alternate;
+}
+.pc .pc-h2 {
+  animation-delay: -0.9s;
+}
+.pc .pc-h3 {
+  animation-delay: -1.7s;
+  animation-duration: 3.1s;
+}
+@keyframes pc-huddle {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-3px);
+  }
+}
+/* Lead: the spark on its forehead turns slowly; a small nod now and then */
+.pc .pc-turn {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: pc-turn 18s linear infinite;
+}
+.pc .pc-nod {
+  transform-origin: 50px 86px;
+  animation: pc-nod 8s ease-in-out infinite;
+}
+@keyframes pc-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pc-nod {
+  0%,
+  78%,
+  100% {
+    transform: rotate(0);
+  }
+  82% {
+    transform: rotate(3deg) translateY(1px);
+  }
+  86% {
+    transform: rotate(0);
+  }
+}
+/* BE: content, eyes closed, rocking gently */
+.pc .pc-rock {
+  transform-origin: 50px 86px;
+  animation: pc-rock 5.5s ease-in-out infinite alternate;
+}
+@keyframes pc-rock {
+  from {
+    transform: rotate(-1.6deg);
+  }
+  to {
+    transform: rotate(1.6deg);
+  }
+}
+/* FE: the headband's tail flutters; a little hop now and then */
+.pc .pc-flutter {
+  transform-box: fill-box;
+  transform-origin: 0% 50%;
+  animation: pc-flutter 0.9s ease-in-out infinite alternate;
+}
+.pc .pc-hop {
+  transform-origin: 50px 86px;
+  animation: pc-hop 6.5s ease-in-out infinite;
+}
+@keyframes pc-flutter {
+  from {
+    transform: rotate(-8deg);
+  }
+  to {
+    transform: rotate(8deg);
+  }
+}
+@keyframes pc-hop {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+  }
+  85% {
+    transform: translateY(-3px) scale(0.98, 1.02);
+  }
+  90% {
+    transform: translateY(0) scale(1.02, 0.98);
+  }
+  93% {
+    transform: scale(1);
+  }
+}
+
+/* ---------- companion chooser (chooser.ts) ---------- */
+.prof-chooser {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.prof-chooser-title {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.prof-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 112px);
+  gap: 6px;
+}
+.prof-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.prof-pick:hover {
+  background: var(--ctrl-hover);
+}
+.prof-pick.on {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.prof-pick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.prof-pick-pic > svg {
+  display: block;
+  overflow: visible;
+}
+.prof-pick-name {
+  font-size: 11.5px;
+  text-align: center;
+  line-height: 1.25;
 }

@@ -6,10 +6,11 @@ import { describeError, log } from "../../core/log";
 import { samePath } from "../../core/paths";
 import { isMac } from "../../core/platform";
 import { profileName, profiles } from "../../core/profiles";
-import { updateSettings } from "../../core/settings";
+import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
-import { avatar } from "../../ui/avatar";
+import { input } from "../../ui/dialog";
 import { toast } from "../../ui/toast";
+import { companionFor, companionSvg, huddleSvg } from "./companions";
 import { T } from "./strings";
 
 /** Avatar colours, picked by the sum of the name's UTF-16 code units (as the Windows app). White ink. */
@@ -34,6 +35,35 @@ export function profileLabel(dir: string | null): string {
   return dir === null ? "All profiles" : profileName(dir);
 }
 
+/**
+ * Asks for a new name for the profile `dir`. Only the app's name changes (settings.profileNames); the
+ * folder and Claude Code's own settings stay as they are. An empty name brings back the folder's name.
+ */
+export async function renameProfile(dir: string): Promise<void> {
+  const typed = await input(T.renamePrompt, { value: profileName(dir) });
+  if (typed === null) return;
+  const name = typed.trim();
+  const names = { ...settings().profileNames };
+  if (name) names[dir] = name;
+  else delete names[dir];
+  await updateSettings({ profileNames: names });
+}
+
+/**
+ * Removes the profile from the app (picker, menus, "All profiles"); its folder, sessions and sign-in stay.
+ * The picker's "Show hidden profiles" brings it back. A profile in view gives way to All profiles.
+ */
+export async function hideProfile(dir: string): Promise<void> {
+  const hidden = settings().hiddenProfiles;
+  if (hidden.includes(dir)) return;
+  if (store.get().currentProfile === dir) store.set({ currentProfile: null });
+  await updateSettings({ hiddenProfiles: [...hidden, dir] });
+}
+
+export async function showProfile(dir: string): Promise<void> {
+  await updateSettings({ hiddenProfiles: settings().hiddenProfiles.filter((d) => d !== dir) });
+}
+
 /** The profile a new session starts with: the one in view, else settings.account, else the first one. */
 export function startProfile(): string | null {
   const s = store.get();
@@ -50,11 +80,26 @@ export function profileEmail(dir: string | null): string {
 }
 
 /** A profile's round picture: coloured with white ink, or control-coloured with text ink for all profiles. */
-export function profileAvatar(dir: string | null, size: number, label?: string): HTMLElement {
-  const name = dir === null ? null : profileName(dir);
-  const el = avatar({ text: profileInitial(name), color: profileColor(name), size, label });
-  if (dir === null) el.classList.add("prof-avatar-all");
+/**
+ * A profile's picture: its companion (companions.ts); "All profiles" is three of them huddled. It moves
+ * only with `animate` (the picker and the open profile menu); the title bar's chip and menus stay still.
+ */
+export function profileAvatar(dir: string | null, size: number, label?: string, animate = false): HTMLElement {
+  const moving = animate && size >= 24;
+  const el = document.createElement("span");
+  el.className = `avatar prof-companion${dir === null ? " prof-all" : ""}`;
+  el.style.width = el.style.height = `${size}px`;
+  // numbers and fixed names only (companions.ts)
+  el.innerHTML = dir === null ? huddleSvg(size, moving) : companionSvg(companionFor(dir), size, moving);
+  if (label) {
+    el.setAttribute("role", "img");
+    el.setAttribute("aria-label", label);
+  } else el.setAttribute("aria-hidden", "true");
   return el;
+}
+
+export async function setCompanion(dir: string, key: string): Promise<void> {
+  await updateSettings({ profileCompanions: { ...settings().profileCompanions, [dir]: key } });
 }
 
 /** Turns finish notifications on or off (settings.notify). Turning them on asks macOS for permission. */

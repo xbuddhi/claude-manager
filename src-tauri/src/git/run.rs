@@ -214,7 +214,7 @@ mod mac {
 
 /// The git command for `dir` with the runner's environment. `poll` marks a background status refresh,
 /// which must not take locks the user's own git commands could trip over.
-fn command(git: &Path, dir: &Path, poll: bool) -> Command {
+pub(super) fn command(git: &Path, dir: &Path, poll: bool) -> Command {
     let mut cmd = spawn::hidden_command(git);
     cmd.current_dir(dir)
         // never wait for a password in a window nobody sees; English output for parsing
@@ -267,7 +267,7 @@ pub fn run(dir: &str, args: &[String], stdin: Option<&str>, poll: bool) -> AppRe
 }
 
 /// Starts `cmd`, writes `stdin` (then closes it), reads both pipes, and ends the process tree after `limit`.
-fn execute(cmd: &mut Command, stdin: Option<&str>, limit: Duration) -> AppResult<GitOutput> {
+pub(super) fn execute(cmd: &mut Command, stdin: Option<&str>, limit: Duration) -> AppResult<GitOutput> {
     let mut child = cmd
         .stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(Stdio::piped())

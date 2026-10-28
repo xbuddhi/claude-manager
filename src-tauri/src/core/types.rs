@@ -8,6 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// A Claude Code config folder (`~/.claude`, `~/.claude-work`, or `$CLAUDE_CONFIG_DIR`).
@@ -160,6 +161,16 @@ pub struct Group {
 pub struct Settings {
     /// Pinned project folders, shown even without sessions.
     pub pinned: Vec<String>,
+    /// Folders hidden from the sidebar's FOLDERS list (shown again from its "Show N hidden" row).
+    pub hidden: Vec<String>,
+    /// Ids of archived sessions: left out of the sessions list (shown again from its "Archived" button).
+    pub archived: Vec<String>,
+    /// Names given to profiles in the app, by profile folder (the folder itself is never renamed).
+    pub profile_names: BTreeMap<String, String>,
+    /// Profile folders left out of the app (picker, menus, "All profiles"); nothing on disk changes.
+    pub hidden_profiles: Vec<String>,
+    /// Companion (avatar character) chosen per profile folder; a profile without one gets one from its folder.
+    pub profile_companions: BTreeMap<String, String>,
     /// Profile folder of the account last used for new sessions.
     pub account: Option<String>,
     pub open_in: OpenIn,
@@ -198,6 +209,11 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             pinned: Vec::new(),
+            hidden: Vec::new(),
+            archived: Vec::new(),
+            profile_names: BTreeMap::new(),
+            hidden_profiles: Vec::new(),
+            profile_companions: BTreeMap::new(),
             account: None,
             open_in: OpenIn::External,
             show_picker: true,

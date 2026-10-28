@@ -14,9 +14,11 @@ const dialog = vi.hoisted(() => ({
 vi.mock("../../ui/dialog", () => dialog);
 const calls = vi.hoisted(() => [] as Array<{ cmd: string; args: unknown }>);
 vi.mock("../../core/api", () => ({
-  call: vi.fn(async (cmd: string, args: { paths?: string[] }) => {
+  call: vi.fn(async (cmd: string, args: { paths?: string[]; dir?: string }) => {
     calls.push({ cmd, args });
     if (cmd === "path_kinds") return { ok: true, value: (args.paths ?? []).map(() => "dir") };
+    if (cmd === "git_web_url")
+      return { ok: true, value: args.dir?.endsWith("tools") ? "https://github.com/me/tools" : null };
     return { ok: false, error: { code: "internal", message: "no backend in tests" } };
   }),
   listen: vi.fn(async () => () => {}),
@@ -105,7 +107,9 @@ describe("sidebar view", () => {
       name: "Web",
       folders: ["C:\\src\\site", "C:\\src\\api"],
     });
-    expect(document.getElementById("tb-subtitle")?.textContent).toBe("3 sessions · 3 folders · 1 project");
+    const sub = document.getElementById("tb-subtitle");
+    expect(sub?.dataset.tip).toBe("3 sessions · 3 folders · 1 project");
+    expect([...(sub?.querySelectorAll(".tb-sub-item") ?? [])].map((e) => e.textContent)).toEqual(["3", "3", "1"]);
   });
 
   it("moves with the arrows and publishes folder selections", () => {
@@ -168,8 +172,9 @@ describe("sidebar view", () => {
     expect(store.get().sidebarSelection?.path).toBe("C:\\src\\site");
   });
 
-  it("shows the folder menu on right-click with the OS labels", () => {
+  it("shows the folder menu on right-click with the OS labels", async () => {
     rowEl("f:c:\\src\\tools")?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    await vi.waitFor(() => expect(document.querySelector(".menu")).not.toBeNull());
     const labels = [...document.querySelectorAll(".menu .mi-label")].map((e) => e.textContent);
     expect(labels).toEqual([
       "New session",
@@ -180,16 +185,19 @@ describe("sidebar view", () => {
       "Open PowerShell here",
       "Open in Explorer",
       "Open in VS Code",
+      "Open on GitHub",
       "Copy path",
       "Move to project",
       "Pin",
+      "Hide from sidebar",
       "Delete all sessions...",
     ]);
     expect(store.get().sidebarSelection?.path).toBe("C:\\src\\tools");
   });
 
-  it("offers 'Remove from project' for a grouped folder and the project menu for a group", () => {
+  it("offers 'Remove from project' for a grouped folder and the project menu for a group", async () => {
     rowEl("f:c:\\src\\site")?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    await vi.waitFor(() => expect(document.querySelector(".menu")).not.toBeNull());
     expect([...document.querySelectorAll(".menu .mi-label")].map((e) => e.textContent)).toContain(
       "Remove from project",
     );

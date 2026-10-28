@@ -1,6 +1,7 @@
 // Context and dropdown menus: icon column, checkmarks, right-aligned shortcut (per-OS labels), submenus,
 // separators, red danger items, disabled section labels. Keyboard: Up/Down, Home/End, Enter/Space, Esc,
-// Right opens a submenu, Left closes it. Closes on a click outside, window blur or resize.
+// Right opens a submenu, Left closes it. Closes on a click outside, window blur or resize. A long menu can
+// have a search field on top (`filter`): typing hides the items whose label does not match.
 //
 //   showMenu([{ label: "Copy path", icon: "folder", run: copy }, { kind: "separator" },
 //             { label: "Close terminal", danger: true, shortcut: "CmdOrCtrl+W", run: close }],
@@ -24,6 +25,8 @@ export interface MenuAction {
   detail?: string;
   run?: () => void;
   submenu?: MenuItem[];
+  /** Stays listed while the search field filters the menu (e.g. "Create new branch..."). */
+  keep?: boolean;
 }
 export type MenuItem = MenuAction | { kind: "separator" } | { kind: "section"; label: string };
 
@@ -33,29 +36,51 @@ export interface MenuOptions {
   at: MenuPosition;
   /** Accessible name. */
   label?: string;
+  /** A search field on top of the menu that filters its items by label. */
+  filter?: { placeholder: string; onInput?: (query: string) => void };
 }
 
 export function isActionable(item: MenuItem | undefined): item is MenuAction {
   return !!item && (item.kind === undefined || item.kind === "item") && !item.disabled;
 }
 
-/** Next actionable index from `from` going `delta` (±1), wrapping around; -1 when nothing is actionable. */
-export function nextIndex(items: readonly MenuItem[], from: number, delta: 1 | -1): number {
+type Skip = (i: number) => boolean;
+
+/**
+ * Next actionable index from `from` going `delta` (±1), wrapping around and passing over `skip`ped ones
+ * (filtered out); -1 when nothing is actionable.
+ */
+export function nextIndex(items: readonly MenuItem[], from: number, delta: 1 | -1, skip?: Skip): number {
   const n = items.length;
   for (let step = 1; step <= n; step++) {
     const i = (((from + delta * step) % n) + n) % n;
-    if (isActionable(items[i])) return i;
+    if (isActionable(items[i]) && !skip?.(i)) return i;
   }
   return -1;
 }
 
-export function firstIndex(items: readonly MenuItem[]): number {
-  return nextIndex(items, -1, 1);
+export function firstIndex(items: readonly MenuItem[], skip?: Skip): number {
+  return nextIndex(items, -1, 1, skip);
 }
 
-export function lastIndex(items: readonly MenuItem[]): number {
-  return nextIndex(items, items.length, -1);
+export function lastIndex(items: readonly MenuItem[], skip?: Skip): number {
+  return nextIndex(items, items.length, -1, skip);
 }
+
+/** Indexes the query hides: items whose label lacks it (except `keep` ones), and all separators and sections. */
+export function filteredOut(items: readonly MenuItem[], query: string): Set<number> {
+  const q = query.trim().toLowerCase();
+  const out = new Set<number>();
+  if (!q) return out;
+  items.forEach((item, i) => {
+    if (item.kind === "separator" || item.kind === "section") out.add(i);
+    else if (!item.keep && !item.label.toLowerCase().includes(q)) out.add(i);
+  });
+  return out;
+}
+
+/** Keys the search field passes on to the menu; the rest edit the text. */
+const FILTER_KEYS = new Set(["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab"]);
 
 const MARGIN = 4;
 
@@ -73,6 +98,11 @@ let idSeq = 0;
 class Level {
   readonly el: HTMLElement;
   private rows: Array<HTMLElement | null> = [];
+  /** Every item's element (rows, separators, sections), for filtering. */
+  private parts: HTMLElement[] = [];
+  private hidden = new Set<number>();
+  private readonly skip: Skip = (i) => this.hidden.has(i);
+  private empty: HTMLElement | null = null;
   active = -1;
   child: Level | null = null;
 
@@ -94,11 +124,12 @@ class Level {
 
   private renderItem(item: MenuItem, i: number): HTMLElement | null {
     if (item.kind === "separator") {
-      this.el.append(h("div", { class: "menu-sep", attrs: { role: "separator" } }));
+      this.parts.push(this.el.appendChild(h("div", { class: "menu-sep", attrs: { role: "separator" } })));
       return null;
     }
     if (item.kind === "section") {
-      this.el.append(h("div", { class: "menu-section", attrs: { role: "presentation" } }, item.label));
+      const el = h("div", { class: "menu-section", attrs: { role: "presentation" } }, item.label);
+      this.parts.push(this.el.appendChild(el));
       return null;
     }
     const row = h("div", {
@@ -126,7 +157,32 @@ class Level {
     });
     row.addEventListener("click", () => this.activate(i));
     this.el.append(row);
+    this.parts.push(row);
     return row;
+  }
+
+  /** Adds the search field on top; typing filters the items and makes the first match active. */
+  addFilter(opts: NonNullable<MenuOptions["filter"]>): HTMLInputElement {
+    const field = h("input", {
+      class: "menu-filter",
+      type: "text",
+      attrs: { placeholder: opts.placeholder, "aria-label": opts.placeholder, spellcheck: "false" },
+    });
+    this.empty = h("div", { class: "menu-empty", hidden: true }, "No matches");
+    this.el.prepend(field);
+    this.el.append(this.empty);
+    this.el.classList.add("has-filter");
+    field.addEventListener("input", () => {
+      this.hidden = filteredOut(this.items, field.value);
+      this.parts.forEach((el, i) => {
+        el.hidden = this.hidden.has(i);
+      });
+      if (this.empty) this.empty.hidden = this.items.some((it, i) => isActionable(it) && !it.keep && !this.skip(i));
+      this.closeChild();
+      this.setActive(firstIndex(this.items, this.skip));
+      opts.onInput?.(field.value);
+    });
+    return field;
   }
 
   setActive(i: number) {
@@ -174,20 +230,21 @@ class Level {
   }
 
   private onKey(e: KeyboardEvent) {
+    if (e.target instanceof HTMLInputElement && !FILTER_KEYS.has(e.key)) return;
     const items = this.items;
     let handled = true;
     switch (e.key) {
       case "ArrowDown":
-        this.setActive(nextIndex(items, this.active, 1));
+        this.setActive(nextIndex(items, this.active, 1, this.skip));
         break;
       case "ArrowUp":
-        this.setActive(nextIndex(items, this.active < 0 ? items.length : this.active, -1));
+        this.setActive(nextIndex(items, this.active < 0 ? items.length : this.active, -1, this.skip));
         break;
       case "Home":
-        this.setActive(firstIndex(items));
+        this.setActive(firstIndex(items, this.skip));
         break;
       case "End":
-        this.setActive(lastIndex(items));
+        this.setActive(lastIndex(items, this.skip));
         break;
       case "Enter":
       case " ":
@@ -228,7 +285,10 @@ class MenuSession {
 
   constructor(items: MenuItem[], opts: MenuOptions) {
     this.top = new Level(items, this, null, opts.label);
+    const field = opts.filter ? this.top.addFilter(opts.filter) : null;
     this.mountTop(opts.at);
+    // filtering must not make it narrower under the pointer
+    if (field) this.top.el.style.minWidth = `${this.top.el.offsetWidth}px`;
     const anchor = "anchor" in opts.at ? opts.at.anchor : null;
     const outside = (e: Event) => {
       if (e.target instanceof Node && this.contains(e.target)) return;
@@ -247,7 +307,7 @@ class MenuSession {
     listen("wheel", outside);
     // opened from a button (often by keyboard): start on the first item; at the pointer: nothing active
     this.top.setActive("anchor" in opts.at ? firstIndex(items) : -1);
-    this.top.el.focus();
+    (field ?? this.top.el).focus();
   }
 
   private contains(node: Node): boolean {

@@ -20,6 +20,8 @@ use tauri::{App, AppHandle, Emitter, Manager, State};
 
 const FILE_NAME: &str = "settings.json";
 const SAVE_DELAY: Duration = Duration::from_millis(200);
+/// Characters a profile's name keeps.
+const MAX_PROFILE_NAME: usize = 40;
 
 pub struct SettingsStore {
     inner: Arc<Inner>,
@@ -203,6 +205,21 @@ fn to_map(settings: &Settings) -> Map<String, Value> {
 fn sanitize(mut s: Settings) -> Settings {
     s.claude_path = s.claude_path.filter(|p| !p.trim().is_empty());
     s.pinned.retain(|p| !p.trim().is_empty());
+    s.hidden.retain(|p| !p.trim().is_empty());
+    s.archived.retain(|id| !id.trim().is_empty());
+    s.hidden_profiles.retain(|p| !p.trim().is_empty());
+    // companion keys are short names ("se", "qa"); anything else is dropped
+    s.profile_companions.retain(|dir, key| {
+        !dir.trim().is_empty() && !key.is_empty() && key.len() <= 16 && key.chars().all(|c| c.is_ascii_lowercase())
+    });
+    // a blank name means the folder's own name again; long ones are cut
+    s.profile_names = std::mem::take(&mut s.profile_names)
+        .into_iter()
+        .filter_map(|(dir, name)| {
+            let name: String = name.trim().chars().take(MAX_PROFILE_NAME).collect();
+            (!dir.trim().is_empty() && !name.is_empty()).then_some((dir, name))
+        })
+        .collect();
     for g in &mut s.groups {
         g.folders.retain(|f| !f.trim().is_empty());
     }
