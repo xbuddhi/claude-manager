@@ -115,6 +115,7 @@ export function mount(): void {
         s.platform.os,
         s.settings.archived,
         s.sessionsShowArchived,
+        s.profiles,
       ] as const,
     recomputeScope,
     { equals: (a, b) => a.every((v, i) => v === b[i]) },

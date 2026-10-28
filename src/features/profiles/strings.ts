@@ -1,6 +1,15 @@
 // User-facing texts of the profiles feature, as the Windows app words them (ClaudeManager.ps1).
 
 export const T = {
+  renamePrompt:
+    "Rename profile\nThe name shown in Claude Manager. The profile's folder stays as it is; leave it empty for the folder's name.",
+  rename: "Rename…",
+  hide: "Remove from app",
+  unhide: "Show in app",
+  hiddenCard: "Hidden · click to show",
+  showHidden: (n: number) => `Show ${n} hidden profile${n === 1 ? "" : "s"}`,
+  hideHidden: "Hide hidden profiles",
+  renameTip: "Rename profile (F2)",
   pickerTitle: "Who's using Claude Code?",
   pickerSub:
     "Pick a profile to see its projects and sessions. Switch any time from the profile button at the top left.",

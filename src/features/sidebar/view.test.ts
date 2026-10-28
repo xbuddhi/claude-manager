@@ -107,7 +107,9 @@ describe("sidebar view", () => {
       name: "Web",
       folders: ["C:\\src\\site", "C:\\src\\api"],
     });
-    expect(document.getElementById("tb-subtitle")?.textContent).toBe("3 sessions · 3 folders · 1 project");
+    const sub = document.getElementById("tb-subtitle");
+    expect(sub?.dataset.tip).toBe("3 sessions · 3 folders · 1 project");
+    expect([...(sub?.querySelectorAll(".tb-sub-item") ?? [])].map((e) => e.textContent)).toEqual(["3", "3", "1"]);
   });
 
   it("moves with the arrows and publishes folder selections", () => {

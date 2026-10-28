@@ -24,6 +24,14 @@ hidden: Array<string>,
  */
 archived: Array<string>, 
 /**
+ * Names given to profiles in the app, by profile folder (the folder itself is never renamed).
+ */
+profileNames: { [key in string]: string }, 
+/**
+ * Profile folders left out of the app (picker, menus, "All profiles"); nothing on disk changes.
+ */
+hiddenProfiles: Array<string>, 
+/**
  * Profile folder of the account last used for new sessions.
  */
 account: string | null, openIn: OpenIn, showPicker: boolean, 

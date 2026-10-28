@@ -84,6 +84,31 @@ html.prof-picker-open #tb-profile-slot {
   white-space: nowrap;
   text-align: center;
 }
+.prof-card > span.prof-card-edit {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 0.15s var(--ease);
+}
+.prof-card:hover > .prof-card-edit,
+.prof-card:focus-visible > .prof-card-edit {
+  opacity: 1;
+}
+.prof-card > span.prof-card-edit:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.prof-card-edit svg {
+  width: 14px;
+  height: 14px;
+}
 .prof-card-name {
   margin-top: 10px;
   height: 24px;
@@ -100,6 +125,27 @@ html.prof-picker-open #tb-profile-slot {
 }
 .prof-card-mail {
   margin-top: 2px;
+}
+.prof-card-hidden {
+  opacity: 0.5;
+}
+.prof-card-hidden:hover,
+.prof-card-hidden:focus-visible {
+  opacity: 0.85;
+}
+.prof-more {
+  margin-top: 6px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.prof-more:hover {
+  background: var(--hover);
 }
 .prof-toggle {
   margin-top: 26px;

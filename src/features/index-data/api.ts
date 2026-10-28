@@ -131,7 +131,14 @@ export function projectsFor(
   profile: string | null,
   projects: readonly Project[] = store.get().index.projects,
 ): Project[] {
-  if (profile === null) return [...projects];
+  if (profile === null) {
+    // "All profiles": every profile the app shows (not the ones removed from it)
+    const hidden = new Set(store.get().settings.hiddenProfiles);
+    if (!hidden.size) return [...projects];
+    return projects
+      .map((p) => ({ ...p, sessions: p.sessions.filter((s) => !hidden.has(s.profile)) }))
+      .filter((p) => p.sessions.length > 0 || p.pinned);
+  }
   return projects
     .map((p) => ({ ...p, sessions: p.sessions.filter((s) => s.profile === profile) }))
     .filter((p) => p.sessions.length > 0 || p.pinned);
@@ -148,15 +155,16 @@ export function findSession(sessionId: string): { session: Session; project: Pro
 
 /** Number of sessions of `profile` (null = all profiles), e.g. for the profile picker. */
 export function countFor(profile: string | null): number {
+  const hidden = new Set(store.get().settings.hiddenProfiles);
   if (counts.size) {
     if (profile !== null) return counts.get(profile) ?? 0;
     let n = 0;
-    for (const c of counts.values()) n += c;
+    for (const [dir, c] of counts) if (!hidden.has(dir)) n += c;
     return n;
   }
   let n = 0;
   for (const p of store.get().index.projects) {
-    n += profile === null ? p.sessions.length : p.sessions.filter((s) => s.profile === profile).length;
+    n += p.sessions.filter((s) => (profile === null ? !hidden.has(s.profile) : s.profile === profile)).length;
   }
   return n;
 }

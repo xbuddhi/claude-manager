@@ -6,9 +6,10 @@ import { describeError, log } from "../../core/log";
 import { samePath } from "../../core/paths";
 import { isMac } from "../../core/platform";
 import { profileName, profiles } from "../../core/profiles";
-import { updateSettings } from "../../core/settings";
+import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
 import { avatar } from "../../ui/avatar";
+import { input } from "../../ui/dialog";
 import { toast } from "../../ui/toast";
 import { T } from "./strings";
 
@@ -32,6 +33,35 @@ export function profileInitial(name: string | null): string {
 /** Display name of a profile folder; null = "All profiles". */
 export function profileLabel(dir: string | null): string {
   return dir === null ? "All profiles" : profileName(dir);
+}
+
+/**
+ * Asks for a new name for the profile `dir`. Only the app's name changes (settings.profileNames); the
+ * folder and Claude Code's own settings stay as they are. An empty name brings back the folder's name.
+ */
+export async function renameProfile(dir: string): Promise<void> {
+  const typed = await input(T.renamePrompt, { value: profileName(dir) });
+  if (typed === null) return;
+  const name = typed.trim();
+  const names = { ...settings().profileNames };
+  if (name) names[dir] = name;
+  else delete names[dir];
+  await updateSettings({ profileNames: names });
+}
+
+/**
+ * Removes the profile from the app (picker, menus, "All profiles"); its folder, sessions and sign-in stay.
+ * The picker's "Show hidden profiles" brings it back. A profile in view gives way to All profiles.
+ */
+export async function hideProfile(dir: string): Promise<void> {
+  const hidden = settings().hiddenProfiles;
+  if (hidden.includes(dir)) return;
+  if (store.get().currentProfile === dir) store.set({ currentProfile: null });
+  await updateSettings({ hiddenProfiles: [...hidden, dir] });
+}
+
+export async function showProfile(dir: string): Promise<void> {
+  await updateSettings({ hiddenProfiles: settings().hiddenProfiles.filter((d) => d !== dir) });
 }
 
 /** The profile a new session starts with: the one in view, else settings.account, else the first one. */
