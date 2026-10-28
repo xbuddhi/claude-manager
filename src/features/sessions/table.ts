@@ -83,9 +83,13 @@ export function createTable(opts: TableOptions): Table {
         ico.dataset.level = String(level);
         ico.replaceChildren(level ? liveDot(level) : chatIcon());
       }
-      (ico.nextElementSibling as HTMLElement).textContent = text[0] ?? "";
+      // text is set only when it changed: a click re-renders the rows, and WebKit drops the click (and the
+      // double-click) when the text node pressed on was replaced before the button came up
+      const label = ico.nextElementSibling as HTMLElement;
+      if (label.textContent !== (text[0] ?? "")) label.textContent = text[0] ?? "";
       rest.forEach((c, i) => {
-        c.textContent = text[i + 1] ?? "";
+        const t = text[i + 1] ?? "";
+        if (c.textContent !== t) c.textContent = t;
       });
       el.classList.toggle("zebra", state.index % 2 === 1);
       // adjacent selected rows merge into one block
