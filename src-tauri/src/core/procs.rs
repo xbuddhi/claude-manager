@@ -51,11 +51,7 @@ impl Procs {
     /// one's command line was most of the scan's cost.
     pub fn with_cmd_of<T>(&self, cmd_for: &[Pid], f: impl FnOnce(&System) -> T) -> T {
         let mut sys = lock(&self.sys);
-        sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
-        if !cmd_for.is_empty() {
-            let kind = ProcessRefreshKind::nothing().with_cmd(UpdateKind::OnlyIfNotSet);
-            sys.refresh_processes_specifics(ProcessesToUpdate::Some(cmd_for), false, kind);
-        }
+        refresh_all(&mut sys, cmd_for);
         f(&sys)
     }
 
@@ -95,6 +91,17 @@ impl Procs {
     /// Every process below `pid`, parents before children.
     pub fn descendants_of(&self, pid: u32) -> Vec<u32> {
         self.with(ProcessesToUpdate::All, |s| descendants(&table(s), pid))
+    }
+}
+
+/// Refreshes every process of `sys` without reading command lines, then the command lines of `cmd_for`
+/// only (see [`Procs::with_cmd_of`]). For a scan that keeps its own table, so it never holds the shared
+/// one for a whole refresh.
+pub fn refresh_all(sys: &mut System, cmd_for: &[Pid]) {
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing());
+    if !cmd_for.is_empty() {
+        let kind = ProcessRefreshKind::nothing().with_cmd(UpdateKind::OnlyIfNotSet);
+        sys.refresh_processes_specifics(ProcessesToUpdate::Some(cmd_for), false, kind);
     }
 }
 

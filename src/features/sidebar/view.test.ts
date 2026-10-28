@@ -50,7 +50,6 @@ function project(path: string, modified: number): Project {
         file: `${id}.jsonl`,
         cwd: path,
         label: "hello",
-        full: "hello",
         count: 2,
         modified,
         sizeKb: 1,
@@ -237,5 +236,20 @@ describe("sidebar view", () => {
     setData([], [project("C:\\src\\site", 300)]); // a rebuild, like the 60 s timer's
     expect(sub.textContent).toBe("Choose a profile");
     store.set({ screen: "main" });
+  });
+});
+
+describe("sameSelection", () => {
+  it("compares kind, key, path, name and the folders", async () => {
+    const { sameSelection } = await import("./view");
+    const g = { kind: "group" as const, key: "g:web", name: "Web", folders: ["a", "b"] };
+    expect(sameSelection(g, { ...g, folders: ["a", "b"] })).toBe(true);
+    expect(sameSelection(g, { ...g, folders: ["a"] })).toBe(false);
+    expect(sameSelection(g, { ...g, name: "Site" })).toBe(false);
+    expect(sameSelection(g, null)).toBe(false);
+    expect(sameSelection(null, null)).toBe(true);
+    const f = { kind: "folder" as const, key: "f:a", path: "a", name: "a" };
+    expect(sameSelection(f, { ...f })).toBe(true);
+    expect(sameSelection(f, { ...f, path: "A" })).toBe(false);
   });
 });

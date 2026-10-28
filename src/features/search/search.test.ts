@@ -5,15 +5,20 @@ import { bus, type LaunchRequest } from "../../core/bus";
 import { DEFAULT_SETTINGS, store } from "../../core/store";
 import { folderKey, groupKey, mountSearch, placeholder } from "./search";
 
-vi.mock("../../core/api", () => ({ call: async () => ({ ok: true, value: null }), listen: async () => () => {} }));
-
 const ID = "0b9f4c2e-1a2b-4c3d-8e9f-0123456789ab";
+// the backend matches the full text ("... in the web app"): "app" finds the session, "login" only its label
+vi.mock("../../core/api", () => ({
+  call: async (cmd: string, args: { query?: string }) => ({
+    ok: true,
+    value: cmd === "search_sessions" ? (args.query === "app" ? [ID] : []) : null,
+  }),
+  listen: async () => () => {},
+}));
 const session: Session = {
   id: ID,
   file: `C:\\Users\\me\\.claude\\projects\\C--code-app\\${ID}.jsonl`,
   cwd: "C:\\code\\app",
   label: "Fix the login bug",
-  full: "Fix the login bug in the web app",
   count: 4,
   modified: Date.now() - 60_000,
   sizeKb: 3,
@@ -37,6 +42,10 @@ const type = (text: string) => {
   input().dispatchEvent(new Event("input"));
 };
 const shown = () => [...document.querySelectorAll<HTMLElement>(".search-pop .search-item")];
+/** Lets the mocked search_sessions answer arrive. */
+const settle = async () => {
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+};
 
 describe("search box", () => {
   const launches: LaunchRequest[] = [];
@@ -64,7 +73,6 @@ describe("search box", () => {
     expect(input().value).toBe("app");
     store.set({ currentProfile: "C:\\Users\\me\\.claude-work" });
     expect(input().value).toBe("");
-    expect(store.get().searchQuery).toBe("");
     store.set({ currentProfile: null });
   });
 
@@ -75,11 +83,14 @@ describe("search box", () => {
     expect(folderKey("C:\\Code\\App\\")).toBe("f:c:\\code\\app");
   });
 
-  it("shows results after the debounce, moves with the arrows and wraps", () => {
+  it("shows results after the debounce, adds full-text matches when they arrive, moves with the arrows", async () => {
     vi.useFakeTimers();
     type("app");
     expect(shown()).toHaveLength(0);
     vi.advanceTimersByTime(120);
+    // the label does not contain "app": the session row comes with the backend's answer
+    expect(shown().map((r) => r.classList[1])).toEqual(["folder"]);
+    await settle();
     const rows = shown();
     expect(rows.map((r) => r.classList[1])).toEqual(["folder", "session"]);
     expect(rows[0]?.classList.contains("on")).toBe(true);
@@ -116,7 +127,6 @@ describe("search box", () => {
     expect(document.querySelector(".search-empty")?.textContent).toBe("No results for 'nothing-here'");
     key("Escape");
     expect(input().value).toBe("");
-    expect(store.get().searchQuery).toBe("");
     expect(document.querySelector(".search-pop")).toBeNull();
   });
 });

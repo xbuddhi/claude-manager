@@ -64,7 +64,7 @@ pub async fn git_web_url(dir: String) -> AppResult<Option<String>> {
 /// `profile` (a profile folder; none = the default one).
 #[tauri::command]
 pub async fn git_commit_message(app: tauri::AppHandle, repo: String, profile: Option<String>) -> AppResult<String> {
-    let claude_override = settings::get(&app).claude_path;
+    let claude_override = settings::with(&app, |s| s.claude_path.clone());
     blocking(move || {
         let claude = env::claude_executable(claude_override.as_deref())?;
         message::generate(&repo, profile.as_deref(), claude)

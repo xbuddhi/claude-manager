@@ -85,6 +85,11 @@ impl SettingsStore {
         lock(&self.inner.current).clone()
     }
 
+    /// Reads from the current settings without cloning them all.
+    pub fn with<R>(&self, f: impl FnOnce(&Settings) -> R) -> R {
+        f(&lock(&self.inner.current))
+    }
+
     /// Applies a partial update: each top-level key in `patch` replaces the current value. The result
     /// must be valid as a whole, otherwise nothing changes.
     pub fn update(&self, patch: Value) -> AppResult<Settings> {
@@ -255,6 +260,11 @@ pub fn init(app: &mut App) -> AppResult<()> {
 /// Current settings, for Rust features.
 pub fn get(app: &AppHandle) -> Settings {
     app.state::<SettingsStore>().get()
+}
+
+/// Reads one or a few fields of the current settings without cloning them all.
+pub fn with<R>(app: &AppHandle, f: impl FnOnce(&Settings) -> R) -> R {
+    app.state::<SettingsStore>().with(f)
 }
 
 /// Changes settings from Rust and broadcasts `settings-changed`.

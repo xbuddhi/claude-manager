@@ -59,6 +59,18 @@ export function buildScope(
   return { kind: "group", name: sel.name ?? "", folders, ...listed(sessions, archived, showArchived) };
 }
 
+const sameItems = <T>(a: readonly T[], b: readonly T[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+/** Same scope as far as the view can tell: same kind and place, and the very same session objects. */
+export function sameScope(a: Scope | null, b: Scope | null): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.kind !== b.kind || a.name !== b.name) return false;
+  if (a.archived !== b.archived || a.showingArchived !== b.showingArchived) return false;
+  if (!sameItems(a.sessions, b.sessions)) return false;
+  if (a.kind === "folder" && b.kind === "folder") return a.path === b.path && a.project === b.project;
+  return a.kind === "group" && b.kind === "group" && sameItems(a.folders, b.folders);
+}
+
 /** The folder a session starts in: where it ran, else the folder it is listed under, else `fallback`. */
 export function sessionDir(s: Session, projects: readonly Project[], fallback: string | null): string | null {
   return s.cwd ?? projects.find((p) => p.sessions.some((x) => x.id === s.id))?.path ?? fallback;

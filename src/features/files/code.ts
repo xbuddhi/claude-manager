@@ -2,14 +2,14 @@
 // sideways. The text shows plain at once and coloured once its language's parser has run.
 
 import { h } from "../../core/dom";
-import { highlightFile, type Token } from "../git/api";
+import { createRowWindow, highlightFile, type Token } from "../git/api";
 
 const LINE = 18;
 const OVERSCAN = 30;
 
 export interface CodeView {
   el: HTMLElement;
-  /** Shows `text` of `path`; the same path shown again keeps the scroll position. */
+  /** Shows `text` of `path`; the same path shown again keeps the scroll position (and the same text, all of it). */
   show(path: string, text: string): void;
   clear(): void;
 }
@@ -25,6 +25,7 @@ export function createCodeView(): CodeView {
   const inner = h("div", { class: "fm-code-inner" });
   const el = h("div", { class: "fm-code syn-code selectable", tabIndex: 0 }, inner);
   let path: string | null = null;
+  let text = "";
   let lines: string[] = [];
   let tokens: Token[][] | null = null;
   let seq = 0;
@@ -43,13 +44,13 @@ export function createCodeView(): CodeView {
     );
   };
 
+  const shown = createRowWindow(inner, lineEl);
+
   const render = () => {
     frame = 0;
     const first = Math.max(0, Math.floor(el.scrollTop / LINE) - OVERSCAN);
     const last = Math.min(lines.length, Math.ceil((el.scrollTop + el.clientHeight) / LINE) + OVERSCAN);
-    const out: HTMLElement[] = [];
-    for (let i = first; i < last; i++) out.push(lineEl(i));
-    inner.replaceChildren(...out);
+    shown.update(first, last);
   };
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(render);
@@ -59,9 +60,12 @@ export function createCodeView(): CodeView {
 
   return {
     el,
-    show(next, text) {
+    show(next, nextText) {
       const same = next === path;
+      // read again unchanged (the app came back to the front): keep the lines and their colours
+      if (same && nextText === text) return;
       path = next;
+      text = nextText;
       lines = splitLines(text);
       tokens = null;
       const digits = String(lines.length).length;
@@ -71,20 +75,25 @@ export function createCodeView(): CodeView {
       inner.style.height = `${lines.length * LINE}px`;
       inner.style.minWidth = `calc(${widest}ch + ${Math.max(3, digits)}ch + 40px)`;
       if (!same) el.scrollTop = el.scrollLeft = 0;
+      shown.invalidate();
       render();
       const mine = ++seq;
-      void highlightFile(next, text).then((toks) => {
+      // another file coming up meanwhile stops the colouring
+      void highlightFile(next, text, () => mine !== seq).then((toks) => {
         if (mine !== seq || !toks) return;
         tokens = toks;
+        shown.invalidate();
         render();
       });
     },
     clear() {
       path = null;
+      text = "";
       lines = [];
       tokens = null;
       seq++;
       inner.style.height = "0";
+      shown.invalidate();
       inner.replaceChildren();
     },
   };

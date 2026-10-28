@@ -195,10 +195,16 @@ export function mountPicker(root: HTMLElement): Picker {
     more.textContent = showingHidden ? T.hideHidden : T.showHidden(s.hiddenProfiles.length);
   };
   cards.after(more);
-  store.select((s) => [s.profiles, s.hiddenProfiles, s.index, s.settings.profileCompanions] as const, render, {
-    equals: (a, b) => a.every((v, i) => v === b[i]),
-    immediate: true,
-  });
+  // the session counts follow the index only while the picker shows: entering it brings them up to date
+  store.select(
+    (s) =>
+      [s.profiles, s.hiddenProfiles, s.screen === "picker" ? s.index : null, s.settings.profileCompanions] as const,
+    render,
+    {
+      equals: (a, b) => a.every((v, i) => v === b[i]),
+      immediate: true,
+    },
+  );
   store.select(
     (s) => s.settings.showPicker,
     (on) => sw.set(on),

@@ -13,11 +13,18 @@ use crate::core::error::lock;
 use crate::core::error::{AppError, AppResult};
 use crate::core::{events, windows};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
-/// The window a dragged tab is over, told with `tab-drag`.
+/// How long a drag reuses the window frames it read (reading them takes the main thread).
+const FRAMES_FOR: Duration = Duration::from_millis(100);
+
+/// The window a dragged tab is over, told with `tab-drag`, and the window frames the drag last read.
 #[derive(Default)]
-pub struct DragTarget(Mutex<Option<String>>);
+pub struct DragTarget {
+    over: Mutex<Option<String>>,
+    frames: Mutex<Option<(Instant, Vec<windows::Frame>)>>,
+}
 
 /// Moves the calling window's terminals `ids` to window `to`, else to the window under the logical screen
 /// point `at`, else to a new window (placed at `at` when given). Returns the label of the window they
@@ -124,9 +131,22 @@ pub async fn tab_drag_over(
     at: Option<Point>,
     title: String,
 ) -> AppResult<Option<u32>> {
-    let over = at.and_then(|p| windows::at_point(&app, p.x, p.y, window.label()));
-    let label = over.as_ref().map(|w| w.label().to_string());
-    let mut current = lock(&target.0);
+    let label = match at {
+        Some(p) => {
+            let mut cached = lock(&target.frames);
+            if cached.as_ref().is_none_or(|(at, _)| at.elapsed() >= FRAMES_FOR) {
+                *cached = Some((Instant::now(), windows::frames(&app)));
+            }
+            let frames = cached.as_ref().map_or(&[][..], |(_, f)| f.as_slice());
+            windows::frame_at(frames, p.x, p.y, window.label()).map(str::to_string)
+        }
+        None => {
+            // the drag ended: the next one reads the frames afresh
+            *lock(&target.frames) = None;
+            None
+        }
+    };
+    let mut current = lock(&target.over);
     if *current != label
         && let Some(old) = current.take()
     {

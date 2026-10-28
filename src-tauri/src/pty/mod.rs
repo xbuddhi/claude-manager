@@ -58,7 +58,7 @@ struct Start {
 
 /// Validates, builds and starts the command for a tab.
 fn start(app: &AppHandle, terms: &Terms, req: Start, output: Channel<InvokeResponseBody>) -> AppResult<PtyInfo> {
-    let claude_override = settings::get(app).claude_path;
+    let claude_override = settings::with(app, |s| s.claude_path.clone());
     let launch = launch::launch_for(&req.dir, &req.profile, req.session_id.as_deref(), req.fork)?;
     // checked before anything starts, so the tab can say what is missing
     let claude = env::claude_executable(claude_override.as_deref())?;

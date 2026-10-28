@@ -13,12 +13,14 @@ use crate::core::error::{AppError, AppResult, blocking, lock};
 use crate::core::types::LiveSession;
 use crate::core::{events, paths, procs::Procs, profiles, terms};
 use reach::Hosts;
-use scan::Found;
+use scan::{Found, KeyCache};
 use snapshot::Snapshot;
 use std::collections::{BTreeMap, HashSet};
+use std::path::Path;
 use std::sync::Mutex;
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Duration, SystemTime};
+use sysinfo::System;
 use tauri::{App, AppHandle, Emitter, Manager};
 use types::{LiveChanged, Orphan};
 
@@ -28,12 +30,15 @@ const TICK: Duration = Duration::from_secs(2);
 pub struct Live {
     current: Mutex<Current>,
     wake: Mutex<Sender<()>>,
+    /// What earlier scans found out about `.key` processes.
+    keys: Mutex<KeyCache>,
 }
 
 #[derive(Default)]
 struct Current {
     live: LiveChanged,
-    signature: String,
+    /// (id, level) sorted by id: what the UI shows, so only a change here is reported.
+    signature: Vec<(String, u8)>,
 }
 
 impl Live {
@@ -58,13 +63,16 @@ pub fn init(app: &mut App) -> AppResult<()> {
     app.manage(Live {
         current: Mutex::new(Current::default()),
         wake: Mutex::new(tx),
+        keys: Mutex::new(KeyCache::default()),
     });
     let handle = app.handle().clone();
     std::thread::Builder::new()
         .name("live-scan".into())
         .spawn(move || {
+            // a process table of its own: the shared one is not held for a whole refresh every tick
+            let mut sys = System::new();
             loop {
-                tick(&handle);
+                tick(&handle, &mut sys);
                 match rx.recv_timeout(TICK) {
                     Ok(()) | Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => break,
@@ -82,7 +90,8 @@ struct Scan {
     hosts: Hosts,
 }
 
-fn scan_now(app: &AppHandle) -> AppResult<Scan> {
+/// `own`: the caller's process table (the live thread's); else the shared one is used.
+fn scan_now(app: &AppHandle, own: Option<&mut System>) -> AppResult<Scan> {
     let home = paths::home()?;
     let markers: Vec<_> = profiles::discover(&home, profiles::launch_config_dir().as_deref())
         .into_iter()
@@ -91,15 +100,33 @@ fn scan_now(app: &AppHandle) -> AppResult<Scan> {
             (p, m)
         })
         .collect();
+    let term_pids = terms::pids(app);
+    // nothing runs and no terminal is open: the process table is not needed
+    let idle = term_pids.is_empty() && markers.iter().all(|(_, m)| m.is_empty());
     let cmd_for: HashSet<u32> = markers.iter().flat_map(|(_, m)| m.key_pids()).collect();
-    let snap = Snapshot::take(&app.state::<Procs>(), &cmd_for);
-    let found = scan::evaluate(&markers, &snap, SystemTime::now());
-    let hosts = Hosts::collect(terms::pids(app));
+    let snap = match own {
+        _ if idle => Snapshot::empty(),
+        Some(sys) => Snapshot::take_own(sys, &cmd_for),
+        None => Snapshot::take(&app.state::<Procs>(), &cmd_for),
+    };
+    let mut list = |profile: &Path, since: SystemTime| {
+        crate::sessions::transcripts_since(app, profile, since).unwrap_or_else(|| scan::list_transcripts(profile))
+    };
+    let found = {
+        let live = app.state::<Live>();
+        let mut keys = lock(&live.keys);
+        scan::evaluate(&markers, &snap, SystemTime::now(), &mut keys, &mut list)
+    };
+    let hosts = if idle {
+        Hosts::default()
+    } else {
+        Hosts::collect(term_pids)
+    };
     Ok(Scan { found, snap, hosts })
 }
 
-fn tick(app: &AppHandle) {
-    let scan = match scan_now(app) {
+fn tick(app: &AppHandle, sys: &mut System) {
+    let scan = match scan_now(app, Some(sys)) {
         Ok(s) => s,
         Err(e) => {
             log::warn!("live-session scan failed: {e}");
@@ -116,13 +143,18 @@ fn tick(app: &AppHandle) {
         live_cwd: live_cwd(&sessions),
         sessions,
     };
-    let signature = signature(&live.sessions);
     let state = app.state::<Live>();
     let changed = {
         let mut current = lock(&state.current);
-        let changed = current.signature != signature;
+        let signature = signature(&live.sessions);
+        let changed = !same_signature(&current.signature, &signature);
+        if changed {
+            current.signature = signature
+                .into_iter()
+                .map(|(id, level)| (id.to_string(), level))
+                .collect();
+        }
         current.live = live.clone();
-        current.signature = signature;
         changed
     };
     if changed && let Err(e) = app.emit(events::LIVE_CHANGED, &live) {
@@ -133,18 +165,18 @@ fn tick(app: &AppHandle) {
 
 /// One entry per session: a process the app can bring to the front wins, else the busier one.
 fn dedupe(found: Vec<(&Found, bool)>) -> Vec<LiveSession> {
+    let entry = |f: &Found, reachable| LiveSession {
+        session_id: f.session_id.clone(),
+        pid: f.pid,
+        level: f.level,
+        cwd: f.cwd.clone(),
+        profile: f.profile.to_string_lossy().into_owned(),
+        reachable,
+    };
     let mut out: Vec<LiveSession> = Vec::new();
     for (f, reachable) in found {
-        let entry = LiveSession {
-            session_id: f.session_id.clone(),
-            pid: f.pid,
-            level: f.level,
-            cwd: f.cwd.clone(),
-            profile: f.profile.to_string_lossy().into_owned(),
-            reachable,
-        };
         match out.iter_mut().find(|s| s.session_id == f.session_id) {
-            None => out.push(entry),
+            None => out.push(entry(f, reachable)),
             Some(prev) => {
                 let better = if prev.reachable != reachable {
                     reachable
@@ -152,7 +184,7 @@ fn dedupe(found: Vec<(&Found, bool)>) -> Vec<LiveSession> {
                     f.level > prev.level
                 };
                 if better {
-                    *prev = entry;
+                    *prev = entry(f, reachable);
                 }
             }
         }
@@ -172,14 +204,15 @@ fn live_cwd(sessions: &[LiveSession]) -> BTreeMap<String, u8> {
     map
 }
 
-/// `id=level;...` sorted by id: what the UI shows, so only a change here is reported.
-fn signature(sessions: &[LiveSession]) -> String {
-    let mut parts: Vec<String> = sessions
-        .iter()
-        .map(|s| format!("{}={}", s.session_id, s.level))
-        .collect();
-    parts.sort();
-    parts.join(";")
+/// (id, level) sorted by id: what the UI shows, so only a change here is reported.
+fn signature(sessions: &[LiveSession]) -> Vec<(&str, u8)> {
+    let mut parts: Vec<(&str, u8)> = sessions.iter().map(|s| (s.session_id.as_str(), s.level)).collect();
+    parts.sort_unstable();
+    parts
+}
+
+fn same_signature(held: &[(String, u8)], new: &[(&str, u8)]) -> bool {
+    held.len() == new.len() && held.iter().zip(new).all(|(a, b)| a.0 == b.0 && a.1 == b.1)
 }
 
 // ---- commands ----
@@ -229,7 +262,7 @@ pub async fn focus_live(app: AppHandle, session_id: String) -> AppResult<bool> {
 pub async fn find_orphans(app: AppHandle, profile: Option<String>) -> AppResult<Vec<Orphan>> {
     let profile = profile.map(|p| profiles::resolve_profile(&p)).transpose()?;
     blocking(move || {
-        let scan = scan_now(&app)?;
+        let scan = scan_now(&app, None)?;
         Ok(orphans::find(&scan.found, &scan.snap, &scan.hosts, profile.as_deref()))
     })
     .await
@@ -240,7 +273,7 @@ pub async fn find_orphans(app: AppHandle, profile: Option<String>) -> AppResult<
 #[tauri::command]
 pub async fn close_orphans(app: AppHandle, pids: Vec<u32>) -> AppResult<u32> {
     blocking(move || {
-        let scan = scan_now(&app)?;
+        let scan = scan_now(&app, None)?;
         let current = orphans::find(&scan.found, &scan.snap, &scan.hosts, None);
         let closed = orphans::close(&pids, &current, &scan.snap);
         log::info!("closed {closed} background session(s)");
@@ -302,11 +335,13 @@ mod tests {
             profile: String::new(),
             reachable: false,
         };
-        let one = signature(&[s("b", 1, 1), s("a", 2, 2)]);
-        assert_eq!(one, "a=2;b=1");
-        assert_eq!(one, signature(&[s("a", 9, 2), s("b", 8, 1)]));
-        assert_ne!(one, signature(&[s("a", 2, 1), s("b", 1, 1)]));
-        assert_ne!(one, signature(&[s("a", 2, 2)]));
-        assert_eq!(signature(&[]), "");
+        let first = [s("b", 1, 1), s("a", 2, 2)];
+        let one = signature(&first);
+        assert_eq!(one, [("a", 2), ("b", 1)]);
+        let held: Vec<(String, u8)> = one.iter().map(|(id, l)| (id.to_string(), *l)).collect();
+        assert!(same_signature(&held, &signature(&[s("a", 9, 2), s("b", 8, 1)])));
+        assert!(!same_signature(&held, &signature(&[s("a", 2, 1), s("b", 1, 1)])));
+        assert!(!same_signature(&held, &signature(&[s("a", 2, 2)])));
+        assert!(same_signature(&[], &signature(&[])));
     }
 }

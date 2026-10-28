@@ -25,6 +25,7 @@ describe("picker and avatar in the DOM", () => {
 
   it("shows a card per profile, All profiles and Add profile, with live counts", () => {
     store.set({
+      screen: "picker",
       profiles: [profile("/h/.claude", "default", "me@home.test"), profile("/h/.claude-work", "work")],
       index: {
         gen: 1,
@@ -70,6 +71,20 @@ describe("picker and avatar in the DOM", () => {
     });
     expect(root.querySelector(".prof-card")).toBe(first);
     expect(first?.querySelector(".prof-card-count")?.textContent).toBe("2 sessions");
+
+    // while the picker is not shown the counts wait, and catch up on entering it
+    store.set({ screen: "main" });
+    store.set({
+      index: {
+        gen: 3,
+        projects: [project([session("b", "/h/.claude-work")])],
+        loaded: "ok",
+        error: null,
+      },
+    });
+    expect(first?.querySelector(".prof-card-count")?.textContent).toBe("2 sessions");
+    store.set({ screen: "picker" });
+    expect(first?.querySelector(".prof-card-count")?.textContent).toBe("0 sessions");
   });
 
   it("names the profile in the avatar tooltip", () => {

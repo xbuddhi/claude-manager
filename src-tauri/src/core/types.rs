@@ -27,7 +27,7 @@ pub struct Profile {
 }
 
 /// One transcript: `<profile>/projects/<slug>/<id>.jsonl`.
-#[derive(Serialize, TS, Clone, Debug)]
+#[derive(Serialize, TS, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Session {
@@ -35,10 +35,9 @@ pub struct Session {
     pub id: String,
     pub file: String,
     pub cwd: Option<String>,
-    /// Title, summary or first prompt, whitespace collapsed, at most 140 characters.
+    /// Title, summary or first prompt, whitespace collapsed, at most 140 characters. The same text at up
+    /// to 600 characters is fetched on demand (`session_text`), not sent with the index.
     pub label: String,
-    /// The same text at most 600 characters, for tooltips and the details pane.
-    pub full: String,
     /// User messages (tool results excluded).
     pub count: u32,
     /// Last write, ms since the Unix epoch.
@@ -53,7 +52,7 @@ pub struct Session {
 }
 
 /// Sessions grouped by the folder they ran in.
-#[derive(Serialize, TS, Clone, Debug)]
+#[derive(Serialize, TS, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
 pub struct Project {
@@ -232,7 +231,7 @@ impl Default for Settings {
             git_split: None,
             claude_path: None,
             mac_option_is_meta: true,
-            scrollback: 5000,
+            scrollback: 2000,
             keep_running_on_close: None,
             extra: Map::new(),
         }

@@ -96,7 +96,7 @@ pub async fn launch_external(
     fork: Option<bool>,
     shell_only: Option<bool>,
 ) -> AppResult<()> {
-    let claude_override = settings::get(&app).claude_path;
+    let claude_override = settings::with(&app, |s| s.claude_path.clone());
     blocking(move || {
         if shell_only.unwrap_or(false) {
             return external::open_shell(&existing_dir(&dir)?);

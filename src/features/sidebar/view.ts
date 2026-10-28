@@ -43,12 +43,17 @@ let list: List<TreeRow>;
 let status: HTMLElement;
 let pill: HTMLElement;
 let rows: TreeRow[] = [];
+/** The rows by key (rebuilt with them). */
+let byKey = new Map<string, TreeRow>();
 const tops = new Map<string, number>();
 let dropKey: string | null = null;
 /** The last left press toggled a row (a chevron, heading or "Show more"): its double-click does nothing more. */
 let downToggled = false;
 
 // ---------- data ----------
+
+const sameItems = (a: readonly unknown[], b: readonly unknown[]) =>
+  a === b || (a.length === b.length && a.every((x, i) => x === b[i]));
 
 function treeInput(s: AppState) {
   const os = s.platform.os;
@@ -62,7 +67,6 @@ function treeInput(s: AppState) {
     hidden: s.settings.hidden,
     showHidden: s.sidebarShowHidden,
     showAll: new Set(s.sidebarShowAll),
-    query: "", // search shows its results in its own dropdown; the tree stays as it is
     liveCwd: s.liveCwd,
     ago: (ms: number) => ago(ms),
   };
@@ -71,11 +75,14 @@ function treeInput(s: AppState) {
 function rebuild() {
   const s = store.get();
   const input = treeInput(s);
-  rows = buildTree(input);
+  const folders = folderList(input);
+  rows = buildTree(input, folders);
   tops.clear();
+  byKey = new Map();
   let y = 0;
   for (const r of rows) {
     tops.set(r.key, y);
+    if (!byKey.has(r.key)) byKey.set(r.key, r);
     y += r.height;
   }
   list.setRows(rows);
@@ -89,7 +96,7 @@ function rebuild() {
   renderStatus(s);
   // the picker owns the subtitle while it shows ("Choose a profile"); the 60 s rebuild must not overwrite it
   if (s.index.loaded !== "loading" && s.screen !== "picker") {
-    const c = counts(folderList(input));
+    const c = counts(folders);
     const projects = s.settings.groups.length;
     setSubtitle(
       [
@@ -104,7 +111,7 @@ function rebuild() {
 }
 
 const selectable = (r: TreeRow) => r.kind === "group" || r.kind === "folder";
-const rowByKey = (key: string | undefined) => rows.find((r) => r.key === key);
+const rowByKey = (key: string | undefined) => (key === undefined ? undefined : byKey.get(key));
 const selectedRow = () => rowByKey(list.selection.selected[0]);
 
 function selectionOf(r: TreeRow | undefined): SidebarSelection | null {
@@ -115,10 +122,20 @@ function selectionOf(r: TreeRow | undefined): SidebarSelection | null {
   return null;
 }
 
+export function sameSelection(a: SidebarSelection | null, b: SidebarSelection | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.kind !== b.kind || a.key !== b.key || a.path !== b.path || a.name !== b.name) return false;
+  const fa = a.folders;
+  const fb = b.folders;
+  if (fa === fb) return true;
+  return !!fa && !!fb && fa.length === fb.length && fa.every((f, i) => f === fb[i]);
+}
+
 /** Publishes the selection as store.sidebarSelection (only when it changed). */
 function syncSelection() {
   const next = selectionOf(selectedRow());
-  if (JSON.stringify(next) !== JSON.stringify(store.get().sidebarSelection)) store.set({ sidebarSelection: next });
+  if (!sameSelection(next, store.get().sidebarSelection)) store.set({ sidebarSelection: next });
 }
 
 // pinned and grouped folders the index does not list: ask the disk whether they are still there
@@ -195,24 +212,36 @@ function placePill() {
 
 // ---------- rows ----------
 
+/** A row element's parts, kept when it is created (rows update on every refresh). */
+interface RowParts {
+  label: HTMLElement;
+  chev: HTMLElement | null;
+  ico: HTMLElement | null;
+  side: HTMLElement | null;
+  live: HTMLElement | null;
+}
+const parts = new WeakMap<HTMLElement, RowParts>();
+
 function createRow(r: TreeRow): HTMLElement {
   const el = h("div", { class: `sb-row sb-${r.kind}` });
+  const label = h("span", { class: "sb-label" });
   if (r.kind === "section") {
-    el.append(h("span", { class: "sb-label" }), h("span", { class: "sb-chev" }));
+    const chev = h("span", { class: "sb-chev" });
+    el.append(label, chev);
+    parts.set(el, { label, chev, ico: null, side: null, live: null });
     return el;
   }
   if (r.kind === "more" || r.kind === "hint") {
-    el.append(h("span", { class: "sb-label" }));
+    el.append(label);
+    parts.set(el, { label, chev: null, ico: null, side: null, live: null });
     return el;
   }
-  el.append(
-    h("span", { class: "sb-guide" }),
-    h("span", { class: "sb-chev" }),
-    h("span", { class: "sb-ico" }),
-    h("span", { class: "sb-label" }),
-    h("span", { class: r.kind === "group" ? "sb-badge" : "sb-detail" }),
-    h("span", { class: "sb-live" }),
-  );
+  const chev = h("span", { class: "sb-chev" });
+  const ico = h("span", { class: "sb-ico" });
+  const side = h("span", { class: r.kind === "group" ? "sb-badge" : "sb-detail" });
+  const live = h("span", { class: "sb-live" });
+  el.append(h("span", { class: "sb-guide" }), chev, ico, label, side, live);
+  parts.set(el, { label, chev, ico, side, live });
   return el;
 }
 
@@ -229,10 +258,10 @@ function updateRow(el: HTMLElement, r: TreeRow) {
   el.classList.toggle("nested", r.indent > 0);
   el.classList.toggle("last", r.lastChild);
   el.classList.toggle("drop-target", r.key === dropKey);
-  const label = el.querySelector(".sb-label");
-  if (label && label.textContent !== r.title) label.textContent = r.title;
-  const chev = el.querySelector(".sb-chev");
-  setIcon(chev, r.open === undefined ? undefined : r.open ? "chevronDown" : "chevron", () =>
+  const p = parts.get(el);
+  if (!p) return;
+  if (p.label.textContent !== r.title) p.label.textContent = r.title;
+  setIcon(p.chev, r.open === undefined ? undefined : r.open ? "chevronDown" : "chevron", () =>
     iconNode(r.open ? "chevronDown" : "chevron"),
   );
   // rows are reused: the divider look is set (and cleared) on every row
@@ -249,11 +278,10 @@ function updateRow(el: HTMLElement, r: TreeRow) {
     return;
   }
   if (r.kind !== "group" && r.kind !== "folder") return;
-  setIcon(el.querySelector(".sb-ico"), r.icon, () => iconNode(r.icon ?? "folder"));
-  const side = el.querySelector(r.kind === "group" ? ".sb-badge" : ".sb-detail");
+  setIcon(p.ico, r.icon, () => iconNode(r.icon ?? "folder"));
+  const { side, live } = p;
   const sideText = r.badge ?? r.detail ?? "";
   if (side && side.textContent !== sideText) side.textContent = sideText;
-  const live = el.querySelector<HTMLElement>(".sb-live");
   if (live && live.dataset.level !== String(r.live)) {
     live.dataset.level = String(r.live);
     live.replaceChildren(...(r.live ? [liveDot(r.live)] : []));
@@ -456,10 +484,15 @@ export function mountView(slot: HTMLElement): void {
 
   slot.replaceChildren(head, status, list.el);
 
+  // the projects in view, not the whole index: an update to another profile's sessions changes nothing here
+  // (projectsFor keeps unchanged projects as the same objects)
   store.select(
     (s) =>
       [
-        s.index,
+        projectsFor(s.currentProfile, s.index.projects),
+        s.index.loaded,
+        s.index.error,
+        s.settings.hiddenProfiles,
         s.currentProfile,
         s.settings.pinned,
         s.settings.groups,
@@ -473,7 +506,13 @@ export function mountView(slot: HTMLElement): void {
         s.profiles,
       ] as const,
     rebuild,
-    { equals: (a, b) => a.every((v, i) => Object.is(v, b[i])), immediate: true },
+    {
+      equals: (a, b) =>
+        a.every((v, i) =>
+          i === 0 ? sameItems(v as readonly unknown[], b[i] as readonly unknown[]) : Object.is(v, b[i]),
+        ),
+      immediate: true,
+    },
   );
   // the pill measures nothing, but it should not glide in from where it was while the sidebar was hidden
   store.select(

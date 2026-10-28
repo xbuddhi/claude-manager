@@ -3,6 +3,7 @@ import {
   type DiffLine,
   diffToText,
   displayText,
+  MARK_MAX_PAIRS,
   MAX_NEW_FILE_LINES,
   markWords,
   newFileLines,
@@ -147,5 +148,18 @@ describe("word marks", () => {
       { left: 3, right: 5 },
       { left: undefined, right: 6 },
     ]);
+  });
+
+  it("stops marking once a diff has had its share of work", () => {
+    const pairs = MARK_MAX_PAIRS + 10;
+    const lines: DiffLine[] = [];
+    for (let k = 0; k < pairs; k++) {
+      lines.push({ kind: "del", old: k + 1, new: 0, text: `let a${k} = 1;` });
+      lines.push({ kind: "add", old: 0, new: k + 1, text: `let a${k} = 2;` });
+    }
+    markWords(lines);
+    expect(lines[0]?.marks).toBeDefined();
+    expect(lines[2 * (MARK_MAX_PAIRS - 1)]?.marks).toBeDefined();
+    expect(lines[2 * MARK_MAX_PAIRS]?.marks).toBeUndefined();
   });
 });

@@ -59,6 +59,9 @@ export function createTable(opts: TableOptions): Table {
   const head = h("div", { class: "ses-head", attrs: { role: "row" } });
   const count = h("span", { class: "ses-badge", hidden: true });
 
+  // a row's cells, kept when it is created (update() runs for every visible row on each refresh)
+  const parts = new WeakMap<HTMLElement, { ico: HTMLElement; label: HTMLElement; rest: HTMLElement[] }>();
+
   const selectedAt = (i: number) => {
     const row = list.rows()[i];
     return row !== undefined && list.selection.isSelected(row.id);
@@ -75,20 +78,22 @@ export function createTable(opts: TableOptions): Table {
       const label = h("span", { class: "ses-label" });
       const first = h("span", { class: "ses-cell ses-first", attrs: { role: "gridcell" } }, ico, label);
       const rest = [1, 2, 3, 4].map(() => h("span", { class: "ses-cell", attrs: { role: "gridcell" } }));
-      return h("div", { class: "ses-row" }, first, ...rest);
+      const el = h("div", { class: "ses-row" }, first, ...rest);
+      parts.set(el, { ico, label, rest });
+      return el;
     },
     update(el, s, state) {
       const level = sessionLevel(s.id) as LiveLevel;
       const text = cells(s, mode, level, profileName(s.profile));
-      const [first, ...rest] = [...el.children] as HTMLElement[];
-      const ico = first?.firstElementChild as HTMLElement;
+      const p = parts.get(el);
+      if (!p) return;
+      const { ico, label, rest } = p;
       if (ico.dataset.level !== String(level)) {
         ico.dataset.level = String(level);
         ico.replaceChildren(level ? liveDot(level) : chatIcon());
       }
       // text is set only when it changed: a click re-renders the rows, and WebKit drops the click (and the
       // double-click) when the text node pressed on was replaced before the button came up
-      const label = ico.nextElementSibling as HTMLElement;
       if (label.textContent !== (text[0] ?? "")) label.textContent = text[0] ?? "";
       rest.forEach((c, i) => {
         const t = text[i + 1] ?? "";
@@ -99,10 +104,8 @@ export function createTable(opts: TableOptions): Table {
       el.classList.toggle("sel-prev", state.selected && selectedAt(state.index - 1));
       el.classList.toggle("sel-next", state.selected && selectedAt(state.index + 1));
     },
-    onSelectionChange: (ids) => {
-      list.refresh(); // neighbours of a changed row change their corners
-      opts.onSelect(ids);
-    },
+    // the list has already updated every visible row (neighbours of a changed row change their corners)
+    onSelectionChange: (ids) => opts.onSelect(ids),
     onActivate: (s) => opts.onActivate(s),
     onContextMenu: (s, e) => opts.onMenu(s, e),
   });
@@ -140,8 +143,10 @@ export function createTable(opts: TableOptions): Table {
     el,
     list,
     setRows(rows, next, oneProfile = false) {
+      const modeChanged = next !== mode || oneProfile !== one;
       setMode(next, oneProfile);
       list.setRows(rows);
+      if (modeChanged) list.refresh();
     },
     setCount(n, tip) {
       count.hidden = n === null;

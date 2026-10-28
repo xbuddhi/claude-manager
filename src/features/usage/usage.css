@@ -16,10 +16,6 @@
   cursor: default;
   transition: background-color 0.16s var(--ease);
 }
-.use-ring[hidden],
-.use-m[hidden] {
-  display: none;
-}
 .use-ring:hover,
 .use-ring[aria-expanded="true"] {
   background: var(--ctrl-hover);
@@ -88,11 +84,6 @@
     opacity: 0.4;
   }
 }
-@keyframes use-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 
 /* ---- popover ---- */
 
@@ -132,7 +123,7 @@
   border: 1.6px solid var(--accent);
   border-right-color: transparent;
   border-radius: 50%;
-  animation: use-spin 0.9s linear infinite;
+  animation: spin 0.9s linear infinite;
 }
 .use-status {
   margin: 6px 0 10px;
@@ -251,13 +242,4 @@
 .use-bars i.today {
   background: var(--accent);
   opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .use-skel i {
-    animation: none;
-  }
-  .use-fill {
-    transition: none;
-  }
 }

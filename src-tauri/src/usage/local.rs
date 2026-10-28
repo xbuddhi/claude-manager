@@ -1,13 +1,16 @@
 //! Token counts from the transcripts Claude Code writes on this computer: today, the last 7 days and the
-//! current 5-hour window. Nothing is sent anywhere. Files are parsed once per modification time.
+//! current 5-hour window. Nothing is sent anywhere. Files are parsed once per modification time, and a
+//! file that only grew (the active transcript) is read from where the last read ended.
 
 use super::types::UsageReport;
 use crate::core::error::lock;
 use chrono::{DateTime, Duration, Local, Timelike};
 use rayon::prelude::*;
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::io::{BufRead, BufReader};
+use std::fs::File;
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -25,8 +28,17 @@ pub struct Entry {
     pub tokens: u64,
 }
 
-/// A file's replies, with the modification time they were read at.
-type Parsed = (SystemTime, Arc<Vec<Entry>>);
+/// A file's replies, with what is needed to read only what was appended next time.
+struct Parsed {
+    /// Modification time and length the file was read at.
+    modified: SystemTime,
+    len: u64,
+    /// Replies of the complete lines before `offset` (the end of the last complete line).
+    done: Arc<Vec<Entry>>,
+    offset: u64,
+    /// `done` plus the reply on an unfinished last line, if any.
+    all: Arc<Vec<Entry>>,
+}
 
 /// Parsed files by path.
 #[derive(Default)]
@@ -36,21 +48,47 @@ pub struct LocalUsage {
     running: Mutex<()>,
 }
 
+/// The fields of a transcript line that are read; everything else (the reply text) is skipped unparsed.
+#[derive(Deserialize)]
+struct Line {
+    #[serde(rename = "type")]
+    kind: Option<Value>,
+    timestamp: Option<Value>,
+    message: Option<Message>,
+}
+
+#[derive(Deserialize)]
+struct Message {
+    id: Option<Value>,
+    model: Option<Value>,
+    /// Present (even as `null`) or not.
+    #[serde(default, deserialize_with = "present")]
+    usage: Option<Value>,
+}
+
+fn present<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(d).map(Some)
+}
+
 /// The entry for one transcript line, if it is a counted assistant reply.
 pub fn parse_line(line: &str) -> Option<Entry> {
     if !line.contains("\"usage\"") || !line.contains("\"assistant\"") {
         return None;
     }
-    let root: Value = serde_json::from_str(line).ok()?;
-    if root.get("type")?.as_str()? != "assistant" {
+    // only an object counts (a struct would also take a JSON array)
+    if !line.trim_start().starts_with('{') {
         return None;
     }
-    let msg = root.get("message")?;
-    let usage = msg.get("usage")?;
-    if msg.get("model").and_then(Value::as_str) == Some("<synthetic>") {
+    let root: Line = serde_json::from_str(line).ok()?;
+    if root.kind.as_ref()?.as_str()? != "assistant" {
         return None;
     }
-    let t = DateTime::parse_from_rfc3339(root.get("timestamp")?.as_str()?).ok()?;
+    let msg = root.message?;
+    let usage = msg.usage?;
+    if msg.model.as_ref().and_then(Value::as_str) == Some("<synthetic>") {
+        return None;
+    }
+    let t = DateTime::parse_from_rfc3339(root.timestamp.as_ref()?.as_str()?).ok()?;
     // cache reads are left out: they would dwarf the real work
     let tokens = ["input_tokens", "output_tokens", "cache_creation_input_tokens"]
         .iter()
@@ -58,35 +96,93 @@ pub fn parse_line(line: &str) -> Option<Entry> {
         .sum();
     Some(Entry {
         t: t.with_timezone(&Local),
-        id: msg.get("id").and_then(Value::as_str).map(str::to_string),
+        id: msg.id.as_ref().and_then(Value::as_str).map(str::to_string),
         tokens,
     })
 }
 
-fn read_file(path: &Path) -> Vec<Entry> {
-    let Ok(file) = std::fs::File::open(path) else {
-        return Vec::new();
+/// Whether the byte just before `offset` is a line end, so reading can go on from there.
+fn line_ends_at(file: &mut File, offset: u64) -> bool {
+    let mut byte = [0u8];
+    offset > 0
+        && file.seek(SeekFrom::Start(offset - 1)).is_ok()
+        && file.read_exact(&mut byte).is_ok()
+        && byte[0] == b'\n'
+}
+
+/// Reads `path`, going on from `prev` when the file only grew since then. Replies before `cutoff` are not
+/// kept: the report never looks at them, and a long transcript has many.
+fn read_file(path: &Path, modified: SystemTime, len: u64, prev: Option<Parsed>, cutoff: DateTime<Local>) -> Parsed {
+    let empty = |offset| Parsed {
+        modified,
+        len,
+        done: Arc::default(),
+        offset,
+        all: Arc::default(),
     };
+    let Ok(mut file) = File::open(path) else {
+        return empty(0);
+    };
+    let (mut done, mut offset) = match prev {
+        Some(p) if modified >= p.modified && len >= p.len && line_ends_at(&mut file, p.offset) => {
+            drop(p.all);
+            let mut done = Arc::unwrap_or_clone(p.done);
+            done.retain(|e| e.t >= cutoff);
+            (done, p.offset)
+        }
+        _ => (Vec::new(), 0),
+    };
+    if file.seek(SeekFrom::Start(offset)).is_err() {
+        (done, offset) = (Vec::new(), 0);
+        if file.seek(SeekFrom::Start(0)).is_err() {
+            return empty(0);
+        }
+    }
     let mut reader = BufReader::new(file);
-    let mut out = Vec::new();
+    let mut tail = None;
     let mut buf = Vec::new();
     loop {
         buf.clear();
         match reader.read_until(b'\n', &mut buf) {
             Ok(0) | Err(_) => break,
-            Ok(_) => {
-                if let Some(e) = std::str::from_utf8(&buf).ok().and_then(parse_line) {
-                    out.push(e);
+            Ok(n) => {
+                let entry = std::str::from_utf8(&buf)
+                    .ok()
+                    .and_then(parse_line)
+                    .filter(|e| e.t >= cutoff);
+                if buf.ends_with(b"\n") {
+                    offset += n as u64;
+                    done.extend(entry);
+                } else {
+                    // an unfinished last line: counted now, read again next time
+                    tail = entry;
+                    break;
                 }
             }
         }
     }
-    out
+    let done = Arc::new(done);
+    let all = match tail {
+        None => done.clone(),
+        Some(e) => {
+            let mut all = Vec::with_capacity(done.len() + 1);
+            all.extend(done.iter().cloned());
+            all.push(e);
+            Arc::new(all)
+        }
+    };
+    Parsed {
+        modified,
+        len,
+        done,
+        offset,
+        all,
+    }
 }
 
-/// Every `*.jsonl` under `root` (sub-agent transcripts included) modified since `since`. Symlinks are
-/// not followed.
-fn transcripts(root: &Path, since: SystemTime, out: &mut Vec<(PathBuf, SystemTime)>) {
+/// Every `*.jsonl` under `root` (sub-agent transcripts included) modified since `since`, with its
+/// modification time and length. Symlinks are not followed.
+fn transcripts(root: &Path, since: SystemTime, out: &mut Vec<(PathBuf, SystemTime, u64)>) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
@@ -96,11 +192,11 @@ fn transcripts(root: &Path, since: SystemTime, out: &mut Vec<(PathBuf, SystemTim
         if kind.is_dir() {
             transcripts(&path, since, out);
         } else if kind.is_file() && path.extension().is_some_and(|e| e == "jsonl") {
-            let modified = entry.metadata().and_then(|m| m.modified());
-            if let Ok(modified) = modified
+            let Ok(meta) = entry.metadata() else { continue };
+            if let Ok(modified) = meta.modified()
                 && modified >= since
             {
-                out.push((path, modified));
+                out.push((path, modified, meta.len()));
             }
         }
     }
@@ -112,25 +208,30 @@ impl LocalUsage {
         let _one_at_a_time = lock(&self.running);
         let now = Local::now();
         let since = SystemTime::now() - std::time::Duration::from_secs(SPAN_DAYS as u64 * 86_400);
+        // a day of slack over the report's window, so day boundaries and clock differences never cut a reply
+        let cutoff = now - Duration::days(SPAN_DAYS + 1);
         let mut found = Vec::new();
         for root in roots {
             transcripts(root, since, &mut found);
         }
         let parsed: Vec<Arc<Vec<Entry>>> = found
             .par_iter()
-            .map(|(path, modified)| {
-                if let Some((at, entries)) = lock(&self.files).get(path)
-                    && at == modified
+            .map(|(path, modified, len)| {
+                if let Some(p) = lock(&self.files).get(path)
+                    && p.modified == *modified
                 {
-                    return entries.clone();
+                    return p.all.clone();
                 }
-                let entries = Arc::new(read_file(path));
-                lock(&self.files).insert(path.clone(), (*modified, entries.clone()));
-                entries
+                // changed: a file that only grew is read from where the last read ended
+                let prev = lock(&self.files).remove(path);
+                let next = read_file(path, *modified, *len, prev, cutoff);
+                let all = next.all.clone();
+                lock(&self.files).insert(path.clone(), next);
+                all
             })
             .collect();
         // forget files that fell out of the window
-        lock(&self.files).retain(|_, (at, _)| *at >= since);
+        lock(&self.files).retain(|_, p| p.modified >= since);
         compute(parsed.iter().flat_map(|e| e.iter()), now)
     }
 }
@@ -226,6 +327,27 @@ mod tests {
         assert!(parse_line("not json \"usage\" \"assistant\"").is_none());
     }
 
+    #[test]
+    fn skips_content_and_keeps_value_semantics() {
+        let t = at(25, 9, 30).with_timezone(&chrono::Utc).to_rfc3339();
+        let big = format!(
+            r#"{{"type":"assistant","timestamp":"{t}","message":{{"content":[{{"type":"text","text":"x"}}],"id":7,"usage":{{"input_tokens":3,"output_tokens":-1,"cache_creation_input_tokens":2.5}}}}}}"#
+        );
+        let e = parse_line(&big).unwrap();
+        assert_eq!(e.tokens, 3);
+        assert_eq!(e.id, None);
+        // usage present but null still counts as a reply with no tokens
+        let null = format!(r#"{{"type":"assistant","timestamp":"{t}","message":{{"usage":null}}}}"#);
+        assert_eq!(parse_line(&null).unwrap().tokens, 0);
+        assert!(parse_line(r#"["assistant","2026-10-25T09:30:00Z",{"usage":{}}]"#).is_none());
+        assert!(
+            parse_line(&format!(
+                r#"{{"type":"assistant","timestamp":"{t}","message":"usage"}}"#
+            ))
+            .is_none()
+        );
+    }
+
     fn entry(t: DateTime<Local>, id: Option<&str>, tokens: u64) -> Entry {
         Entry {
             t,
@@ -299,5 +421,86 @@ mod tests {
             .unwrap();
         assert_eq!(usage.report(std::slice::from_ref(&projects)).today, 16);
         assert_eq!(usage.report(&[dir.path().join("missing")]).today, 0);
+    }
+
+    #[test]
+    fn keeps_only_replies_the_report_can_use() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("s.jsonl");
+        let now = Local::now();
+        let old = now - Duration::days(SPAN_DAYS + 2);
+        std::fs::write(
+            &path,
+            format!(
+                "{}\n{}\n",
+                line(old, "old", "m", 1, 0, 0, 0),
+                line(now, "new", "m", 2, 0, 0, 0)
+            ),
+        )
+        .unwrap();
+        let meta = std::fs::metadata(&path).unwrap();
+        let cutoff = now - Duration::days(SPAN_DAYS + 1);
+        let first = read_file(&path, meta.modified().unwrap(), meta.len(), None, cutoff);
+        assert_eq!(
+            first.all.iter().map(|e| e.id.as_deref()).collect::<Vec<_>>(),
+            [Some("new")]
+        );
+        // entries kept from the last read age out too
+        let later = now + Duration::days(SPAN_DAYS + 2);
+        let again = read_file(
+            &path,
+            meta.modified().unwrap(),
+            meta.len(),
+            Some(first),
+            later - Duration::days(SPAN_DAYS + 1),
+        );
+        assert!(again.all.is_empty());
+    }
+
+    fn set_mtime(path: &Path, at: SystemTime) {
+        std::fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(at)
+            .unwrap();
+    }
+
+    #[test]
+    fn reads_only_appended_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = dir.path().join("projects");
+        std::fs::create_dir_all(&projects).unwrap();
+        let path = projects.join("s.jsonl");
+        let now = Local::now();
+        let first = line(now, "r1", "m", 1, 0, 0, 0);
+        let second = line(now, "r2", "m", 20, 0, 0, 0);
+        // the last line is not finished yet: counted, but read again later
+        std::fs::write(&path, format!("{first}\n{second}")).unwrap();
+        let base = SystemTime::now();
+        set_mtime(&path, base);
+        let usage = LocalUsage::default();
+        let rep = usage.report(std::slice::from_ref(&projects));
+        assert_eq!(rep.today, 21);
+        assert_eq!(lock(&usage.files)[&path].offset, first.len() as u64 + 1);
+
+        // grown: the first line is changed in place (same length) to show it is not read again
+        let changed = line(now, "r1", "m", 9, 0, 0, 0);
+        let third = line(now, "r3", "m", 300, 0, 0, 0);
+        std::fs::write(&path, format!("{changed}\n{second}\n{third}\n")).unwrap();
+        set_mtime(&path, base + std::time::Duration::from_secs(1));
+        assert_eq!(usage.report(std::slice::from_ref(&projects)).today, 321);
+        let len = std::fs::metadata(&path).unwrap().len();
+        assert_eq!(lock(&usage.files)[&path].offset, len);
+
+        // shrunk: read again from the start
+        std::fs::write(&path, format!("{changed}\n")).unwrap();
+        set_mtime(&path, base + std::time::Duration::from_secs(2));
+        assert_eq!(usage.report(std::slice::from_ref(&projects)).today, 9);
+
+        // grown but the old end is no longer a line end: read again from the start
+        std::fs::write(&path, format!("{}\n", line(now, "r5", "m", 4000, 0, 0, 0))).unwrap();
+        set_mtime(&path, base + std::time::Duration::from_secs(3));
+        assert_eq!(usage.report(std::slice::from_ref(&projects)).today, 4000);
     }
 }

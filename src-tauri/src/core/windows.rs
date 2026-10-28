@@ -96,19 +96,57 @@ pub fn create(app: &AppHandle, label: &str, at: Option<(f64, f64)>) -> AppResult
     Ok(window)
 }
 
+/// An app window's frame on screen, in logical points.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Frame {
+    pub label: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl Frame {
+    fn holds(&self, x: f64, y: f64) -> bool {
+        x >= self.x && x < self.x + self.width && y >= self.y && y < self.y + self.height
+    }
+}
+
+/// The frames of the app windows on screen and not minimized, in [`all`] order. Each window takes a few
+/// queries of the main thread, so a caller asking often (a tab drag) keeps the result for a moment.
+pub fn frames(app: &AppHandle) -> Vec<Frame> {
+    visible(app)
+        .into_iter()
+        .filter(|w| !w.is_minimized().unwrap_or(true))
+        .filter_map(|w| {
+            let (Ok(pos), Ok(size), Ok(scale)) = (w.outer_position(), w.outer_size(), w.scale_factor()) else {
+                return None;
+            };
+            let pos = pos.to_logical::<f64>(scale);
+            let size = size.to_logical::<f64>(scale);
+            Some(Frame {
+                label: w.label().to_string(),
+                x: pos.x,
+                y: pos.y,
+                width: size.width,
+                height: size.height,
+            })
+        })
+        .collect()
+}
+
+/// The label of the first frame holding the logical screen point, other than `except`.
+pub fn frame_at<'a>(frames: &'a [Frame], x: f64, y: f64, except: &str) -> Option<&'a str> {
+    frames
+        .iter()
+        .find(|f| f.label != except && f.holds(x, y))
+        .map(|f| f.label.as_str())
+}
+
 /// The app window on screen whose frame holds the logical screen point, other than `except`.
 pub fn at_point(app: &AppHandle, x: f64, y: f64, except: &str) -> Option<WebviewWindow> {
-    visible(app).into_iter().find(|w| {
-        if w.label() == except || w.is_minimized().unwrap_or(true) {
-            return false;
-        }
-        let (Ok(pos), Ok(size), Ok(scale)) = (w.outer_position(), w.outer_size(), w.scale_factor()) else {
-            return false;
-        };
-        let pos = pos.to_logical::<f64>(scale);
-        let size = size.to_logical::<f64>(scale);
-        x >= pos.x && x < pos.x + size.width && y >= pos.y && y < pos.y + size.height
-    })
+    let frames = frames(app);
+    frame_at(&frames, x, y, except).and_then(|label| app.get_webview_window(label))
 }
 
 #[cfg(test)]
@@ -124,5 +162,22 @@ mod tests {
         let a = new_label();
         let b = new_label();
         assert!(a.starts_with(PREFIX) && number(&b) == number(&a) + 1);
+    }
+
+    #[test]
+    fn finds_the_frame_under_a_point() {
+        let frame = |label: &str, x| Frame {
+            label: label.into(),
+            x,
+            y: 0.0,
+            width: 100.0,
+            height: 50.0,
+        };
+        let frames = [frame("main", 0.0), frame("win-2", 50.0)];
+        assert_eq!(frame_at(&frames, 60.0, 10.0, "x"), Some("main"));
+        assert_eq!(frame_at(&frames, 60.0, 10.0, "main"), Some("win-2"));
+        assert_eq!(frame_at(&frames, 100.0, 10.0, "x"), Some("win-2"));
+        assert_eq!(frame_at(&frames, 150.0, 10.0, "x"), None);
+        assert_eq!(frame_at(&frames, 10.0, 50.0, "x"), None);
     }
 }

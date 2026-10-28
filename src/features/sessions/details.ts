@@ -8,6 +8,7 @@ import { iconNode } from "../../core/icons";
 import { isMac } from "../../core/platform";
 import { button } from "../../ui/button";
 import { setTip } from "../../ui/tooltip";
+import { sessionText, sessionTextCached } from "../index-data/api";
 import { playIcon } from "./icons";
 import type { Scope } from "./model";
 import {
@@ -24,7 +25,8 @@ import {
 
 /**
  * Text and meta line for the pane. `level` is the first selected session's live level; `hint` replaces the
- * default hint (e.g. while the index loads).
+ * default hint (e.g. while the index loads). `text` is the first session's full text when it is known
+ * already; its label (the same text cut to 140 characters) is shown until it is.
  */
 export function detailsFor(
   scope: Scope | null,
@@ -32,9 +34,10 @@ export function detailsFor(
   level: number,
   profileName: (dir: string) => string,
   hint = HINT_DEFAULT,
+  text?: string,
 ): { text: string; meta: string } {
   const s = selected[0];
-  if (s) return { text: detailText(s.full, level), meta: detailMeta(s, profileName(s.profile)) };
+  if (s) return { text: detailText(text ?? s.label, level), meta: detailMeta(s, profileName(s.profile)) };
   if (scope?.kind === "folder" && scope.sessions.length === 0) return { text: HINT_NO_SESSIONS, meta: scope.path };
   if (scope?.kind === "group")
     return { text: groupHint(scope.name, scope.folders.length), meta: folderList(scope.folders) };
@@ -87,13 +90,24 @@ export function createDetails(opts: DetailsOptions): Details {
   const del = button({ icon: "trash", kind: "danger", title: deleteTip(1, isMac()), onClick: opts.onDelete });
   const actions = h("div", { class: "ses-dactions" }, resume, fork, del);
   const el = h("div", { class: "ses-details" }, h("div", { class: "ses-dbody" }, text, meta), actions);
+  // the render a fetched text belongs to: a later render makes the fetch stale
+  let renders = 0;
 
   return {
     el,
     render(scope, selected, level, profileName, hint) {
-      const content = detailsFor(scope, selected, level, profileName, hint);
+      const s = selected[0];
+      const known = s ? sessionTextCached(s) : undefined;
+      const content = detailsFor(scope, selected, level, profileName, hint, known);
       text.textContent = content.text;
       meta.textContent = content.meta;
+      const render = ++renders;
+      if (s && known === undefined) {
+        // the label is up until the full text arrives (same text, so nothing flashes)
+        void sessionText(s).then((full) => {
+          if (full !== null && render === renders) text.textContent = detailText(full, level);
+        });
+      }
       const n = selected.length;
       el.classList.toggle("hint", n === 0);
       actions.hidden = n === 0;

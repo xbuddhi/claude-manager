@@ -22,6 +22,8 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::sessions::get_index,
         crate::sessions::rescan_full,
         crate::sessions::count_for,
+        crate::sessions::session_text,
+        crate::sessions::search_sessions,
         // ---- pty + launch (WP2) ----
         crate::pty::pty_new,
         crate::pty::pty_resume,

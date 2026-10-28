@@ -1,8 +1,8 @@
 // A file tree of one folder with its bar (new file, new folder, show ignored, collapse) and the file
 // operations: rename, move by dragging onto a folder, duplicate, move to the trash. Used by the Files view and
 // by the panel beside a terminal, each with its own tree. Entries .gitignore leaves out are hidden unless
-// shown from the bar. While shown, the open folders are read again every 4 s and when the app comes back to
-// the front.
+// shown from the bar. While shown, the open folders are read again every 4 s while the app is in front, and
+// when it comes back to the front.
 
 import type { FileEntry } from "../../bindings/FileEntry";
 import type { FolderListing } from "../../bindings/FolderListing";
@@ -126,8 +126,15 @@ export function createExplorer(opts: ExplorerOptions): Explorer {
   list.el.classList.add("fm-tree");
   const el = h("div", { class: "fm-explorer" }, bar, note, list.el);
 
+  /** The rows on screen by key (looked up on every pointer move of a drag). */
+  let byKey = new Map<string, TreeRow>();
+  function setRows(rows: TreeRow[]) {
+    byKey = new Map(rows.map((r) => [r.key, r]));
+    list.setRows(rows);
+  }
+
   function rowOf(key: string | undefined): EntryRow | undefined {
-    const row = list.rows().find((r) => r.key === key);
+    const row = key === undefined ? undefined : byKey.get(key);
     return row?.kind === "entry" ? row : undefined;
   }
 
@@ -147,7 +154,7 @@ export function createExplorer(opts: ExplorerOptions): Explorer {
 
   function renderTree() {
     const rows = flatten(st.listings, st.expanded);
-    list.setRows(rows);
+    setRows(rows);
     showNote(
       st.listings.has("") && !rows.length
         ? showIgnored()
@@ -179,7 +186,7 @@ export function createExplorer(opts: ExplorerOptions): Explorer {
     const root = st.root;
     renderBar();
     if (!root) {
-      list.setRows([]);
+      setRows([]);
       return showNote(opts.noRoot);
     }
     const dirs = shownFolders();
@@ -189,7 +196,7 @@ export function createExplorer(opts: ExplorerOptions): Explorer {
     const top = results[0];
     if (!top?.ok) {
       st.listings = new Map();
-      list.setRows([]);
+      setRows([]);
       return showNote(top?.error.message ?? "");
     }
     const next = new Map<string, FolderListing>();
@@ -468,7 +475,8 @@ export function createExplorer(opts: ExplorerOptions): Explorer {
   });
   window.addEventListener("focus", () => void load());
   setInterval(() => {
-    if (st.shown && !st.busy && !document.hidden) void load();
+    // not while the app is in the background: coming back to the front reads the folders again
+    if (st.shown && !st.busy && !document.hidden && store.get().windowFocused && document.hasFocus()) void load();
   }, POLL_MS);
 
   const api: Explorer = {
@@ -483,7 +491,7 @@ export function createExplorer(opts: ExplorerOptions): Explorer {
       st.listings = new Map();
       st.expanded = new Set();
       st.seq++;
-      list.setRows([]);
+      setRows([]);
       void load();
     },
     root: () => st.root,

@@ -112,13 +112,28 @@ export function matchChord(chord: Chord, e: KeyLike): boolean {
 interface Entry {
   shortcut: Shortcut;
   specs: string[];
+  /** The bindings parsed for one OS (parsed on first use; tests may ask for the other OS). */
+  parsed?: { mac: boolean; chords: Chord[] };
 }
 
 const entries: Entry[] = [];
 
+/** The entry's bindings that apply on this OS, parsed once. */
+function chordsOf(entry: Entry, mac: boolean): Chord[] {
+  if (entry.parsed?.mac !== mac) {
+    const chords: Chord[] = [];
+    for (const spec of entry.specs) {
+      const chord = parseChord(spec, mac);
+      if (chord) chords.push(chord);
+    }
+    entry.parsed = { mac, chords };
+  }
+  return entry.parsed.chords;
+}
+
 /** Registers a shortcut; later registrations win over earlier ones for the same keys. */
 export function registerShortcut(shortcut: Shortcut): () => void {
-  const entry = { shortcut, specs: Array.isArray(shortcut.keys) ? shortcut.keys : [shortcut.keys] };
+  const entry: Entry = { shortcut, specs: Array.isArray(shortcut.keys) ? shortcut.keys : [shortcut.keys] };
   entries.unshift(entry);
   return () => {
     const i = entries.indexOf(entry);
@@ -180,10 +195,10 @@ export function handleKeydown(e: KeyboardEvent, mac = isMac()): boolean {
 }
 
 function runShortcut(e: KeyboardEvent, mac: boolean): boolean {
-  for (const { shortcut, specs } of entries) {
-    for (const spec of specs) {
-      const chord = parseChord(spec, mac);
-      if (!chord || !matchChord(chord, e) || !allowed(shortcut, chord, e.target, mac)) continue;
+  for (const entry of entries) {
+    const { shortcut } = entry;
+    for (const chord of chordsOf(entry, mac)) {
+      if (!matchChord(chord, e) || !allowed(shortcut, chord, e.target, mac)) continue;
       if (shortcut.when && !shortcut.when()) continue;
       if (!runCommand(shortcut.id)) continue;
       lastRun = { id: shortcut.id, at: performance.now() };

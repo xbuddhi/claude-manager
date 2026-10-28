@@ -11,7 +11,7 @@
 
 use super::snapshot::{Proc, Snapshot};
 use crate::core::profiles::{find_transcript, is_session_id};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -22,6 +22,8 @@ const START_SLACK_S: u64 = 5;
 const WORKING_WITHIN: Duration = Duration::from_secs(8);
 /// The end of a transcript searched for the session's folder.
 const CWD_TAIL: u64 = 256 * 1024;
+/// Tail read first; the full tail only when no cwd is in it.
+const CWD_TAIL_SMALL: u64 = 32 * 1024;
 
 /// A validated running session (before deduplication).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,7 +64,28 @@ impl Markers {
     pub fn key_pids(&self) -> impl Iterator<Item = u32> + '_ {
         self.keys.iter().map(|k| k.pid)
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.json.is_empty() && self.keys.is_empty()
+    }
 }
+
+/// What earlier scans found out about each `.key` process, by (pid, start time): its transcript and the
+/// folder read from it, so a tick does not search for the transcript or read its tail again.
+#[derive(Debug, Default)]
+pub struct KeyCache(HashMap<(u32, u64), Resolved>);
+
+#[derive(Debug)]
+struct Resolved {
+    file: PathBuf,
+    cwd: Option<String>,
+    /// Length and last write when `cwd` was read; it is read again when either changes.
+    len: u64,
+    modified: Option<SystemTime>,
+}
+
+/// Transcripts of a profile written after a time (path, last write); see [`evaluate`].
+pub type ListFn<'a> = dyn FnMut(&Path, SystemTime) -> Vec<(PathBuf, SystemTime)> + 'a;
 
 /// Reads `<profile>/sessions/`. Unreadable or damaged files are skipped.
 pub fn read_markers(profile: &Path) -> Markers {
@@ -186,8 +209,17 @@ pub fn arg_session_id(cmd: &[String]) -> Option<String> {
 
 /// Validated running sessions of every profile, in marker order (`.json` first, then `.key` by process
 /// start time). The same session can appear more than once (several processes); see `dedupe`.
-pub fn evaluate(profiles: &[(PathBuf, Markers)], snap: &Snapshot, now: SystemTime) -> Vec<Found> {
+/// `list(profile, since)` gives the transcripts written after `since` (at least those); `cache` keeps what
+/// was found per `.key` process and forgets processes that are gone.
+pub fn evaluate(
+    profiles: &[(PathBuf, Markers)],
+    snap: &Snapshot,
+    now: SystemTime,
+    cache: &mut KeyCache,
+    list: &mut ListFn,
+) -> Vec<Found> {
     let mut found: Vec<Found> = Vec::new();
+    let mut used: HashSet<(u32, u64)> = HashSet::new();
     for (profile, markers) in profiles {
         for m in &markers.json {
             let Some(p) = snap.get(m.pid) else { continue };
@@ -212,16 +244,25 @@ pub fn evaluate(profiles: &[(PathBuf, Markers)], snap: &Snapshot, now: SystemTim
             .collect();
         keys.sort_by_key(|(_, p)| p.start);
         keys.dedup_by_key(|(k, _)| k.pid);
+        let since_of = |start: u64| UNIX_EPOCH + Duration::from_secs(start.saturating_sub(START_SLACK_S));
+        let earliest = keys.first().map(|(_, p)| since_of(p.start));
         let mut transcripts: Option<Vec<(PathBuf, SystemTime)>> = None;
         for (k, p) in keys {
+            let slot = (k.pid, p.start);
+            used.insert(slot);
             let from_arg = arg_session_id(&p.cmd);
             let file = match &from_arg {
-                Some(id) => find_transcript(profile, id),
+                // a process's command line does not change: its transcript is searched for once
+                Some(id) => cache
+                    .0
+                    .get(&slot)
+                    .map(|r| r.file.clone())
+                    .or_else(|| find_transcript(profile, id)),
+                // asked every tick (a new conversation in the same process writes a new transcript)
                 None => {
-                    let all = transcripts.get_or_insert_with(|| list_transcripts(profile));
-                    let since = UNIX_EPOCH + Duration::from_secs(p.start.saturating_sub(START_SLACK_S));
+                    let all = transcripts.get_or_insert_with(|| list(profile, earliest.unwrap_or(UNIX_EPOCH)));
                     let claimed: HashSet<&str> = found.iter().map(|f| f.session_id.as_str()).collect();
-                    newest_since(all, since, &claimed)
+                    newest_since(all, since_of(p.start), &claimed)
                 }
             };
             let Some(file) = file else { continue };
@@ -231,17 +272,40 @@ pub fn evaluate(profiles: &[(PathBuf, Markers)], snap: &Snapshot, now: SystemTim
             if found.iter().any(|f| f.session_id == id) {
                 continue;
             }
-            let modified = std::fs::metadata(&file).and_then(|m| m.modified()).ok();
+            let meta = std::fs::metadata(&file).ok();
+            let modified = meta.as_ref().and_then(|m| m.modified().ok());
+            let len = meta.as_ref().map_or(0, |m| m.len());
             let working = modified.is_some_and(|m| now.duration_since(m).unwrap_or_default() < WORKING_WITHIN);
+            let cwd = match cache.0.get(&slot) {
+                Some(r) if meta.is_some() && r.file == file && r.len == len && r.modified == modified => r.cwd.clone(),
+                _ => {
+                    let cwd = last_cwd(&file);
+                    if meta.is_some() {
+                        let resolved = Resolved {
+                            file,
+                            cwd: cwd.clone(),
+                            len,
+                            modified,
+                        };
+                        cache.0.insert(slot, resolved);
+                    } else {
+                        // gone (moved?): searched for again next time
+                        cache.0.remove(&slot);
+                    }
+                    cwd
+                }
+            };
             found.push(Found {
                 session_id: id,
                 pid: k.pid,
                 level: if working { 2 } else { 1 },
-                cwd: last_cwd(&file),
+                cwd,
                 profile: profile.clone(),
             });
         }
     }
+    // processes that ended (or whose pid now belongs to another process)
+    cache.0.retain(|slot, _| used.contains(slot));
     found
 }
 
@@ -255,7 +319,7 @@ fn stem(file: &Path) -> Option<String> {
 }
 
 /// Every `<profile>/projects/<slug>/<id>.jsonl` with its last write. Symlinks are not followed.
-fn list_transcripts(profile: &Path) -> Vec<(PathBuf, SystemTime)> {
+pub fn list_transcripts(profile: &Path) -> Vec<(PathBuf, SystemTime)> {
     let mut out = Vec::new();
     let Ok(dirs) = std::fs::read_dir(profile.join("projects")) else {
         return out;
@@ -290,7 +354,16 @@ fn newest_since(all: &[(PathBuf, SystemTime)], since: SystemTime, claimed: &Hash
 pub fn last_cwd(file: &Path) -> Option<String> {
     let mut f = std::fs::File::open(file).ok()?;
     let len = f.metadata().ok()?.len();
-    let n = len.min(CWD_TAIL);
+    // the last cwd is almost always in the last few KB: the full tail is read only when it is not
+    cwd_in_tail(&mut f, len, CWD_TAIL_SMALL).or_else(|| {
+        (len > CWD_TAIL_SMALL)
+            .then(|| cwd_in_tail(&mut f, len, CWD_TAIL))
+            .flatten()
+    })
+}
+
+fn cwd_in_tail(f: &mut std::fs::File, len: u64, tail: u64) -> Option<String> {
+    let n = len.min(tail);
     f.seek(SeekFrom::Start(len - n)).ok()?;
     let mut buf = Vec::with_capacity(n as usize);
     f.take(n).read_to_end(&mut buf).ok()?;
@@ -343,8 +416,19 @@ mod tests {
     }
 
     fn run(profile: &Path, snap: &Snapshot) -> Vec<Found> {
+        run_with(profile, snap, &mut KeyCache::default())
+    }
+
+    fn run_with(profile: &Path, snap: &Snapshot, cache: &mut KeyCache) -> Vec<Found> {
         let markers = read_markers(profile);
-        evaluate(&[(profile.to_path_buf(), markers)], snap, SystemTime::now())
+        let mut list = |p: &Path, _| list_transcripts(p);
+        evaluate(
+            &[(profile.to_path_buf(), markers)],
+            snap,
+            SystemTime::now(),
+            cache,
+            &mut list,
+        )
     }
 
     #[test]
@@ -455,6 +539,57 @@ mod tests {
     }
 
     #[test]
+    fn key_processes_are_remembered_until_they_end() {
+        let dir = profile();
+        let p = dir.path();
+        let start = secs(SystemTime::now()) - 60;
+        let mut by_arg = proc(None, start, "claude");
+        by_arg.cmd = vec!["claude".into(), "--resume".into(), A.into()];
+        let snap = Snapshot::from_map(HashMap::from([
+            (31, by_arg.clone()),
+            (32, proc(None, start + 1, "claude")),
+        ]));
+        for pid in [31, 32] {
+            fs::write(p.join("sessions").join(format!("{pid}.abc.key")), "").unwrap();
+        }
+        let a = write_transcript(p, A, "{\"cwd\":\"/one\"}\n");
+        write_transcript(p, B, "{\"cwd\":\"/two\"}\n");
+        let mut cache = KeyCache::default();
+        let mut lists = 0;
+        let mut list = |p: &Path, _| {
+            lists += 1;
+            list_transcripts(p)
+        };
+        let markers = || vec![(p.to_path_buf(), read_markers(p))];
+        let now = SystemTime::now();
+        let found = evaluate(&markers(), &snap, now, &mut cache, &mut list);
+        let got: Vec<(u32, &str, Option<&str>)> = found
+            .iter()
+            .map(|f| (f.pid, f.session_id.as_str(), f.cwd.as_deref()))
+            .collect();
+        assert_eq!(got, [(31, A, Some("/one")), (32, B, Some("/two"))]);
+        assert_eq!(cache.0.len(), 2);
+
+        // a cached folder is kept while the file is unchanged, and read again once it changed
+        cache.0.get_mut(&(31, start)).unwrap().cwd = Some("/cached".into());
+        let found = evaluate(&markers(), &snap, now, &mut cache, &mut list);
+        assert_eq!(found[0].cwd.as_deref(), Some("/cached"));
+        let mut f = fs::OpenOptions::new().append(true).open(&a).unwrap();
+        std::io::Write::write_all(&mut f, b"{\"cwd\":\"/three\"}\n").unwrap();
+        drop(f);
+        let found = evaluate(&markers(), &snap, now, &mut cache, &mut list);
+        assert_eq!(found[0].cwd.as_deref(), Some("/three"));
+
+        // ended processes are forgotten
+        let gone = Snapshot::from_map(HashMap::from([(31, by_arg)]));
+        evaluate(&markers(), &gone, now, &mut cache, &mut list);
+        assert_eq!(cache.0.keys().copied().collect::<Vec<_>>(), [(31, start)]);
+        evaluate(&markers(), &Snapshot::empty(), now, &mut cache, &mut list);
+        assert!(cache.0.is_empty());
+        assert_eq!(lists, 3, "the newest transcript is still asked for on every tick");
+    }
+
+    #[test]
     fn spawned_child_with_resume_on_its_command_line_is_found() {
         let dir = profile();
         let p = dir.path();
@@ -487,7 +622,14 @@ mod tests {
         fs::write(p.join("sessions").join(format!("{pid}.f00d.key")), "").unwrap();
         let markers = read_markers(p);
         let snap = Snapshot::take(&crate::core::procs::Procs::new(), &markers.key_pids().collect());
-        let found = evaluate(&[(p.to_path_buf(), markers)], &snap, SystemTime::now());
+        let mut list = |p: &Path, _| list_transcripts(p);
+        let found = evaluate(
+            &[(p.to_path_buf(), markers)],
+            &snap,
+            SystemTime::now(),
+            &mut KeyCache::default(),
+            &mut list,
+        );
         child.kill().unwrap();
         let _ = child.wait();
         assert_eq!(found.len(), 1);

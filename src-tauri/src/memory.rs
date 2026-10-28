@@ -10,7 +10,7 @@ use crate::core::error::{AppError, AppResult, blocking};
 use crate::core::{paths, profiles};
 use serde::Serialize;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use ts_rs::TS;
 
 /// Largest memory file shown (they are meant to be short).
@@ -178,11 +178,88 @@ fn resolve(profile: &str, folder: &str) -> AppResult<(PathBuf, PathBuf)> {
 
 /// The listed entry for `path`, or an error: only those may be read or created.
 fn listed(profile: &Path, folder: &Path, path: &str) -> AppResult<MemoryFile> {
-    let want = Path::new(path);
-    list(profile, folder)
-        .into_iter()
-        .find(|f| paths::same(Path::new(&f.path), want))
+    find_listed(profile, folder, Path::new(path))
         .ok_or_else(|| AppError::InvalidInput(format!("Not a memory file of this folder: {path}")))
+}
+
+/// What `list` would give for `want`, found without walking the folder tree: `want` is compared with each
+/// place `list` looks, in the same order. A subfolder file is checked by its path (real folders only, none
+/// hidden or skipped, at most `SUB_DEPTH` deep); the `SUB_MAX` cap of the list does not apply here.
+fn find_listed(profile: &Path, folder: &Path, want: &Path) -> Option<MemoryFile> {
+    use MemoryLevel::*;
+    let is = |p: &Path| paths::same(p, want);
+    // a `*.md` file directly in `dir`, named as `want` is
+    let md_in = |dir: &Path| {
+        let name = want.file_name()?;
+        let p = dir.join(name);
+        let md = Path::new(name)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("md"));
+        (md && is(&p) && p.is_file()).then_some(p)
+    };
+    let user = profile.join("CLAUDE.md");
+    if is(&user) {
+        return Some(file(User, user));
+    }
+    if let Some(p) = md_in(&profile.join("rules")) {
+        return Some(file(Rules, p));
+    }
+    if let Some(p) = folder
+        .ancestors()
+        .skip(1)
+        .map(|d| d.join("CLAUDE.md"))
+        .find(|p| is(p) && p.is_file())
+    {
+        return Some(file(Parent, p));
+    }
+    let dot = folder.join(".claude").join("CLAUDE.md");
+    let project = if dot.is_file() { dot } else { folder.join("CLAUDE.md") };
+    if is(&project) {
+        return Some(file(Project, project));
+    }
+    let local = folder.join("CLAUDE.local.md");
+    if is(&local) {
+        return Some(file(Local, local));
+    }
+    if let Some(p) = subfolder_at(folder, want) {
+        return Some(file(Subfolder, p));
+    }
+    let auto = profile
+        .join("projects")
+        .join(slug(&folder.to_string_lossy()))
+        .join("memory");
+    let index = auto.join("MEMORY.md");
+    if is(&index) {
+        return Some(file(Auto, index));
+    }
+    md_in(&auto).map(|p| file(Auto, p))
+}
+
+/// `want` as a subfolder `CLAUDE.md` that `subfolder_memory` would find (ignoring its cap).
+fn subfolder_at(folder: &Path, want: &Path) -> Option<PathBuf> {
+    if !paths::is_within(want, folder) {
+        return None;
+    }
+    let rel: Vec<Component> = want.components().skip(folder.components().count()).collect();
+    let (_, dirs) = rel.split_last()?;
+    if dirs.is_empty() || dirs.len() > SUB_DEPTH {
+        return None;
+    }
+    let mut dir = folder.to_path_buf();
+    for c in dirs {
+        let Component::Normal(name) = c else { return None };
+        let shown = name.to_string_lossy();
+        if shown.starts_with('.') || SKIP.iter().any(|s| s.eq_ignore_ascii_case(&shown)) {
+            return None;
+        }
+        dir.push(name);
+        // the search does not follow links: a linked folder is not searched
+        if !fs::symlink_metadata(&dir).is_ok_and(|m| m.is_dir()) {
+            return None;
+        }
+    }
+    let md = dir.join("CLAUDE.md");
+    (paths::same(&md, want) && md.is_file()).then_some(md)
 }
 
 pub fn read(profile: &Path, folder: &Path, path: &str) -> AppResult<String> {
@@ -345,5 +422,67 @@ mod tests {
             .find(|f| f.level == MemoryLevel::Auto)
             .unwrap();
         assert!(create(&profile, &repo, &auto.path).is_err());
+    }
+
+    #[test]
+    fn checks_paths_without_listing() {
+        let root = tempfile::tempdir().unwrap();
+        let profile = root.path().join(".claude");
+        let repo = root.path().join("work").join("app");
+        fs::create_dir_all(profile.join("rules")).unwrap();
+        fs::write(profile.join("rules").join("style.md"), "x").unwrap();
+        fs::write(profile.join("rules").join("notes.txt"), "x").unwrap();
+        let deep = repo.join("a").join("b").join("c").join("d");
+        fs::create_dir_all(deep.join("e")).unwrap();
+        fs::write(root.path().join("work").join("CLAUDE.md"), "parent").unwrap();
+        for dir in [
+            repo.join("a"),
+            deep.clone(),
+            deep.join("e"),
+            repo.join(".hidden"),
+            repo.join("node_modules"),
+            repo.join(".claude"),
+        ] {
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("CLAUDE.md"), "x").unwrap();
+        }
+        let memory = profile
+            .join("projects")
+            .join(slug(&repo.to_string_lossy()))
+            .join("memory");
+        fs::create_dir_all(&memory).unwrap();
+        fs::write(memory.join("a.md"), "fact").unwrap();
+        let outside = root.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("CLAUDE.md"), "x").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, repo.join("linked")).unwrap();
+
+        // everything listed is found, as listed
+        let files = list(&profile, &repo);
+        assert_eq!(files.len(), 9);
+        for f in &files {
+            assert_eq!(find_listed(&profile, &repo, Path::new(&f.path)).as_ref(), Some(f));
+        }
+        // and nothing else
+        let s = |p: PathBuf| p.to_string_lossy().into_owned();
+        for bad in [
+            s(repo.join("CLAUDE.md")), // .claude/CLAUDE.md is the project file
+            s(repo.join(".hidden").join("CLAUDE.md")),
+            s(repo.join("node_modules").join("CLAUDE.md")),
+            s(deep.join("e").join("CLAUDE.md")), // too deep
+            s(repo.join("linked").join("CLAUDE.md")),
+            s(repo.join("a").join("..").join("..").join("outside").join("CLAUDE.md")),
+            s(outside.join("CLAUDE.md")),
+            s(repo.join("a").join("other.md")),
+            s(repo.join("missing").join("CLAUDE.md")),
+            s(profile.join("rules").join("notes.txt")),
+            s(profile.join("rules").join("..").join("CLAUDE.md")),
+            s(memory.join("..").join("x.md")),
+            s(repo.clone()),
+        ] {
+            assert!(find_listed(&profile, &repo, Path::new(&bad)).is_none(), "{bad}");
+            assert!(read(&profile, &repo, &bad).is_err(), "{bad}");
+        }
     }
 }
