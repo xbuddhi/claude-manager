@@ -145,6 +145,21 @@ export const TERM_COLORS: readonly ColorScheme[] = [
       "#24292f #cf222e #116329 #4d2d00 #0969da #8250df #1b7c83 #6e7781 #57606a #a40e26 #1a7f37 #633c01 #218bff #a475f9 #3192aa #8c959f",
     ),
   },
+  // the terminals of the Graphite interface colours (core/appColors.ts)
+  {
+    id: "graphite",
+    label: "Graphite",
+    dark: p(
+      "#1a1a1d",
+      "#e4e4e8",
+      "#2a2a2e #ff6b6b #6fcf97 #f5c26b #8ea2ff #c79bff #6fd3e0 #d4d4da #5c5c66 #ff8a8a #8ee0ae #ffd58a #aab9ff #d9b6ff #8fe3ee #f4f4f6",
+    ),
+    light: p(
+      "#fbfbfc",
+      "#1f1f23",
+      "#1f1f23 #d43c3c #1f8a50 #a86b00 #3d51d9 #9b3fc4 #137f91 #6b6b73 #55555d #e5484d #2f9e5f #c27c0e #5266ec #b45bd9 #1c97ab #a1a1aa",
+    ),
+  },
 ];
 
 /** The palette for scheme `id` in `scheme`; null = the app's own colours. */

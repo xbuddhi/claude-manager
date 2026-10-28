@@ -169,6 +169,38 @@
   height: 8px;
   border-radius: 50%;
 }
+/* interface colours: a tiny window, sidebar beside a card */
+.set-skin-preview {
+  flex-direction: row;
+  gap: 4px;
+  padding: 5px;
+}
+.set-skin-side,
+.set-skin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 5px;
+  border: 1px solid;
+  border-radius: 4px;
+}
+.set-skin-side {
+  width: 34%;
+}
+.set-skin-card {
+  flex: 1;
+}
+.set-skin-side i,
+.set-skin-card i {
+  height: 3px;
+  border-radius: 2px;
+}
+.set-skin-card b {
+  width: 18px;
+  height: 7px;
+  margin-top: auto;
+  border-radius: 3px;
+}
 .set-color-name {
   padding-left: 2px;
   overflow: hidden;

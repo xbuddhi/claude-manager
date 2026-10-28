@@ -106,6 +106,9 @@ describe("sidebar view", () => {
       folders: ["C:\\src\\site", "C:\\src\\api"],
     });
     expect(document.getElementById("tb-subtitle")?.textContent).toBe("3 sessions · 3 folders · 1 project");
+    const icons = [...document.querySelectorAll<HTMLElement>("#tb-subtitle .tb-part")].map((p) => p.dataset.icon);
+    expect(icons).toEqual(["spark", "folder", "group"]);
+    expect(document.querySelectorAll("#tb-subtitle .tb-part svg")).toHaveLength(3);
   });
 
   it("moves with the arrows and publishes folder selections", () => {

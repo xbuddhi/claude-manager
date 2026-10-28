@@ -15,7 +15,7 @@ import { pathKey } from "../../core/paths";
 import { isMac } from "../../core/platform";
 import { settings } from "../../core/settings";
 import { type AppState, type SidebarSelection, store } from "../../core/store";
-import { setSubtitle } from "../../core/titlebar";
+import { setSubtitleParts } from "../../core/titlebar";
 import { button } from "../../ui/button";
 import { createList, type List } from "../../ui/list";
 import { showMenu } from "../../ui/menu";
@@ -87,7 +87,7 @@ function rebuild() {
   // the picker owns the subtitle while it shows ("Choose a profile"); the 60 s rebuild must not overwrite it
   if (s.index.loaded !== "loading" && s.screen !== "picker") {
     const c = counts(folderList(input));
-    setSubtitle(S.subtitle("", c.sessions, c.folders, s.settings.groups.length));
+    setSubtitleParts(S.subtitle(c.sessions, c.folders, s.settings.groups.length));
   }
   void checkKinds(false);
 }

@@ -1,5 +1,7 @@
 // Every user-visible text of the sidebar, worded as in the Windows app (ClaudeManager.ps1, MacUI.cs Tree).
 
+import type { SubtitlePart } from "../../core/titlebar";
+
 export const S = {
   title: "Workspace",
   addTip: "New project or folder",
@@ -48,11 +50,14 @@ export const S = {
   deleteProject: "Delete project",
 
   dropHint: "Drop folders to pin them and start a session in each",
-  subtitle: (who: string, sessions: number, folders: number, projects: number) => {
+  /** The title bar subtitle: sessions (Claude's spark), folders and projects (groups), each with its icon. */
+  subtitle: (sessions: number, folders: number, projects: number): SubtitlePart[] => {
     const n = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
-    const parts = [n(sessions, "session"), n(folders, "folder")];
-    if (who) parts.unshift(who);
-    if (projects) parts.push(n(projects, "project"));
-    return parts.join(" · ");
+    const parts: SubtitlePart[] = [
+      { icon: "spark", text: n(sessions, "session") },
+      { icon: "folder", text: n(folders, "folder") },
+    ];
+    if (projects) parts.push({ icon: "group", text: n(projects, "project") });
+    return parts;
   },
 };

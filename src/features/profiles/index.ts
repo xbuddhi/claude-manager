@@ -40,12 +40,13 @@ export function showPicker(): void {
  */
 function holdSubtitle() {
   const sub = $("#tb-subtitle");
-  let saved = sub.textContent ?? "";
+  // the nodes, not the text: the sidebar's subtitle has icons
+  let saved: Node[] = [...sub.childNodes];
   let holding = false;
   const hold = () => {
-    const now = sub.textContent ?? "";
-    if (now !== T.pickerSubtitle) saved = now;
-    if (now !== T.pickerSubtitle) setSubtitle(T.pickerSubtitle);
+    if (sub.textContent === T.pickerSubtitle) return;
+    saved = [...sub.childNodes];
+    setSubtitle(T.pickerSubtitle);
   };
   // registered after the sidebar's listeners, so this runs after they wrote theirs
   store.subscribe((s) => {
@@ -54,7 +55,7 @@ function holdSubtitle() {
       hold();
     } else if (holding) {
       holding = false;
-      setSubtitle(saved);
+      sub.replaceChildren(...saved);
     }
   });
   if (store.get().screen === "picker") {

@@ -8,11 +8,16 @@ const svg = (body: string) => `<svg viewBox="0 0 16 16" aria-hidden="true">${bod
 
 export const icons = {
   folder: svg(`<path d="M1.5 3.5h4.2l1.5 1.5h7.3v7.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/>`),
+  /** Claude's spark: eight rays round an open centre (sessions). */
+  spark: svg(
+    `<path d="M8 1.6v4.1M8 10.3v4.1M1.6 8h4.1M10.3 8h4.1M3.5 3.5l2.9 2.9M9.6 9.6l2.9 2.9M12.5 3.5L9.6 6.4M6.4 9.6l-2.9 2.9"/>`,
+  ),
   star: svg(`<path d="M8 2.2l1.75 3.6 3.95.55-2.87 2.77.7 3.93L8 11.2l-3.53 1.85.7-3.93L2.3 6.35l3.95-.55z"/>`),
   warning: svg(`<path d="M8 2.2l6.2 11H1.8zM8 6.5v3"/><circle cx="8" cy="11.4" r=".35"/>`),
   group: svg(`<path d="M1.5 4.5h4l1.2 1.2h7.8v6.8a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM3.5 2.5h3.2l1 1"/>`),
   chevron: svg(`<path d="M6 4l4 4-4 4"/>`),
   chevronDown: svg(`<path d="M4 6l4 4 4-4"/>`),
+  chevronUpDown: svg(`<path d="M5 6.5l3-3 3 3M5 9.5l3 3 3-3"/>`),
   chevronLeft: svg(`<path d="M10 4L6 8l4 4"/>`),
   /** Show or hide the sidebar: a window with its left column. */
   sidebar: svg(`<rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M6 2.5v11"/>`),

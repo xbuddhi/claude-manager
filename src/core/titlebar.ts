@@ -2,10 +2,11 @@
 // and fields inside it stay clickable).
 // Windows: no native frame (Windows 10 cannot colour it to match), so we draw Windows-style minimize,
 // maximize/restore and close buttons at the right. macOS: the native lights sit over the bar
-// (titleBarStyle Overlay); we keep 80px free for them, except in full screen where macOS hides them.
+// (titleBarStyle Overlay); we keep 92px free for them, except in full screen where macOS hides them.
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { $ } from "./dom";
+import { $, h } from "./dom";
+import { type IconName, iconNode } from "./icons";
 import { describeError, log } from "./log";
 import { isMac, isWindows } from "./platform";
 import { store } from "./store";
@@ -17,6 +18,20 @@ export function setTitle(text: string): void {
 /** The muted line under the title, e.g. "default · 12 sessions · 4 folders". */
 export function setSubtitle(text: string): void {
   $("#tb-subtitle").textContent = text;
+}
+
+export interface SubtitlePart {
+  icon?: IconName;
+  text: string;
+}
+
+/** The subtitle as parts, each after its icon and joined by " · ", e.g. "✳ 12 sessions · ▭ 4 folders". */
+export function setSubtitleParts(parts: readonly SubtitlePart[]): void {
+  const nodes = parts.flatMap((p, i) => [
+    i ? " · " : null,
+    h("span", { class: "tb-part", dataset: { icon: p.icon ?? "" } }, p.icon ? iconNode(p.icon) : null, p.text),
+  ]);
+  $("#tb-subtitle").replaceChildren(...nodes.filter((n) => n !== null));
 }
 
 async function trackFullscreen() {
