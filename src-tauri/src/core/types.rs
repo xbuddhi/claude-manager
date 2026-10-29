@@ -214,6 +214,8 @@ pub struct Settings {
     pub claude_path: Option<String>,
     pub mac_option_is_meta: bool,
     pub scrollback: u32,
+    /// Terminal tabs of one folder sit together behind a folder chip in the tab strip.
+    pub group_tabs: bool,
     /// Remembered answer to "keep terminals running when the window closes?"; null = ask.
     pub keep_running_on_close: Option<bool>,
     /// Keys this version does not know (Rust side only).
@@ -252,6 +254,7 @@ impl Default for Settings {
             claude_path: None,
             mac_option_is_meta: true,
             scrollback: 2000,
+            group_tabs: true,
             keep_running_on_close: None,
             extra: Map::new(),
         }

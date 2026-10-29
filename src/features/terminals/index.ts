@@ -28,6 +28,7 @@ import { leaf, plural } from "../../core/format";
 import { modalOpen, registerShortcut } from "../../core/keyboard";
 import { describeError, log } from "../../core/log";
 import { settleIn } from "../../core/motion";
+import { pathKey } from "../../core/paths";
 import { profileName } from "../../core/profiles";
 import { settings } from "../../core/settings";
 import { store, type TermInfo } from "../../core/store";
@@ -42,7 +43,7 @@ import { refreshIndex } from "../index-data/api";
 import { copyText, folderLabel, openFolder, openInCode } from "../os/api";
 import { startProfile } from "../profiles/api";
 import { newSessionFromHome } from "../sessions/api";
-import { defaultTitle, quotePaths, tabSub } from "./logic";
+import { defaultTitle, groupOrder, insertIndex, quotePaths, tabSub } from "./logic";
 import "./pty";
 import { SessionBar } from "./sessionbar";
 import { ShellPanel } from "./shellpanel";
@@ -355,8 +356,26 @@ function publish() {
   syncFiles();
 }
 
+/**
+ * A tab's folder as compared: the tabs of one folder are kept together and grouped in the strip. With
+ * "Group tabs by folder" off every tab is its own group, so none are kept together or get a chip.
+ */
+function folderKey(t: Tab): string {
+  return settings().groupTabs ? pathKey(t.dir, store.get().platform.os) : `tab:${t.id}`;
+}
+
+/** Puts each folder's tabs together again (grouping was turned on). */
+function regroup() {
+  tabs.splice(0, tabs.length, ...groupOrder(tabs, folderKey));
+  publish();
+  renderStrip();
+}
+
 function renderStrip() {
-  strip.render(tabs, active?.id ?? null);
+  strip.render(
+    tabs.map((t) => ({ id: t.id, title: t.title, sub: t.sub, exited: t.exited, dir: t.dir, group: folderKey(t) })),
+    active?.id ?? null,
+  );
 }
 
 function showTab(tab: Tab | null) {
@@ -512,6 +531,9 @@ function reorder(tab: Tab, to: number) {
   if (i < 0 || i === to) return;
   tabs.splice(i, 1);
   tabs.splice(Math.max(0, Math.min(to, tabs.length)), 0, tab);
+  // a folder's tabs stay together: a tab dragged past its folder's first tab takes the folder along
+  const grouped = groupOrder(tabs, folderKey);
+  tabs.splice(0, tabs.length, ...grouped);
   publish();
   renderStrip();
 }
@@ -552,7 +574,8 @@ function newTab(term: TermModule, info: Pick<TermInfo, "title" | "dir" | "profil
     shells: [],
     shell: null,
   };
-  tabs.push(tab);
+  // next to the other tabs of its folder
+  tabs.splice(insertIndex(tabs.map(folderKey), folderKey(tab)), 0, tab);
   return tab;
 }
 
@@ -999,6 +1022,7 @@ export function mount(): void {
     },
   });
 
+  store.select((s) => s.settings.groupTabs, regroup);
   on("launch", launch);
   on("terminal:show", ({ id }) => {
     const tab = id === null ? null : tabs.find((t) => t.id === id);

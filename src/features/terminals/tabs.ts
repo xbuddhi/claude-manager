@@ -5,20 +5,29 @@
 // it along the strip; dragging it well away from the strip moves it to another window (the one it is
 // dropped on, else a new one), like a browser tab.
 //
+// Tabs of one folder sit together (terminals/index.ts keeps them so). From two tabs on, a folder gets a chip
+// with its name in front of its tabs and a colour line under them (each open folder its own colour), like a
+// browser tab group; pressing the chip folds its tabs away (a tab of a folded folder that comes to the front
+// unfolds it).
+//
 // Everything clickable is a button or has role="tab": the strip is a window drag region (README).
 
 import { $, h, html, setHtml } from "../../core/dom";
-import { plural } from "../../core/format";
+import { leaf, plural } from "../../core/format";
 import { icon, iconNode } from "../../core/icons";
 import { animate, reduceMotion, Spring } from "../../core/motion";
 import { showMenu } from "../../ui/menu";
-import { layoutTabs, TAB_GAP } from "./logic";
+import { assignColors, GROUP_COLORS, layoutTabs, TAB_GAP } from "./logic";
 
 export interface StripTab {
   id: number;
   title: string;
   sub: string;
   exited: boolean;
+  /** The tab's folder. */
+  dir: string;
+  /** Its folder as compared (paths.ts pathKey): tabs with the same key form a group. */
+  group: string;
 }
 
 export interface StripHandlers {
@@ -50,6 +59,10 @@ const TEAR_DISTANCE = 48;
 const PROBE_KEEPALIVE_MS = 400;
 /** How long tabs take to glide to new places. */
 const SLIDE_MS = 220;
+/** A folder chip's width for laying out the tabs (it is drawn at its own width, up to CHIP_MAX). */
+const CHIP_MAX = 140;
+const chipWidth = (name: string, folded: boolean) =>
+  Math.min(CHIP_MAX, 30 + name.length * 7) + (folded ? 22 : 0) + TAB_GAP;
 
 interface Drag {
   id: number;
@@ -78,7 +91,14 @@ interface Drag {
 }
 
 const signature = (tabs: readonly StripTab[]) =>
-  tabs.map((t) => `${t.id}\u0000${t.title}\u0000${t.sub}\u0000${t.exited}`).join("\u0001");
+  tabs.map((t) => `${t.id}\u0000${t.title}\u0000${t.sub}\u0000${t.exited}\u0000${t.group}`).join("\u0001");
+
+/** How many tabs each folder has. */
+function groupSizes(tabs: readonly StripTab[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const t of tabs) out.set(t.group, (out.get(t.group) ?? 0) + 1);
+  return out;
+}
 
 export class Strip {
   private root: HTMLElement;
@@ -98,6 +118,10 @@ export class Strip {
   private incoming: string | null = null;
   /** The click that ends a drag is not a tab click. */
   private swallowClick = false;
+  /** Folders whose tabs are folded away behind their chip. */
+  private folded = new Set<string>();
+  /** Each folder group's colour (index into GROUP_COLORS), kept while it is open. */
+  private colors = new Map<string, number>();
 
   constructor(
     private slot: HTMLElement,
@@ -161,26 +185,52 @@ export class Strip {
       this.placeIncoming();
       return;
     }
-    const activeIndex = tabs.findIndex((t) => t.id === active);
+    const sizes = groupSizes(tabs);
+    const grouped = (t: StripTab) => (sizes.get(t.group) ?? 0) > 1;
+    // a tab that comes to the front unfolds its folder; folders that are gone are forgotten
+    const front = tabs.find((t) => t.id === active);
+    if (front) this.folded.delete(front.group);
+    for (const g of this.folded) if ((sizes.get(g) ?? 0) < 2) this.folded.delete(g);
+    const visible = tabs.filter((t) => !(grouped(t) && this.folded.has(t.group)));
+    const chips = [...new Set(tabs.filter(grouped).map((t) => t.group))];
+    const name = (g: string) => leaf(tabs.find((t) => t.group === g)?.dir ?? "");
+    const chipsW = chips.reduce((w, g) => w + chipWidth(name(g), this.folded.has(g)), 0);
+    const activeIndex = visible.findIndex((t) => t.id === active);
     const homeW = this.homeWidth();
-    const avail = this.root.clientWidth - homeW - HOME_GAP - TAB_GAP;
-    const layout = layoutTabs(tabs.length, activeIndex, avail);
+    const avail = this.root.clientWidth - homeW - HOME_GAP - TAB_GAP - chipsW;
+    const layout = layoutTabs(visible.length, activeIndex, avail);
     this.lastLayout = this.layoutKey();
     this.shownSig = signature(tabs);
-    const shown = layout.shown.map((i) => tabs[i]).filter((t): t is StripTab => !!t);
+    const shownIds = new Set(layout.shown.map((i) => visible[i]?.id));
+    const shown = tabs.filter((t) => shownIds.has(t.id));
     const hidden = tabs.length - shown.length;
-    setHtml(
-      this.list,
-      html`<div class="term-tab term-home${active === null ? " active" : ""}" data-key="0" role="tab" tabindex="${active === null ? 0 : -1}" aria-selected="${String(active === null)}">${icon("home")}<span class="term-title">Home</span></div>
-      ${shown.map(
-        (
-          t,
-        ) => html`<div class="term-tab${t.id === active ? " active" : ""}${t.exited ? " exited" : ""}" data-key="${t.id}" role="tab" tabindex="${t.id === active ? 0 : -1}" aria-selected="${String(t.id === active)}" style="width:${layout.width}px" data-tip="${t.sub ? `${t.title}\n${t.sub}` : t.title}">
+    // the strip in tab order: a folder's chip, then its tabs that are shown
+    const items: Array<{ chip: string } | { tab: StripTab }> = [];
+    let prev: string | null = null;
+    for (const t of tabs) {
+      if (grouped(t) && t.group !== prev) items.push({ chip: t.group });
+      prev = t.group;
+      if (shownIds.has(t.id)) items.push({ tab: t });
+    }
+    this.colors = assignColors(chips, this.colors);
+    const color = (g: string) => `--group:var(${GROUP_COLORS[this.colors.get(g) ?? 0]})`;
+    const chipHtml = (g: string) => {
+      const folded = this.folded.has(g);
+      const n = sizes.get(g) ?? 0;
+      const dir = tabs.find((t) => t.group === g)?.dir ?? "";
+      return html`<button class="term-group${folded ? " folded" : ""}" type="button" data-group="${g}" style="${color(g)}" aria-expanded="${String(!folded)}" aria-label="${`${name(g)}, ${n} terminals. ${folded ? "Show" : "Fold"} them`}" data-tip="${`${dir}\n${folded ? "Show" : "Fold"} ${n} terminals`}"><span class="term-group-name">${name(g)}</span>${folded ? html`<span class="term-group-count">${String(n)}</span>` : ""}</button>`;
+    };
+    const tabHtml = (
+      t: StripTab,
+    ) => html`<div class="term-tab${t.id === active ? " active" : ""}${t.exited ? " exited" : ""}${grouped(t) ? " grouped" : ""}" data-key="${t.id}" role="tab" tabindex="${t.id === active ? 0 : -1}" aria-selected="${String(t.id === active)}" style="width:${layout.width}px;${grouped(t) ? color(t.group) : ""}" data-tip="${t.sub ? `${t.title}\n${t.sub}` : t.title}">
           ${icon("terminal")}<span class="term-title">${t.title}</span><span class="term-sub">${t.sub}</span>
           <button class="term-btn" type="button" data-act="pop" aria-label="Move to new window" data-tip="Move to new window"${t.exited ? " disabled" : ""}>${icon("popout")}</button>
           <button class="term-btn" type="button" data-act="close" aria-label="Close terminal" data-tip="Close terminal">${icon("close")}</button>
-        </div>`,
-      )}
+        </div>`;
+    setHtml(
+      this.list,
+      html`<div class="term-tab term-home${active === null ? " active" : ""}" data-key="0" role="tab" tabindex="${active === null ? 0 : -1}" aria-selected="${String(active === null)}">${icon("home")}<span class="term-title">Home</span></div>
+      ${items.map((it) => ("chip" in it ? chipHtml(it.chip) : tabHtml(it.tab)))}
       ${layout.overflow ? html`<button class="term-more" type="button" aria-label="All open terminals" data-tip="All open terminals">${icon("chevronDown")}<span>${hidden}</span></button>` : ""}`,
     );
     for (const t of shown) {
@@ -198,6 +248,7 @@ export class Strip {
    */
   private switchActive(tabs: StripTab[], active: number | null): boolean {
     if (active === this.active || this.drag || !tabs.length || signature(tabs) !== this.shownSig) return false;
+    if (this.folded.size) return false; // the tab coming forward may unfold its folder
     if (this.list.querySelector(".term-more")) return false; // which tabs are shown depends on the active one
     const prev = this.node(this.active ?? 0);
     const next = this.node(active ?? 0);
@@ -589,11 +640,40 @@ export class Strip {
       this.showMore(target.closest<HTMLElement>(".term-more") as HTMLElement);
       return;
     }
+    const chip = target.closest<HTMLElement>(".term-group");
+    if (chip?.dataset.group !== undefined) {
+      this.toggleGroup(chip.dataset.group);
+      return;
+    }
     const id = this.tabId(target);
     const act = target.closest<HTMLElement>("[data-act]")?.dataset.act;
     if (id !== null && act === "close") return this.h.close(id);
     if (id !== null && act === "pop") return this.h.moveOut(id);
     if (target.closest(".term-tab")) this.h.select(id);
+  }
+
+  /**
+   * Folds a folder's tabs away behind its chip, or shows them again. Folding the folder of the tab in front
+   * brings the next tab outside it forward (else the one before it, else Home), as a browser does.
+   */
+  private toggleGroup(group: string) {
+    if (this.folded.delete(group)) {
+      this.render(this.tabs, this.active);
+      this.list.querySelector<HTMLElement>(`.term-group[data-group="${CSS.escape(group)}"]`)?.focus();
+      return;
+    }
+    this.folded.add(group);
+    const i = this.tabs.findIndex((t) => t.id === this.active);
+    if (i >= 0 && this.tabs[i]?.group === group) {
+      const outside = (t: StripTab) => t.group !== group;
+      const next = this.tabs.slice(i + 1).find(outside) ?? [...this.tabs.slice(0, i)].reverse().find(outside);
+      this.h.select(next?.id ?? null);
+    } else {
+      // only the drawing changes: draw again even though the tabs are the same
+      this.shownSig = "";
+      this.render(this.tabs, this.active);
+    }
+    this.list.querySelector<HTMLElement>(`.term-group[data-group="${CSS.escape(group)}"]`)?.focus();
   }
 
   private showMore(anchor: HTMLElement) {

@@ -65,6 +65,10 @@ gitSplit: number | null,
  */
 claudePath: string | null, macOptionIsMeta: boolean, scrollback: number, 
 /**
+ * Terminal tabs of one folder sit together behind a folder chip in the tab strip.
+ */
+groupTabs: boolean, 
+/**
  * Remembered answer to "keep terminals running when the window closes?"; null = ask.
  */
 keepRunningOnClose: boolean | null, };

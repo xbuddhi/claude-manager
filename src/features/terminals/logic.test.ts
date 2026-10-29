@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  assignColors,
   chatName,
   debounce,
   defaultTitle,
+  GROUP_COLORS,
+  groupOrder,
   HIGH_WATER,
   InputQueue,
+  insertIndex,
   LOW_WATER,
   layoutTabs,
   quotePaths,
@@ -162,5 +166,36 @@ describe("timing helpers", () => {
     vi.advanceTimersByTime(1);
     expect(seen).toEqual([2]);
     vi.useRealTimers();
+  });
+});
+
+describe("folder groups", () => {
+  it("puts a new tab after the last tab of its folder", () => {
+    expect(insertIndex(["a", "b", "a", "c"], "a")).toBe(3);
+    expect(insertIndex(["a", "b"], "z")).toBe(2);
+    expect(insertIndex([], "a")).toBe(0);
+  });
+
+  it("keeps each folder's tabs together, in first-seen order", () => {
+    const tabs = [
+      { id: 1, k: "a" },
+      { id: 2, k: "b" },
+      { id: 3, k: "a" },
+      { id: 4, k: "c" },
+      { id: 5, k: "b" },
+    ];
+    expect(groupOrder(tabs, (t) => t.k).map((t) => t.id)).toEqual([1, 3, 2, 5, 4]);
+  });
+
+  it("gives each open folder its own colour and keeps it while the folder stays", () => {
+    const first = assignColors(["a", "b"], new Map());
+    expect([first.get("a"), first.get("b")]).toEqual([0, 1]);
+    // a folder before them opens: a and b keep theirs, the new one takes the next free colour
+    const next = assignColors(["c", "a", "b"], first);
+    expect([next.get("c"), next.get("a"), next.get("b")]).toEqual([2, 0, 1]);
+    // a closes: its colour is free again
+    expect(assignColors(["c", "b", "d"], next).get("d")).toBe(0);
+    const many = assignColors(["1", "2", "3", "4", "5", "6", "7"], new Map());
+    expect(new Set([...many.values()].slice(0, GROUP_COLORS.length)).size).toBe(GROUP_COLORS.length);
   });
 });

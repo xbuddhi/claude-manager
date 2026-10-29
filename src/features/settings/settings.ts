@@ -180,6 +180,11 @@ export function openSettings(): void {
     scrollback.value = String(n);
     if (n !== settings().scrollback) void updateSettings({ scrollback: n });
   });
+  const groupTabs = toggle({
+    checked: s.groupTabs,
+    label: "Group tabs by folder",
+    onChange: (on) => void updateSettings({ groupTabs: on }),
+  });
   const optionMeta = isMac()
     ? toggle({
         checked: s.macOptionIsMeta,
@@ -296,6 +301,11 @@ export function openSettings(): void {
     ),
     section(
       "Terminal",
+      row(
+        "Group tabs by folder",
+        groupTabs.el,
+        "Tabs of one folder sit together behind a chip with the folder's name; a click on it folds them.",
+      ),
       row("Scrollback lines", scrollback, `${SCROLLBACK_MIN} to ${SCROLLBACK_MAX}. New terminals use it.`),
       optionMeta ? row("Use Option as Meta key", optionMeta.el, "Option+key sends Esc+key, as shells expect.") : null,
       h(
@@ -344,6 +354,7 @@ export function openSettings(): void {
         windowGlass?.set(next.windowGlass);
         openIn.set(next.openIn);
         optionMeta?.set(next.macOptionIsMeta);
+        groupTabs.set(next.groupTabs);
         if (document.activeElement !== scrollback) scrollback.value = String(next.scrollback);
         if (document.activeElement !== claudePath) claudePath.value = next.claudePath ?? "";
       },

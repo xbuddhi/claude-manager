@@ -17,9 +17,9 @@ function setup() {
 }
 
 const tabs = [
-  { id: 1, title: "New session", sub: "app  ·  work", exited: false },
-  { id: 2, title: "Fix tests", sub: "web  ·  default", exited: false },
-  { id: 3, title: "Old chat", sub: "api  ·  work", exited: true },
+  { id: 1, title: "New session", sub: "app  ·  work", exited: false, dir: "/c/app", group: "/c/app" },
+  { id: 2, title: "Fix tests", sub: "web  ·  default", exited: false, dir: "/c/web", group: "/c/web" },
+  { id: 3, title: "Old chat", sub: "api  ·  work", exited: true, dir: "/c/api", group: "/c/api" },
 ];
 
 describe("tab strip", () => {
@@ -103,5 +103,43 @@ describe("tab strip", () => {
     strip.setTitle(1, "Refactor the parser");
     expect(slot.querySelector('.term-tab[data-key="1"]')).toBe(node);
     expect(node?.querySelector(".term-title")?.textContent).toBe("Refactor the parser");
+  });
+});
+
+describe("folder groups", () => {
+  /** A strip wide enough for every tab (the test DOM has no layout). */
+  function wide() {
+    const s = setup();
+    Object.defineProperty(s.slot.querySelector(".term-tabs"), "clientWidth", { value: 1600 });
+    return s;
+  }
+  const two = [
+    { id: 1, title: "One", sub: "", exited: false, dir: "/c/app", group: "/c/app" },
+    { id: 2, title: "Two", sub: "", exited: false, dir: "/c/app", group: "/c/app" },
+    { id: 3, title: "Three", sub: "", exited: false, dir: "/c/web", group: "/c/web" },
+  ];
+
+  it("puts a chip before a folder with two or more tabs", () => {
+    const { slot, strip } = wide();
+    strip.render(two, 3);
+    const chips = [...slot.querySelectorAll<HTMLElement>(".term-group")];
+    expect(chips.map((c) => c.textContent)).toEqual(["app"]);
+    expect(chips[0]?.getAttribute("aria-expanded")).toBe("true");
+    expect(slot.querySelectorAll(".term-tab.grouped")).toHaveLength(2);
+  });
+
+  it("folds a folder's tabs behind its chip, and the tab in front moves out of it", () => {
+    const { slot, strip, h } = wide();
+    strip.render(two, 3);
+    slot.querySelector<HTMLElement>(".term-group")?.click();
+    expect(slot.querySelector('.term-tab[data-key="1"]')).toBeNull();
+    expect(slot.querySelector(".term-group")?.getAttribute("aria-expanded")).toBe("false");
+    expect(slot.querySelector(".term-group-count")?.textContent).toBe("2");
+
+    strip.render(two, 1);
+    // the folder's tab came to the front: the folder unfolds
+    expect(slot.querySelector('.term-tab[data-key="2"]')).not.toBeNull();
+    slot.querySelector<HTMLElement>(".term-group")?.click();
+    expect(h.select).toHaveBeenCalledWith(3);
   });
 });

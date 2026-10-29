@@ -625,3 +625,72 @@ html.mode-terminal .term-tab.active {
   padding: 8px 4px 4px 10px;
   background: var(--term-bg);
 }
+
+/* ---------- folder groups (tabs.ts): a chip before a folder's tabs, a line in its colour under them ---------- */
+.term-group {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 140px;
+  height: 24px;
+  margin: 0 2px 5px 6px;
+  padding: 0 9px 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--group) 18%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 0.15s var(--ease);
+}
+.term-group::before {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--group);
+  content: "";
+}
+.term-group:hover {
+  background: color-mix(in srgb, var(--group) 30%, transparent);
+}
+.term-group:focus-visible {
+  outline: 2px solid var(--group);
+  outline-offset: 1px;
+}
+.term-group-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.term-group-count {
+  flex: none;
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--group);
+  color: var(--bg);
+  font-size: 10.5px;
+  line-height: 15px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* the folder's colour under its tabs; the tab in front joins its panel instead */
+.term-tab.grouped::after {
+  position: absolute;
+  right: 6px;
+  bottom: 0;
+  left: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--group);
+  opacity: 0.8;
+  content: "";
+  pointer-events: none;
+}
+.term-tab.grouped.active::after {
+  opacity: 0;
+}
