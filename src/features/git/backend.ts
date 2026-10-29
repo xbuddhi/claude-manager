@@ -3,6 +3,7 @@
 import type { GitOutput } from "../../bindings/GitOutput";
 import type { GitStatus } from "../../bindings/GitStatus";
 import type { NewFile } from "../../bindings/NewFile";
+import type { PullRequests } from "../../bindings/PullRequests";
 import { call } from "../../core/api";
 
 declare module "../../core/api" {
@@ -18,6 +19,8 @@ declare module "../../core/api" {
     git_web_url: { args: { dir: string }; result: string | null };
     /** A commit message for what a commit of `repo` would take, by `claude -p` (Sonnet) with `profile`. */
     git_commit_message: { args: { repo: string; profile: string | null }; result: string };
+    /** The open pull requests of `repo`, through the user's GitHub CLI (gh). */
+    git_pull_requests: { args: { repo: string }; result: PullRequests };
   }
 }
 

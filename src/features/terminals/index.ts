@@ -2,8 +2,8 @@
 // ClaudeManager.ps1 "terminal tabs"). Handles the bus events "launch" (a tab here, or a terminal window of
 // the OS per settings.openIn) and "terminal:show", the tab commands and keys, file drops, the files panel
 // left of the terminals and the source control panel right of them (both for the folder of the tab in
-// front; files can be dragged into the terminal), and the questions asked when the app or this window
-// closes while terminals run.
+// front; files can be dragged into the terminal), the terminal panel under them (each tab's own shell, for
+// the user's commands), and the questions asked when the app or this window closes while terminals run.
 //
 // Every app window has its own tabs, like browser windows (core/window.ts). Tabs move between windows
 // (dragged out of the strip, or "Move to ..." in their menu); their terminals keep running and the window
@@ -28,6 +28,7 @@ import { leaf, plural } from "../../core/format";
 import { modalOpen, registerShortcut } from "../../core/keyboard";
 import { describeError, log } from "../../core/log";
 import { settleIn } from "../../core/motion";
+import { pathKey } from "../../core/paths";
 import { profileName } from "../../core/profiles";
 import { settings } from "../../core/settings";
 import { store, type TermInfo } from "../../core/store";
@@ -42,9 +43,10 @@ import { refreshIndex } from "../index-data/api";
 import { copyText, folderLabel, openFolder, openInCode } from "../os/api";
 import { startProfile } from "../profiles/api";
 import { newSessionFromHome } from "../sessions/api";
-import { defaultTitle, quotePaths, tabSub } from "./logic";
+import { defaultTitle, groupOrder, insertIndex, quotePaths, tabSub } from "./logic";
 import "./pty";
 import { SessionBar } from "./sessionbar";
+import { ShellPanel } from "./shellpanel";
 import { Strip } from "./tabs";
 import type { TermView } from "./term";
 import "./terminals.css";
@@ -76,11 +78,24 @@ function withTerm(fn: (m: TermModule) => void) {
     });
 }
 
+/** One of the user's shells in the terminal panel under a tab (the first starts when the panel shows). */
+interface Shell {
+  /** Unique in this window, for the panel's list. */
+  id: number;
+  /** The shell program ("zsh", "pwsh"). */
+  name: string;
+  view: TermView;
+  ptyId: number | null;
+}
+
 /** A tab with its xterm. Presentation-only fields stay here, not in the store. */
 interface Tab extends TermInfo {
   view: TermView;
   /** Closed (or moved to another window) while its terminal was still starting. */
   closing: boolean;
+  shells: Shell[];
+  /** The one of `shells` in front. */
+  shell: Shell | null;
 }
 
 const tabs: Tab[] = [];
@@ -95,6 +110,14 @@ let filesOpen = false;
 let source: SourceControlPanel;
 let sourceSide: HTMLElement;
 let sourceOpen = false;
+let panel: ShellPanel;
+let center: HTMLElement;
+let shellOpen = false;
+/** The panel fills the chat's place too. */
+let shellMax = false;
+let nextShellId = 1;
+/** The shell, not the chat, had the keys last: window focus and file drops go back to it. */
+let shellFocused = false;
 
 const FILES_KEY = "terminals.files";
 const FILES_WIDTH_KEY = "terminals.filesWidth";
@@ -104,6 +127,11 @@ const TERM_MIN = 320;
 const SOURCE_KEY = "terminals.source";
 const SOURCE_WIDTH_KEY = "terminals.sourceWidth";
 const SOURCE_MIN = 300;
+const SHELL_KEY = "terminals.shell";
+const SHELL_HEIGHT_KEY = "terminals.shellHeight";
+const SHELL_MIN = 90;
+/** Room the chat keeps when the terminal panel is dragged tall. */
+const CHAT_MIN = 140;
 
 function loadFlag(key: string): boolean {
   try {
@@ -131,13 +159,187 @@ function syncFiles() {
   source.setFolder(active?.dir ?? null);
   source.setShown(sourceOpen && active !== null);
   bar.setSourceOpen(sourceOpen);
+  syncShell();
+}
+
+/**
+ * Shows the terminal panel with the tab in front's shells, starting the first one. Minimized, it stays as a
+ * bar at the bottom of every tab (naming its shells, if any); a click on it opens the panel.
+ */
+function syncShell() {
+  const tab = active;
+  const show = shellOpen && tab !== null;
+  const minimized = !shellOpen && tab !== null;
+  panel.el.hidden = !show && !minimized;
+  panel.setMinimized(minimized);
+  center.classList.toggle("shell-max", show && shellMax);
+  panel.setMaximized(shellMax);
+  bar.setShellOpen(shellOpen);
+  for (const t of tabs) for (const sh of t.shells) sh.view.pane.hidden = !show || t !== tab || sh !== t.shell;
+  if (tab && (show || minimized)) panel.render(tab.shells, tab.shell?.id ?? null);
+  if (!show || !tab) return;
+  if (tab.shell) tab.shell.view.fitNow();
+  // once the tab's own terminal is up, so the shell can be found under it again after a reload
+  else if (tab.ptyId !== null || tab.exited) addShell(tab, true);
+}
+
+function toggleShell() {
+  shellOpen = !shellOpen;
+  saveValue(SHELL_KEY, shellOpen ? "1" : "0");
+  if (!shellOpen) shellMax = false;
+  syncShell();
+  // a shell started just now gets the keys once its view exists (xterm loads on first use)
+  if (shellOpen) withTerm(() => active?.shell?.view.focus());
+  else active?.view.focus();
+}
+
+/** New terminal: another shell under the tab in front, opening the panel. */
+function newTerminal() {
+  if (!active) return;
+  if (!shellOpen) {
+    shellOpen = true;
+    saveValue(SHELL_KEY, "1");
+  }
+  addShell(active, false);
+}
+
+function toggleMax() {
+  shellMax = !shellMax;
+  syncShell();
+  active?.shell?.view.focus();
+}
+
+/** Starts a shell under `tab` and puts it in front; `first`: only when the tab has none yet. */
+function addShell(tab: Tab, first: boolean) {
+  withTerm((term) => {
+    if (first && tab.shells.length) return;
+    void startShell(term, tab);
+  });
+}
+
+function newShell(term: TermModule, tab: Tab, name: string): Shell {
+  const view = new term.TermView(panel.panes, {
+    tinted: true,
+    menuItems: () => [
+      { label: "New terminal", icon: "plus", shortcut: "Ctrl+Shift+`", run: newTerminal },
+      { label: "Minimize panel", shortcut: "Ctrl+`", run: toggleShell },
+      { label: "Kill terminal", icon: "trash", danger: true, run: () => killShell(tab, shell) },
+    ],
+  });
+  const shell: Shell = { id: nextShellId++, name, view, ptyId: null };
+  tab.shells.push(shell);
+  tab.shell = shell;
+  syncShell();
+  shell.view.open();
+  return shell;
+}
+
+/** The output channel of a shell; when it ends (exit) it leaves the panel. */
+function shellChannel(tab: Tab, shell: Shell) {
+  return shell.view.channel(() => dropShell(tab, shell));
+}
+
+/** The shell program's name from its path ("/bin/zsh" -> "zsh", "...\\pwsh.exe" -> "pwsh"). */
+function shellName(title: string): string {
+  return leaf(title).replace(/\.exe$/i, "") || "Terminal";
+}
+
+async function startShell(term: TermModule, tab: Tab) {
+  if (tab.closing || !tabs.includes(tab)) return;
+  const shell = newShell(term, tab, "Terminal");
+  if (tab === active) shell.view.focus();
+  const { onOutput } = shellChannel(tab, shell);
+  const owner = tab.ptyId ?? 0;
+  const res = await call(
+    "pty_shell",
+    { owner, dir: tab.dir, profile: tab.profile, ...shell.view.size, onOutput },
+    { quiet: true },
+  );
+  if (!res.ok) {
+    shell.view.note(res.error.message, "error");
+    return;
+  }
+  // the tab closed or the shell was killed while it started: end it now, nothing else will
+  if (!tab.shells.includes(shell)) {
+    void call("pty_kill", { id: res.value.id }, { quiet: true });
+    return;
+  }
+  bindShell(tab, shell, res.value);
+}
+
+function bindShell(tab: Tab, shell: Shell, info: PtyInfo) {
+  shell.ptyId = info.id;
+  shell.name = shellName(info.title);
+  shell.view.bind(info.id);
+  if (tab === active) syncShell();
+}
+
+/** A shell that runs in the backend (after a reload, or moved here with its tab) goes back under its tab. */
+async function adoptShell(info: PtyInfo): Promise<void> {
+  const term = termModule ?? (await loadTerm());
+  const tab = tabs.find((t) => t.ptyId === info.owner);
+  if (!tab) {
+    // its tab is gone: nothing could show it
+    void call("pty_kill", { id: info.id }, { quiet: true });
+    return;
+  }
+  if (!term) return;
+  const shell = newShell(term, tab, shellName(info.title));
+  const { onOutput } = shellChannel(tab, shell);
+  const res = await call("pty_attach", { id: info.id, onOutput }, { quiet: true });
+  if (!res.ok) dropShell(tab, shell);
+  else if (tab.shells.includes(shell)) bindShell(tab, shell, res.value);
+}
+
+/**
+ * Removes a shell from its tab (its process is ended by the caller, or already gone). The one before it
+ * comes to the front; with none left the panel goes back to its bar.
+ */
+function dropShell(tab: Tab, shell: Shell) {
+  const i = tab.shells.indexOf(shell);
+  if (i < 0) return;
+  tab.shells.splice(i, 1);
+  shell.view.dispose();
+  if (tab.shell === shell) tab.shell = tab.shells[Math.max(0, i - 1)] ?? null;
+  if (tab.closing || tab !== active) return;
+  if (!tab.shell && shellOpen) {
+    shellOpen = false;
+    shellMax = false;
+    saveValue(SHELL_KEY, "0");
+    shellFocused = false;
+    tab.view.focus();
+  }
+  syncShell();
+  if (shellFocused) tab.shell?.view.focus();
+}
+
+/** Kill terminal: ends one shell of the tab. */
+function killShell(tab: Tab, shell: Shell) {
+  if (shell.ptyId !== null) void call("pty_kill", { id: shell.ptyId }, { quiet: true });
+  dropShell(tab, shell);
+}
+
+function selectShell(id: number) {
+  const tab = active;
+  const shell = tab?.shells.find((sh) => sh.id === id);
+  if (!tab || !shell) return;
+  tab.shell = shell;
+  syncShell();
+  shell.view.focus();
+}
+
+/** Where pasted paths go: the shell when it had the keys last, else the chat. */
+function inputView(tab: Tab): TermView | null {
+  if (shellFocused && shellOpen && tab.shell) return tab.shell.view;
+  return tab.exited ? null : tab.view;
 }
 
 /** Pastes a path into the terminal in front, quoted as for a dropped file. */
 function pastePath(path: string) {
-  if (!active || active.exited) return;
-  active.view.paste(quotePaths([path], store.get().platform.os));
-  active.view.focus();
+  const view = active && inputView(active);
+  if (!view) return;
+  view.paste(quotePaths([path], store.get().platform.os));
+  view.focus();
 }
 
 /** Mirrors the tabs into the store for other features (and the shell, which swaps workspace and terminals). */
@@ -160,8 +362,26 @@ function publish() {
   syncFiles();
 }
 
+/**
+ * A tab's folder as compared: the tabs of one folder are kept together and grouped in the strip. With
+ * "Group tabs by folder" off every tab is its own group, so none are kept together or get a chip.
+ */
+function folderKey(t: Tab): string {
+  return settings().groupTabs ? pathKey(t.dir, store.get().platform.os) : `tab:${t.id}`;
+}
+
+/** Puts each folder's tabs together again (grouping was turned on). */
+function regroup() {
+  tabs.splice(0, tabs.length, ...groupOrder(tabs, folderKey));
+  publish();
+  renderStrip();
+}
+
 function renderStrip() {
-  strip.render(tabs, active?.id ?? null);
+  strip.render(
+    tabs.map((t) => ({ id: t.id, title: t.title, sub: t.sub, exited: t.exited, dir: t.dir, group: folderKey(t) })),
+    active?.id ?? null,
+  );
 }
 
 function showTab(tab: Tab | null) {
@@ -191,6 +411,7 @@ function removeTab(tab: Tab) {
     publish();
     renderStrip();
   }
+  for (const sh of [...tab.shells]) dropShell(tab, sh);
   tab.view.dispose();
 }
 
@@ -204,8 +425,9 @@ async function closeTab(tab: Tab, confirm = true) {
     );
     if (!ok || tab.closing) return;
   }
-  // also for an exited tab: the backend may not have dropped it yet
+  // also for an exited tab: the backend may not have dropped it yet (its shell goes with it)
   if (tab.ptyId !== null) void call("pty_kill", { id: tab.ptyId }, { quiet: true });
+  for (const sh of tab.shells) if (sh.ptyId !== null) void call("pty_kill", { id: sh.ptyId }, { quiet: true });
   removeTab(tab);
 }
 
@@ -232,7 +454,12 @@ const movable = (t: Tab) => t.ptyId !== null && !t.exited && !t.closing;
 async function moveTabs(list: Tab[], where: { to?: string; at?: Point } = {}) {
   const going = list.filter(movable);
   if (!going.length) return;
-  const res = await call("pty_move", { ids: going.map((t) => t.ptyId as number), ...where });
+  // each tab's shells go along, and come back under it there
+  const ids = going.flatMap((t) => [
+    t.ptyId as number,
+    ...t.shells.flatMap((sh) => (sh.ptyId === null ? [] : [sh.ptyId])),
+  ]);
+  const res = await call("pty_move", { ids, ...where });
   if (!res.ok) return;
   for (const t of going) if (!t.closing) removeTab(t);
   if (!tabs.length && !isMainWindow()) void getCurrentWindow().close();
@@ -310,6 +537,9 @@ function reorder(tab: Tab, to: number) {
   if (i < 0 || i === to) return;
   tabs.splice(i, 1);
   tabs.splice(Math.max(0, Math.min(to, tabs.length)), 0, tab);
+  // a folder's tabs stay together: a tab dragged past its folder's first tab takes the folder along
+  const grouped = groupOrder(tabs, folderKey);
+  tabs.splice(0, tabs.length, ...grouped);
   publish();
   renderStrip();
 }
@@ -347,8 +577,11 @@ function newTab(term: TermModule, info: Pick<TermInfo, "title" | "dir" | "profil
     exited: false,
     view,
     closing: false,
+    shells: [],
+    shell: null,
   };
-  tabs.push(tab);
+  // next to the other tabs of its folder
+  tabs.splice(insertIndex(tabs.map(folderKey), folderKey(tab)), 0, tab);
   return tab;
 }
 
@@ -484,9 +717,9 @@ async function restore() {
   if (!res.ok) return;
   const me = windowLabel();
   const main = me === MAIN_WINDOW;
-  for (const info of res.value) {
-    if (info.window === me || (main && info.window === null)) await adopt(info, false);
-  }
+  const mine = res.value.filter((info) => info.window === me || (main && info.window === null));
+  for (const info of mine) if (info.owner === null) await adopt(info, false);
+  for (const info of mine) if (info.owner !== null) await adoptShell(info);
   const first = tabs[0];
   if (!main && first && !active) showTab(first);
 }
@@ -495,13 +728,14 @@ async function restore() {
 async function takeMoved(ids: number[]) {
   const res = await call("pty_list", undefined, { quiet: true });
   if (!res.ok) return;
+  const moved = ids.flatMap((id) => res.value.filter((t) => t.id === id));
   let front = true;
-  for (const id of ids) {
-    const info = res.value.find((t) => t.id === id);
-    if (!info) continue;
+  for (const info of moved) {
+    if (info.owner !== null) continue;
     await adopt(info, front);
     front = false;
   }
+  for (const info of moved) if (info.owner !== null) await adoptShell(info);
 }
 
 // ---------- commands ----------
@@ -581,6 +815,20 @@ function registerCommands() {
   registerShortcut({ id: "session:new", keys: "CmdOrCtrl+T" });
   registerShortcut({ id: "tab:next", keys: ["Ctrl+Tab", "Cmd+Shift+]"], inTerminal: true });
   registerShortcut({ id: "tab:prev", keys: ["Ctrl+Shift+Tab", "Cmd+Shift+["], inTerminal: true });
+  registerCommand({
+    id: "tab:toggleTerminal",
+    title: "Toggle Terminal",
+    enabled: () => active !== null && focused(),
+    run: toggleShell,
+  });
+  registerShortcut({ id: "tab:toggleTerminal", keys: "Ctrl+`", inTerminal: true });
+  registerCommand({
+    id: "tab:newTerminal",
+    title: "New Terminal",
+    enabled: () => active !== null && focused(),
+    run: newTerminal,
+  });
+  registerShortcut({ id: "tab:newTerminal", keys: "Ctrl+Shift+`", inTerminal: true });
   registerCommand({ id: "tab:moveLeft", title: "Move Tab Left", enabled: focused, run: () => shiftTab(active, -1) });
   registerCommand({ id: "tab:moveRight", title: "Move Tab Right", enabled: focused, run: () => shiftTab(active, 1) });
   registerShortcut({ id: "tab:moveLeft", keys: "CmdOrCtrl+Shift+PageUp", inTerminal: true });
@@ -632,9 +880,10 @@ async function onWindowCloseRequested(n: number) {
 function installDrops() {
   getCurrentWebview()
     .onDragDropEvent((e) => {
-      if (e.payload.type !== "drop" || !active || active.exited || store.get().screen !== "main") return;
-      active.view.paste(quotePaths(e.payload.paths, store.get().platform.os));
-      active.view.focus();
+      const view = active && inputView(active);
+      if (e.payload.type !== "drop" || !view || store.get().screen !== "main") return;
+      view.paste(quotePaths(e.payload.paths, store.get().platform.os));
+      view.focus();
     })
     .catch((e) => log.warn(`file drops are not available: ${describeError(e)}`));
 }
@@ -645,6 +894,7 @@ export function mount(): void {
   // the session bar over the files panel and the terminals' panes
   filesOpen = loadFlag(FILES_KEY);
   sourceOpen = loadFlag(SOURCE_KEY);
+  shellOpen = loadFlag(SHELL_KEY);
   bar = new SessionBar(
     () => {
       filesOpen = !filesOpen;
@@ -656,6 +906,7 @@ export function mount(): void {
       saveValue(SOURCE_KEY, sourceOpen ? "1" : "0");
       syncFiles();
     },
+    toggleShell,
   );
   panes = h("div", { class: "term-panes" });
   files = createExplorer({
@@ -672,7 +923,25 @@ export function mount(): void {
   source = createSourceControlPanel();
   const sourceDivider = h("div", { class: "term-source-divider" });
   sourceSide = h("div", { class: "term-source" }, sourceDivider, source.el);
-  const body = h("div", { class: "term-body" }, filesSide, panes, sourceSide);
+  panel = new ShellPanel({
+    add: newTerminal,
+    kill: (id) => {
+      const shell = active?.shells.find((sh) => sh.id === id);
+      if (active && shell) killShell(active, shell);
+    },
+    select: selectShell,
+    toggleMax,
+    toggleOpen: toggleShell,
+  });
+  const shellSide = panel.el;
+  shellSide.addEventListener("focusin", () => {
+    shellFocused = true;
+  });
+  panes.addEventListener("focusin", () => {
+    shellFocused = false;
+  });
+  center = h("div", { class: "term-center" }, panes, shellSide);
+  const body = h("div", { class: "term-body" }, filesSide, center, sourceSide);
   $("#terminal-root").append(bar.el, body);
   const setFilesWidth = (px: number) => {
     filesSide.style.width = `${px}px`;
@@ -699,7 +968,24 @@ export function mount(): void {
     onResize: (edge) => setSourceWidth(Math.max(SOURCE_MIN, body.clientWidth - edge)),
     onCommit: () => saveValue(SOURCE_WIDTH_KEY, String(Math.round(sourceSide.getBoundingClientRect().width))),
   });
+  // the terminal panel is below the chat: the splitter moves its top edge, measured from the top
+  const setShellHeight = (px: number) => {
+    // a variable, not the height: minimized, the bar keeps its own height
+    shellSide.style.setProperty("--shell-h", `${px}px`);
+  };
+  splitter({
+    el: panel.divider,
+    axis: "y",
+    label: "Resize the terminal panel",
+    get: () => center.clientHeight - shellSide.getBoundingClientRect().height,
+    min: CHAT_MIN,
+    max: () => Math.max(CHAT_MIN, center.clientHeight - SHELL_MIN),
+    onResize: (edge) => setShellHeight(Math.max(SHELL_MIN, center.clientHeight - edge)),
+    onCommit: () => saveValue(SHELL_HEIGHT_KEY, String(Math.round(shellSide.getBoundingClientRect().height))),
+  });
   try {
+    const savedShell = Number(localStorage.getItem(SHELL_HEIGHT_KEY));
+    if (savedShell >= SHELL_MIN) setShellHeight(savedShell);
     const saved = Number(localStorage.getItem(FILES_WIDTH_KEY));
     if (saved >= FILES_MIN) setFilesWidth(saved);
     const savedSource = Number(localStorage.getItem(SOURCE_WIDTH_KEY));
@@ -743,6 +1029,7 @@ export function mount(): void {
     },
   });
 
+  store.select((s) => s.settings.groupTabs, regroup);
   on("launch", launch);
   on("terminal:show", ({ id }) => {
     const tab = id === null ? null : tabs.find((t) => t.id === id);
@@ -760,9 +1047,19 @@ export function mount(): void {
       active?.view.fitNow();
     });
   }).observe(panes);
+  let shellFrame = 0;
+  new ResizeObserver(() => {
+    if (shellFrame) return;
+    shellFrame = requestAnimationFrame(() => {
+      shellFrame = 0;
+      active?.shell?.view.fitNow();
+    });
+  }).observe(panel.panes);
   // window focus -> the terminal in front gets the keys, unless a dialog is open (Enter would reach claude)
   window.addEventListener("focus", () => {
-    if (active && store.get().screen === "main" && !modalOpen()) active.view.focus();
+    if (!active || store.get().screen !== "main" || modalOpen()) return;
+    if (shellFocused && shellOpen && active.shell) active.shell.view.focus();
+    else active.view.focus();
   });
   if (isTauri()) installDrops();
 

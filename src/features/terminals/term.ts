@@ -35,21 +35,43 @@ export function ansiColors(v: (name: string) => string): Partial<ITheme> {
   return out;
 }
 
+/** How much of the text colour tints a shell panel's background (terminals.css uses the same mix). */
+export const SHELL_TINT = 0.05;
+
+/** `a` mixed with `share` of `b` ("#rrggbb" colours); `a` itself when either is not one. */
+export function mixHex(a: string, b: string, share: number): string {
+  const rgb = (c: string) =>
+    /^#[0-9a-f]{6}$/i.test(c) ? [1, 3, 5].map((i) => Number.parseInt(c.slice(i, i + 2), 16)) : null;
+  const x = rgb(a);
+  const y = rgb(b);
+  if (!x || !y) return a;
+  return `#${x
+    .map((v, i) =>
+      Math.round(v + ((y[i] ?? v) - v) * share)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
 /**
  * xterm colours from the app's tokens (styles/tokens.css), in the terminal theme (core/theme.ts). The ANSI
  * palette follows it too: xterm's own is made for dark backgrounds (white and bright yellow text
  * would vanish on the light one).
  */
-function theme(): ITheme {
+function theme(tinted = false): ITheme {
   const css = getComputedStyle(document.documentElement);
   const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   const accent = v("--accent", "#d97757");
+  const fg = v("--term-fg", "#e6e6ea");
+  // a shell panel sits a shade off the chat above it, so the two read as separate terminals
+  const bg = tinted ? mixHex(v("--term-bg", "#141416"), fg, SHELL_TINT) : v("--term-bg", "#141416");
   return {
     ...ansiColors((name) => v(name, "")),
-    background: v("--term-bg", "#141416"),
-    foreground: v("--term-fg", "#e6e6ea"),
+    background: bg,
+    foreground: fg,
     cursor: accent,
-    cursorAccent: v("--term-bg", "#141416"),
+    cursorAccent: bg,
     selectionBackground: termDark() ? `${accent}55` : `${accent}40`,
   };
 }
@@ -78,7 +100,7 @@ function watch() {
   if (watching) return;
   watching = true;
   onThemeChange(() => {
-    for (const v of views) v.term.options.theme = theme();
+    for (const v of views) v.term.options.theme = theme(v.tinted);
   });
   reduceMotion.addEventListener("change", () => {
     for (const v of views) {
@@ -123,6 +145,8 @@ export interface TermViewOptions {
   onTitle?: (title: string) => void;
   /** Extra items at the end of the right-click menu (detach, close, ...). */
   menuItems?: () => MenuItem[];
+  /** A shell panel's terminal: its background is a shade off the chat's. */
+  tinted?: boolean;
 }
 
 /** Increasing across every window (wall clock based), so the backend can drop a pause or resume that arrives
@@ -136,6 +160,7 @@ function flowSeq(): number {
 export class TermView {
   readonly term: Terminal;
   readonly pane: HTMLElement;
+  readonly tinted: boolean;
   private fit = new FitAddon();
   private gl: WebglAddon | null = null;
   private glRetry: ReturnType<typeof setTimeout> | undefined;
@@ -158,6 +183,7 @@ export class TermView {
     private opts: TermViewOptions = {},
   ) {
     watch();
+    this.tinted = opts.tinted ?? false;
     this.pane = document.createElement("div");
     this.pane.className = "term-pane";
     this.pane.setAttribute("role", "tabpanel");
@@ -174,7 +200,7 @@ export class TermView {
       smoothScrollDuration: smoothScroll(),
       macOptionIsMeta: mac && settings().macOptionIsMeta,
       macOptionClickForcesSelection: mac,
-      theme: theme(),
+      theme: theme(this.tinted),
       windowsPty: isWindows() ? { backend: "conpty", buildNumber: windowsBuild() } : undefined,
       linkHandler: { activate: openLink, allowNonHttpProtocols: false },
     });

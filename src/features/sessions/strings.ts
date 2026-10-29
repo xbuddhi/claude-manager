@@ -21,10 +21,6 @@ export const HINT_DEFAULT =
   "Double-click a project to start a session, or a session to resume it. Drop a folder on the window to start there. Right-click for more.";
 export const HINT_NO_SESSIONS = "No sessions yet. Double-click the folder (or press New Session) to start one.";
 
-export function groupHint(name: string, folders: number): string {
-  return `${name} has ${folders} folder${folders === 1 ? "" : "s"}. Drag folders onto it in the sidebar to add more; folders on disk are never moved.`;
-}
-
 /** The muted count beside the view title: "12 sessions in app" ("2 archived sessions in app"). */
 export function countText(n: number, name: string, archived = false): string {
   return `${n} ${archived ? "archived " : ""}session${n === 1 ? "" : "s"} in ${name}`;
@@ -52,13 +48,6 @@ const two = (n: number) => String(n).padStart(2, "0");
 export function longDate(ms: number): string {
   const d = new Date(ms);
   return `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()} ${d.getFullYear()}  ${two(d.getHours())}:${two(d.getMinutes())}`;
-}
-
-/** The details pane text for a session: its full prompt, said to be running first when it is. */
-export function detailText(full: string, level: number): string {
-  if (!level) return full;
-  const state = level === 2 ? "Claude is working in this session." : "This session is open.";
-  return `${state} Double-click to switch to it.\n${full}`;
 }
 
 /** "Sat, Oct 25 2026  14:05     12 messages     profile: work     <id>". */

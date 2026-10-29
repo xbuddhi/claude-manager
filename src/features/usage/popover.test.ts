@@ -42,3 +42,42 @@ describe("tickPanel", () => {
     expect(tickPanel(root, d, later)).toBe(false);
   });
 });
+
+describe("other accounts", () => {
+  const other: PlanReport = {
+    profile: "b",
+    name: "Personal",
+    plan: "Pro",
+    error: null,
+    stale: null,
+    fetched: NOW,
+    limits: [
+      { label: "Current session", percent: 62, resets: NOW + MIN },
+      { label: "Weekly · all models", percent: 30, resets: null },
+    ],
+  };
+
+  it("is folded at first: a button with how many there are", () => {
+    const root = document.createElement("div");
+    root.innerHTML = String(panelHtml({ ...data(), others: { count: 2, open: false, plans: [] } }, NOW));
+    const toggle = root.querySelector(".use-others-toggle");
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle?.textContent).toContain("2");
+    expect(root.querySelector(".use-o-row")).toBeNull();
+  });
+
+  it("open: each account's session and week on one line", () => {
+    const root = document.createElement("div");
+    root.innerHTML = String(panelHtml({ ...data(), others: { count: 1, open: true, plans: [other] } }, NOW));
+    expect(root.querySelector(".use-o-name")?.textContent).toBe("Personal  ·  Pro");
+    expect([...root.querySelectorAll(".use-o-m b")].map((b) => b.textContent)).toEqual(["62%", "30%"]);
+    // the countdowns still belong to the profile in view only
+    expect(root.querySelectorAll(".use-reset")).toHaveLength(2);
+  });
+
+  it("none without other accounts", () => {
+    const root = document.createElement("div");
+    root.innerHTML = String(panelHtml({ ...data(), others: null }, NOW));
+    expect(root.querySelector(".use-others")).toBeNull();
+  });
+});

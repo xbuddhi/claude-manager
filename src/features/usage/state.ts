@@ -15,6 +15,9 @@ declare module "../../core/store" {
     /** Token counts from this computer's transcripts; null until the first count. */
     usageLocal: UsageReport | null;
     usageLocalBusy: boolean;
+    /** The popover's "Other accounts" is open: the other signed-in profiles' plans are fetched too. Folded
+     * at every start. */
+    usageOthersOpen: boolean;
   }
 }
 
@@ -24,4 +27,5 @@ defineState({
   usageNeedsRetry: true,
   usageLocal: null,
   usageLocalBusy: false,
+  usageOthersOpen: false,
 });

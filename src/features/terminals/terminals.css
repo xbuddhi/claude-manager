@@ -457,6 +457,160 @@ html.mode-terminal .term-tab.active {
   min-width: 0;
   min-height: 0;
 }
+/* the chat over the terminal panel */
+.term-center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* the terminal panel under the chat (shellpanel.ts), on the terminal's colours like the bar */
+.term-shell {
+  position: relative;
+  flex: none;
+  height: var(--shell-h, 240px);
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid color-mix(in srgb, var(--term-fg) 12%, transparent);
+  /* a shade off the chat above it (term.ts SHELL_TINT, the same mix for xterm) */
+  --shell-bg: color-mix(in srgb, var(--term-fg) 5%, var(--term-bg));
+  background: var(--shell-bg);
+  --text: var(--term-fg);
+  --muted: color-mix(in srgb, var(--term-fg) 60%, transparent);
+  --ctrl-hover: color-mix(in srgb, var(--term-fg) 10%, transparent);
+  color: var(--muted);
+  font: 12px var(--font-ui);
+}
+.term-shell[hidden] {
+  display: none;
+}
+.term-shell > .term-shell-divider {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: 6px;
+}
+/* maximized: the panel takes the chat's place (the chat keeps running behind it) */
+.term-center.shell-max > .term-panes {
+  display: none;
+}
+.term-center.shell-max > .term-shell {
+  flex: 1;
+  border-top: 0;
+}
+.term-shell-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 0 6px 0 8px;
+}
+.term-shell-title {
+  padding: 3px 10px;
+  border-radius: 6px;
+  background: var(--ctrl-hover);
+  color: var(--text);
+  font-weight: 500;
+}
+.term-shell-head > .term-shell-act {
+  width: 26px;
+  height: 26px;
+}
+.term-shell-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: color-mix(in srgb, var(--term-fg) 14%, transparent);
+}
+.term-shell-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.term-shell-panes {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+/* the tab's terminals, from two on */
+.term-shell-list {
+  flex: none;
+  width: 168px;
+  padding: 2px 6px 6px;
+  overflow-y: auto;
+  border-left: 1px solid color-mix(in srgb, var(--term-fg) 10%, transparent);
+}
+.term-shell-list[hidden] {
+  display: none;
+}
+.term-shell-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+.term-shell-row:hover {
+  background: var(--ctrl-hover);
+}
+.term-shell-row.active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text);
+}
+/* the active row's mark on its left edge */
+.term-shell-row.active::before {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  content: "";
+}
+.term-shell-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 8px 0 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.term-shell-pick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+.term-shell-pick > .term-shell-icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+.term-shell-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* kill: on the row the pointer is over, and on the active one */
+.term-shell-row > .term-shell-kill {
+  width: 22px;
+  height: 22px;
+  margin-right: 3px;
+  opacity: 0;
+}
+.term-shell-row:hover > .term-shell-kill,
+.term-shell-row.active > .term-shell-kill,
+.term-shell-row > .term-shell-kill:focus-visible {
+  opacity: 1;
+}
 /* a file from the panel dragged over the terminal */
 .term-panes.drop-target::after {
   position: absolute;
@@ -472,4 +626,111 @@ html.mode-terminal .term-tab.active {
   inset: 0;
   padding: 8px 4px 4px 10px;
   background: var(--term-bg);
+}
+
+/* ---------- folder groups (tabs.ts): a chip before a folder's tabs, a line in its colour under them ---------- */
+.term-group {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 140px;
+  height: 24px;
+  margin: 0 2px 5px 6px;
+  padding: 0 9px 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--group) 18%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 0.15s var(--ease);
+}
+.term-group::before {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--group);
+  content: "";
+}
+.term-group:hover {
+  background: color-mix(in srgb, var(--group) 30%, transparent);
+}
+.term-group:focus-visible {
+  outline: 2px solid var(--group);
+  outline-offset: 1px;
+}
+.term-group-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.term-group-count {
+  flex: none;
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--group);
+  color: var(--bg);
+  font-size: 10.5px;
+  line-height: 15px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* the folder's colour under its tabs; the tab in front joins its panel instead */
+.term-tab.grouped::after {
+  position: absolute;
+  right: 6px;
+  bottom: 0;
+  left: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--group);
+  opacity: 0.8;
+  content: "";
+  pointer-events: none;
+}
+.term-tab.grouped.active::after {
+  opacity: 0;
+}
+
+/* the shell panel's terminals on its own shade */
+.term-shell-panes > .term-pane {
+  background: var(--shell-bg);
+}
+.term-shell-summary {
+  min-width: 0;
+  margin-left: 8px;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* minimized: only the bar, naming the terminals; a click opens the panel again */
+.term-shell.minimized {
+  height: auto;
+}
+.term-shell.minimized > .term-shell-body,
+.term-shell.minimized > .term-shell-divider {
+  display: none;
+}
+.term-shell.minimized > .term-shell-head {
+  cursor: pointer;
+}
+.term-shell.minimized > .term-shell-head:hover {
+  background: color-mix(in srgb, var(--term-fg) 6%, transparent);
+}
+.term-shell:not(.minimized) .term-shell-summary,
+.term-shell.minimized .term-shell-act:not([aria-expanded]) {
+  display: none;
+}
+.term-shell.minimized .term-shell-sep {
+  display: none;
+}
+/* the minimize chevron points up while minimized */
+.term-shell.minimized .term-shell-act[aria-expanded] > svg {
+  transform: rotate(180deg);
 }

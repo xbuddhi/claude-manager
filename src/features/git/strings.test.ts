@@ -13,6 +13,7 @@ import {
   longAge,
   parseLog,
   parseShortstat,
+  parseStashes,
   pullTip,
   pushTip,
   refPills,
@@ -140,5 +141,20 @@ describe("commit hover card texts", () => {
   it("links the commit on its site", () => {
     expect(commitUrl("https://github.com/a/b", "abc")).toBe("https://github.com/a/b/commit/abc");
     expect(commitUrl("https://gitlab.com/a/b", "abc")).toBe("https://gitlab.com/a/b/-/commit/abc");
+  });
+});
+
+describe("stashes", () => {
+  it("reads git stash list", () => {
+    const out = [
+      "stash@{0}\x1fOn main: 2026-10-25 14:05 from Claude Manager\x1f1761400000",
+      "stash@{1}\x1fWIP on rr/x: abc1234 fix: things\x1f1761300000",
+      "",
+    ].join("\n");
+    expect(parseStashes(out)).toEqual([
+      { ref: "stash@{0}", branch: "main", message: "2026-10-25 14:05 from Claude Manager", time: 1761400000000 },
+      { ref: "stash@{1}", branch: "rr/x", message: "abc1234 fix: things", time: 1761300000000 },
+    ]);
+    expect(parseStashes("")).toEqual([]);
   });
 });

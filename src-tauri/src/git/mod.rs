@@ -4,6 +4,7 @@
 pub mod files;
 pub mod guard;
 pub mod message;
+pub mod prs;
 pub mod repos;
 pub mod run;
 pub mod status;
@@ -70,6 +71,12 @@ pub async fn git_commit_message(app: tauri::AppHandle, repo: String, profile: Op
         message::generate(&repo, profile.as_deref(), claude)
     })
     .await
+}
+
+/// The open pull requests of `repo` from GitHub, through the user's GitHub CLI.
+#[tauri::command]
+pub async fn git_pull_requests(repo: String) -> AppResult<prs::PullRequests> {
+    blocking(move || prs::list(&repo)).await
 }
 
 /// An untracked file of `repo` for the diff view.

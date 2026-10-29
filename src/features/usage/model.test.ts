@@ -12,6 +12,7 @@ import {
   sameDirs,
   samePlans,
   sessionPercent,
+  splitPlans,
   statusLine,
   usageAgo,
   weekPercent,
@@ -62,6 +63,18 @@ describe("scope", () => {
     expect(planScope("/h/.claude-work", all)).toEqual(["/h/.claude-work"]);
     expect(planScope(null, all)).toEqual(["/h/.claude", "/h/.claude-x"]);
     expect(localScope(null, all)).toEqual(["/h/.claude", "/h/.claude-work", "/h/.claude-x"]);
+  });
+
+  it("adds the other signed-in accounts while Other accounts is open", () => {
+    expect(planScope("/h/.claude-x", all, true, "macos")).toEqual(["/h/.claude-x", "/h/.claude"]);
+    expect(planScope(null, all, true, "macos")).toEqual(["/h/.claude", "/h/.claude-x"]);
+  });
+
+  it("splits the plans into the profile in view and the others", () => {
+    const a = plan("/h/.claude");
+    const x = plan("/h/.claude-x");
+    expect(splitPlans([x, a], "/h/.claude-x", "macos")).toEqual({ mine: [x], others: [a] });
+    expect(splitPlans([a, x], null, "macos")).toEqual({ mine: [a, x], others: [] });
   });
 
   it("matches plans to profiles with the platform's path rules", () => {

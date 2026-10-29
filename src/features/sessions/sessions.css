@@ -171,6 +171,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 6px;
 }
 .ses-dtext {
@@ -182,6 +183,9 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   line-clamp: 3;
+}
+.ses-dtext[hidden] {
+  display: none;
 }
 .ses-details.hint .ses-dtext {
   color: var(--muted);

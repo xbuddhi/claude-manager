@@ -31,6 +31,8 @@ pub struct Meta {
     pub title: String,
     /// Label of the window the output goes to.
     pub window: String,
+    /// A shell panel's terminal: the tab terminal it belongs to.
+    pub owner: Option<u32>,
 }
 
 struct Term {
@@ -55,6 +57,7 @@ impl Term {
             session_id: meta.session_id,
             title: meta.title,
             window: Some(meta.window),
+            owner: meta.owner,
         }
     }
 }

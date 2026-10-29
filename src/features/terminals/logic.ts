@@ -183,3 +183,46 @@ export function debounce<T>(ms: number, fn: (value: T) => void): (value: T) => v
     timer = setTimeout(() => fn(value), ms);
   };
 }
+
+// ---- folder groups in the tab strip ----
+
+/** Where a new tab of folder `key` goes: after the last tab of that folder, else at the end. */
+export function insertIndex(keys: readonly string[], key: string): number {
+  const i = keys.lastIndexOf(key);
+  return i < 0 ? keys.length : i + 1;
+}
+
+/** Each folder's items together, the folders in the order they first appear; the order within one is kept. */
+export function groupOrder<T>(items: readonly T[], key: (item: T) => string): T[] {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const k = key(item);
+    const list = groups.get(k);
+    if (list) list.push(item);
+    else groups.set(k, [item]);
+  }
+  return [...groups.values()].flat();
+}
+
+/** The colours folder groups take, in the order they are handed out (tokens.css; distinct in every skin). */
+export const GROUP_COLORS = ["--lane-3", "--lane-4", "--lane-1", "--lane-2", "--term-blue", "--term-green"] as const;
+
+/**
+ * Colours (indexes into GROUP_COLORS) for the folder groups shown, in strip order. A folder keeps the one
+ * it had in `prev`; a new one takes the first colour no other group has (they repeat only past six).
+ */
+export function assignColors(groups: readonly string[], prev: ReadonlyMap<string, number>): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const g of groups) {
+    const had = prev.get(g);
+    if (had !== undefined) out.set(g, had);
+  }
+  for (const g of groups) {
+    if (out.has(g)) continue;
+    const used = new Set(out.values());
+    let c = 0;
+    while (used.has(c) && c < GROUP_COLORS.length) c++;
+    out.set(g, c < GROUP_COLORS.length ? c : out.size % GROUP_COLORS.length);
+  }
+  return out;
+}

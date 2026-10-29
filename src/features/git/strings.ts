@@ -24,6 +24,15 @@ export const TEXT = {
   generating: "Claude is writing a commit message...",
   switchConflicts: "This repository has merge conflicts\nResolve them, or abort the merge, before switching branches.",
   badBranch: "A branch name cannot start with '-'.",
+  noStashes: "No stashes\nStash all changes (commit menu) puts your changes aside.",
+  selectStash: "Select a stash to see its changes",
+  emptyStash: "This stash has no text changes",
+  noPulls: "No open pull requests",
+  pullsLoading: "Loading pull requests...",
+  pullHint: "Click a pull request to open it on GitHub",
+  noGh: "Pull requests are listed with the GitHub CLI (gh), which is not installed.\nInstall it from cli.github.com, run 'gh auth login', then refresh.",
+  ghSignedOut: "The GitHub CLI (gh) is not signed in.\nRun 'gh auth login' in a terminal, then refresh.",
+  openPulls: "Open pull requests on GitHub",
 } as const;
 
 export function notRepo(folder: string): string {
@@ -132,6 +141,37 @@ export function successText(stdout: string, stderr: string): string {
 export function stashMessage(now = new Date()): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())} from Claude Manager`;
+}
+
+/** `git stash list` in a form parseStashes reads: ref, reflog subject and time, one stash per line. */
+export const STASH_LIST_ARGS = ["stash", "list", "--format=%gd%x1f%gs%x1f%ct"];
+
+export interface Stash {
+  /** "stash@{0}" */
+  ref: string;
+  /** The branch it was made on ("" when git does not say). */
+  branch: string;
+  /** Its message: the one given, or the commit it was made on for a plain `git stash`. */
+  message: string;
+  /** When it was made, ms. */
+  time: number;
+}
+
+/** Stashes from STASH_LIST_ARGS output, newest first ("On main: msg", "WIP on main: abc123 subject"). */
+export function parseStashes(out: string): Stash[] {
+  return out
+    .split("\n")
+    .filter((l) => l.includes("\x1f"))
+    .map((line) => {
+      const [ref = "", subject = "", ct = "0"] = line.split("\x1f");
+      const m = /^(?:WIP on|On) ([^:]+): (.*)$/.exec(subject);
+      return { ref, branch: m?.[1] ?? "", message: (m?.[2] ?? subject).trim(), time: Number(ct) * 1000 };
+    });
+}
+
+/** "Drop stash@{0} (msg)? ..." */
+export function dropStash(s: Stash): string {
+  return `Drop ${s.ref}${s.message ? ` (${s.message})` : ""}?\n\nIts changes are gone for good.`;
 }
 
 /** The question before switching with uncommitted files (`changed`) or while Claude works in the folder. */

@@ -169,8 +169,13 @@ pub async fn window_list(app: AppHandle, window: WebviewWindow, terms: State<'_,
             let label = w.label().to_string();
             WindowInfo {
                 number: windows::number(&label),
-                terminals: u32::try_from(all.iter().filter(|t| t.window.as_deref() == Some(&label)).count())
-                    .unwrap_or(u32::MAX),
+                // tabs only: a tab's shell is not a tab of its own
+                terminals: u32::try_from(
+                    all.iter()
+                        .filter(|t| t.owner.is_none() && t.window.as_deref() == Some(&label))
+                        .count(),
+                )
+                .unwrap_or(u32::MAX),
                 current: label == window.label(),
                 label,
             }

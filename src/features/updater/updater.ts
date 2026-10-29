@@ -6,11 +6,19 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
+import { call } from "../../core/api";
 import { describeError, log } from "../../core/log";
 import { store, type TermInfo } from "../../core/store";
 import { closeBanner, showBanner } from "../../ui/banner";
 import { ask } from "../../ui/dialog";
 import type { UpdateCheck } from "./api";
+
+declare module "../../core/api" {
+  interface Commands {
+    /** macOS runs this app from a read-only copy (App Translocation), where it cannot update itself. */
+    app_translocated: { args: undefined; result: boolean };
+  }
+}
 
 export const BANNER_ID = "update";
 /** First check after startup, so it never competes with the first paint and the session scan. */
@@ -33,6 +41,37 @@ function errorText(e: unknown): string {
 /** The updater plugin is not registered (no release endpoint configured) or not permitted. */
 export function isUnavailable(e: unknown): boolean {
   return /plugin\b.*\bnot found|not allowed/i.test(errorText(e));
+}
+
+/** What to do when macOS runs the app from a read-only copy (it was opened where it was downloaded). */
+export const MOVE_HINT = "Move Claude Manager to your Applications folder in Finder, then open it from there.";
+
+/** The install failed because the app runs from macOS's read-only copy of it. */
+export function isReadOnlyCopy(message: string): boolean {
+  return /AppTranslocation|read-only file system/i.test(message);
+}
+
+let readOnly: Promise<boolean> | null = null;
+
+/** The app runs from macOS's read-only copy (asked once; it cannot change while the app runs). */
+function runsFromReadOnlyCopy(): Promise<boolean> {
+  readOnly ??= call("app_translocated", undefined, { quiet: true }).then((res) => res.ok && res.value);
+  return readOnly;
+}
+
+function showMoveFirst(version: string | null) {
+  showBanner({
+    id: BANNER_ID,
+    kind: "warning",
+    text: version
+      ? `Update available: v${version}\nTo install it: ${MOVE_HINT}`
+      : `Claude Manager is running from a temporary read-only copy, so it cannot update itself.\n${MOVE_HINT}`,
+  });
+}
+
+/** At startup: says so when the app runs from macOS's read-only copy, before an update fails there. */
+export async function warnIfReadOnly(): Promise<void> {
+  if (isTauri() && (await runsFromReadOnlyCopy())) showMoveFirst(null);
 }
 
 /** Terminals whose claude still runs; restarting the app ends them. */
@@ -98,7 +137,10 @@ async function runCheck(fromTimer: boolean): Promise<UpdateCheck> {
     return { kind: "current" };
   }
   log.info(`update available: v${update.version} (running v${update.currentVersion})`);
-  if (!fromTimer || announced !== update.version) showAvailable(update);
+  if (!fromTimer || announced !== update.version) {
+    if (await runsFromReadOnlyCopy()) showMoveFirst(update.version);
+    else showAvailable(update);
+  }
   announced = update.version;
   return { kind: "available", version: update.version };
 }
@@ -113,6 +155,10 @@ export function checkForUpdate(fromTimer = false): Promise<UpdateCheck> {
 
 export async function restartToUpdate(update: Update): Promise<void> {
   if (installing) return;
+  if (await runsFromReadOnlyCopy()) {
+    showMoveFirst(update.version);
+    return;
+  }
   const live = liveTerminals(store.get().terminals);
   if (live > 0 && !(await ask(restartQuestion(update.version, live), "Restart", "warning"))) return;
   installing = true;
@@ -141,7 +187,10 @@ export async function restartToUpdate(update: Update): Promise<void> {
     installing = false;
     const message = errorText(e);
     log.error(`update to v${update.version} failed: ${message}`);
-    showFailed(update, message);
+    showFailed(
+      update,
+      isReadOnlyCopy(message) ? `macOS is running a read-only copy of the app. ${MOVE_HINT}` : message,
+    );
   }
 }
 
@@ -165,4 +214,5 @@ export function resetForTests(): void {
   inFlight = null;
   installing = false;
   announced = null;
+  readOnly = null;
 }

@@ -13,7 +13,7 @@ pub mod windows;
 mod writer;
 
 use crate::core::error::{AppError, AppResult, blocking};
-use crate::core::{env, lifecycle, paths, settings, terms as term_pids};
+use crate::core::{env, lifecycle, paths, profiles, settings, terms as term_pids};
 use crate::launch::{self, embed};
 use manager::{Meta, Terms};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -70,6 +70,7 @@ fn start(app: &AppHandle, terms: &Terms, req: Start, output: Channel<InvokeRespo
         session_id: req.session_id.filter(|_| !req.fork),
         title: clean_title(&req.title),
         window: req.window,
+        owner: None,
     };
     terms.spawn(cmd, req.cols, req.rows, meta, output)
 }
@@ -134,6 +135,47 @@ pub async fn pty_resume(
     blocking(move || start(&app, &terms, req, on_output)).await
 }
 
+/// The user's shell in the panel under tab terminal `owner`: in `dir` with `profile` (the tab's), so
+/// `claude` typed there uses the same profile. Validated like a tab's; the program is the resolved shell.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn pty_shell(
+    window: WebviewWindow,
+    terms: State<'_, Terms>,
+    owner: u32,
+    dir: String,
+    profile: String,
+    cols: u16,
+    rows: u16,
+    on_output: Channel<InvokeResponseBody>,
+) -> AppResult<PtyInfo> {
+    let terms = terms.inner().clone();
+    let window = window.label().to_string();
+    blocking(move || {
+        // a shell belongs to a tab, never to another shell
+        if terms.info(owner).is_ok_and(|t| t.owner.is_some()) {
+            return Err(AppError::InvalidInput("Not a terminal tab.".into()));
+        }
+        let profile = profiles::resolve_profile(&profile)?;
+        let dir = launch::existing_dir(&dir)?;
+        let program = &env::wait_env().shell;
+        let cmd = embed::shell(&dir, &profile, program, &paths::home()?);
+        let meta = Meta {
+            dir: dir.to_string_lossy().into_owned(),
+            profile: profile.to_string_lossy().into_owned(),
+            session_id: None,
+            // the program's name ("zsh", "pwsh") names it in the panel's list
+            title: program
+                .file_stem()
+                .map_or_else(|| "Terminal".into(), |n| n.to_string_lossy().into_owned()),
+            window,
+            owner: Some(owner),
+        };
+        terms.spawn(cmd, cols, rows, meta, on_output)
+    })
+    .await
+}
+
 /// Queues input; returns at once.
 #[tauri::command]
 pub async fn pty_write(terms: State<'_, Terms>, id: u32, data: WriteData) -> AppResult<()> {
@@ -146,11 +188,15 @@ pub async fn pty_resize(terms: State<'_, Terms>, id: u32, cols: u16, rows: u16) 
     blocking(move || terms.resize(id, cols, rows)).await
 }
 
-/// Ends the terminal and its whole process tree. An already ended terminal is fine.
+/// Ends the terminal and its whole process tree, and a tab's shell with it. An already ended terminal is
+/// fine.
 #[tauri::command]
 pub async fn pty_kill(terms: State<'_, Terms>, id: u32) -> AppResult<()> {
     let terms = terms.inner().clone();
     blocking(move || {
+        for shell in terms.list().into_iter().filter(|t| t.owner == Some(id)) {
+            terms.kill(shell.id);
+        }
         terms.kill(id);
         Ok(())
     })

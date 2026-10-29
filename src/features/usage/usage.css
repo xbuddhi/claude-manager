@@ -38,7 +38,8 @@
   width: 56px;
   height: 6px;
   border-radius: 3px;
-  background: var(--track);
+  /* the pill is a control: --track is only a shade off it in every skin, so tint from the text instead */
+  background: color-mix(in srgb, var(--text) 16%, transparent);
   overflow: hidden;
 }
 .use-m-bar i {
@@ -242,4 +243,113 @@
 .use-bars i.today {
   background: var(--accent);
   opacity: 1;
+}
+
+/* ---------- other accounts (folded at first) ---------- */
+.use-others {
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.use-others-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 26px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  box-sizing: content-box;
+}
+.use-others-toggle:hover {
+  background: var(--ctrl-hover);
+  color: var(--text);
+}
+.use-others-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.use-others-n {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--ctrl-hover);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.use-others-toggle > svg {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  transition: transform 0.15s var(--ease);
+}
+.use-others-toggle[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
+}
+.use-o-row {
+  padding: 6px 0 4px;
+}
+.use-o-row + .use-o-row {
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.use-o-name {
+  overflow: hidden;
+  font-size: 12.5px;
+  line-height: 18px;
+  white-space: pre;
+  text-overflow: ellipsis;
+}
+.use-o-meters {
+  display: flex;
+  gap: 14px;
+  margin-top: 3px;
+}
+.use-o-m {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+}
+.use-o-l {
+  color: var(--muted);
+}
+.use-o-bar {
+  flex: 1;
+  min-width: 24px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--track);
+  overflow: hidden;
+}
+.use-o-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+.use-o-m b {
+  min-width: 26px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.use-o-err {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .use-others-toggle > svg {
+    transition: none;
+  }
 }

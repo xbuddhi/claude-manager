@@ -27,6 +27,7 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         // ---- pty + launch (WP2) ----
         crate::pty::pty_new,
         crate::pty::pty_resume,
+        crate::pty::pty_shell,
         crate::pty::pty_write,
         crate::pty::pty_resize,
         crate::pty::pty_kill,
@@ -80,6 +81,7 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::git::read_new_file,
         crate::git::git_web_url,
         crate::git::git_commit_message,
+        crate::git::git_pull_requests,
         // ---- os (WP9) ----
         crate::os::explorer_menu::explorer_menu_state,
         crate::os::explorer_menu::explorer_menu_install,
@@ -87,5 +89,7 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::os::vscode::open_in_code,
         crate::os::reveal::reveal_path,
         crate::os::reveal::open_path,
+        // ---- updater (WP10) ----
+        crate::updater::app_translocated,
     ]
 }

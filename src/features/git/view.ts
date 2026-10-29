@@ -26,7 +26,9 @@ import { createDiff } from "./diff";
 import { newFileLines, parseDiff } from "./diffparse";
 import { createHeader, type Header } from "./header";
 import { createHistory } from "./history";
+import { createPulls } from "./pulls";
 import { pickTarget, selectionFolders } from "./repos";
+import { createStashes, type StashAction } from "./stashes";
 import {
   binaryFile,
   type CommitAction,
@@ -36,11 +38,15 @@ import {
   commitLabel,
   deleteNewFile,
   discardFile,
+  dropStash,
   errorText,
   LOG_ARGS,
   largeFile,
   notRepo,
   parseLog,
+  parseStashes,
+  STASH_LIST_ARGS,
+  type Stash,
   type Sync,
   stashMessage,
   successText,
@@ -55,7 +61,9 @@ const LEFT_MIN = 260;
 /** Room the diff keeps when the left column is dragged wide. */
 const RIGHT_MIN = 200;
 
-type Tab = "changes" | "history";
+type Tab = "changes" | "history" | "stashes" | "pulls";
+/** Pull requests are asked for again after this long (or on Refresh). */
+const PULLS_TTL_MS = 60_000;
 type FileRow = Extract<ChangeRow, { kind: "file" }>;
 
 interface SourceControlOptions {
@@ -87,6 +95,10 @@ function createSourceControl(opts: SourceControlOptions) {
   let refreshSeq = 0;
   let statusSeq = 0;
   let historySeq = 0;
+  let stashSeq = 0;
+  let pullSeq = 0;
+  /** The pull requests last listed, for which repository and when. */
+  let pullsFor: { repo: string; at: number } | null = null;
 
   let header: Header;
   const changes = createChanges({ onSelect: () => void showSelectedDiff(), onOpen: (r) => openFile(r), onAction });
@@ -94,14 +106,22 @@ function createSourceControl(opts: SourceControlOptions) {
     (hash) => void showCommit(hash),
     () => st.repo,
   );
+  const stashes = createStashes(
+    (s) => void showStash(s),
+    (s, a) => void onStash(s, a),
+  );
+  const pulls = createPulls();
   const diff = createDiff();
   const commit = createCommitBox({ onAction: commitButton, menu: commitMenu, generate: generateMessage });
+  const tabItems = (total: number) => [
+    { id: "changes" as const, label: changesTab(total) },
+    { id: "history" as const, label: "History" },
+    { id: "stashes" as const, label: "Stashes" },
+    { id: "pulls" as const, label: "PRs" },
+  ];
   const tabs = textTabs<Tab>({
-    label: "Changes or history",
-    items: [
-      { id: "changes", label: changesTab(0) },
-      { id: "history", label: "History" },
-    ],
+    label: "Changes, history, stashes or pull requests",
+    items: tabItems(0),
     value: "changes",
     onChange: (id) => showTab(id),
   });
@@ -152,6 +172,9 @@ function createSourceControl(opts: SourceControlOptions) {
     setTabLabel(0);
     changes.set(null);
     history.set([]);
+    stashes.set([]);
+    pulls.set({ kind: "list", prs: [] }, null);
+    pullsFor = null;
     diff.clear(text);
     message(status);
   }
@@ -185,11 +208,20 @@ function createSourceControl(opts: SourceControlOptions) {
     if (repo !== st.repo) {
       changes.clearSelection();
       history.clearSelection();
+      stashes.clearSelection();
+      pullsFor = null;
       message("");
     }
     st.repo = repo;
     await loadStatus();
+    await loadTab(true);
+  }
+
+  /** The list of the tab in view, besides Changes (which the status fills). `fresh`: ask GitHub again. */
+  async function loadTab(fresh = false) {
     if (st.tab === "history") await loadHistory();
+    else if (st.tab === "stashes") await loadStashes();
+    else if (st.tab === "pulls") await loadPulls(fresh);
   }
 
   async function loadStatus(poll = false) {
@@ -235,10 +267,7 @@ function createSourceControl(opts: SourceControlOptions) {
   function setTabLabel(total: number) {
     const label = changesTab(total);
     if (tabs.el.querySelector(".ttab")?.textContent === label) return;
-    tabs.setItems([
-      { id: "changes", label },
-      { id: "history", label: "History" },
-    ]);
+    tabs.setItems(tabItems(total));
   }
 
   async function showSelectedDiff() {
@@ -308,12 +337,66 @@ function createSourceControl(opts: SourceControlOptions) {
     showOutput(out.code, out.stdout, out.stderr, key, TEXT.emptyCommit);
   }
 
+  async function loadStashes() {
+    const repo = st.repo;
+    if (!repo) return stashes.set([]);
+    const seq = ++stashSeq;
+    const out = await git(repo, STASH_LIST_ARGS);
+    if (seq !== stashSeq || repo !== st.repo) return;
+    stashes.set(out.code === 0 ? parseStashes(out.stdout) : []);
+    if (st.tab === "stashes") void showStash(stashes.selected());
+  }
+
+  async function showStash(s: Stash | null) {
+    const repo = st.repo;
+    if (st.tab !== "stashes" || !repo) return;
+    if (!s) {
+      st.diffKey = null;
+      diff.clear(TEXT.selectStash);
+      return;
+    }
+    const key = `stash|${s.ref}|${s.time}`;
+    st.diffKey = key;
+    // its new files too (-u, git 2.32 and later); an older git shows the tracked changes
+    let out = await git(repo, ["stash", "show", "-p", "-u", "--no-color", s.ref]);
+    if (out.code !== 0 && st.diffKey === key) out = await git(repo, ["stash", "show", "-p", "--no-color", s.ref]);
+    if (st.diffKey !== key) return;
+    showOutput(out.code, out.stdout, out.stderr, key, TEXT.emptyStash);
+  }
+
+  async function onStash(s: Stash, action: StashAction) {
+    if (action === "drop" && !(await ask(dropStash(s), "Drop", "warning"))) return;
+    const busy = action === "drop" ? "Dropping stash..." : "Applying stash...";
+    if (await runOp(["stash", action, s.ref], busy)) stashes.clearSelection();
+  }
+
+  async function loadPulls(fresh: boolean) {
+    const repo = st.repo;
+    if (!repo) return;
+    if (!fresh && pullsFor?.repo === repo && Date.now() - pullsFor.at < PULLS_TTL_MS) return;
+    const seq = ++pullSeq;
+    if (pullsFor?.repo !== repo) pulls.set(null, null);
+    const [res, web] = await Promise.all([
+      call("git_pull_requests", { repo }, { quiet: true }),
+      call("git_web_url", { dir: repo }, { quiet: true }),
+    ]);
+    if (seq !== pullSeq || repo !== st.repo) return;
+    pullsFor = { repo, at: Date.now() };
+    pulls.set(res.ok ? res.value : { kind: "failed", message: res.error.message }, web.ok ? web.value : null);
+  }
+
   function showTab(tab: Tab) {
     st.tab = tab;
     changes.el.hidden = tab !== "changes";
     history.el.hidden = tab !== "history";
-    if (tab === "history") void loadHistory();
-    else void showSelectedDiff();
+    stashes.el.hidden = tab !== "stashes";
+    pulls.el.hidden = tab !== "pulls";
+    if (tab === "changes") void showSelectedDiff();
+    else if (tab === "pulls") {
+      st.diffKey = null;
+      diff.clear(TEXT.pullHint);
+    }
+    void loadTab();
   }
 
   // ---------- operations ----------
@@ -341,7 +424,7 @@ function createSourceControl(opts: SourceControlOptions) {
       }
     }
     void loadStatus();
-    if (st.tab === "history") void loadHistory();
+    if (st.tab === "history" || st.tab === "stashes") void loadTab();
     return out.code === 0;
   }
 
@@ -495,9 +578,11 @@ function createSourceControl(opts: SourceControlOptions) {
       { class: "git-left" },
       ...commit.els,
       h("div", { class: "git-tabs" }, tabs.el),
-      h("div", { class: "git-lists" }, changes.el, history.el),
+      h("div", { class: "git-lists" }, changes.el, history.el, stashes.el, pulls.el),
     );
     history.el.hidden = true;
+    stashes.el.hidden = true;
+    pulls.el.hidden = true;
     const divider = h("div", { class: "git-divider" });
     const main = h("div", { class: "git-main" }, left, divider, h("div", { class: "git-right" }, diff.el));
     body.classList.add("git-view");

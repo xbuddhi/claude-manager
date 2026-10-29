@@ -176,6 +176,7 @@ export const DEFAULT_SETTINGS: Settings = {
   claudePath: null,
   macOptionIsMeta: true,
   scrollback: 2000,
+  groupTabs: true,
   keepRunningOnClose: null,
 };
 
