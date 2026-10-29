@@ -2,6 +2,26 @@
 
 All notable changes to Claude Manager. Versions are `X.Y.Z`; each release is tagged `vX.Y.Z`.
 
+## 0.1.4 - 2026-10-29
+
+### Added
+
+- Terminal panel under each Claude tab: your own shell in the tab's folder and profile (Ctrl+`), several
+  per tab with a list, maximize, and minimize to a bar at the bottom of the chat. Shells come back after a
+  reload and move with their tab to another window.
+- Terminal tabs grouped by folder: a coloured chip per folder in front of its tabs; a click folds them.
+  "Group tabs by folder" in Settings turns it off.
+- Source control: a Stashes tab (each stash's changes, Apply, Pop, Drop) and a PRs tab listing the open pull
+  requests through the GitHub CLI (`gh`); a click opens the pull request.
+- Usage popover: a folded "Other accounts" section with the other signed-in accounts' session and week.
+
+### Fixed
+
+- macOS: when the app runs from a read-only copy (opened where it was downloaded), it says to move it to
+  Applications instead of failing to update with "Read-only file system".
+- The title bar usage bars show their empty track.
+- The session details pane no longer repeats the session's title or shows hints.
+
 ## 0.1.3 - 2026-10-29
 
 ### Added
