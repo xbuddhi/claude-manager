@@ -10,7 +10,6 @@ import {
   deleteLabel,
   deleteTip,
   detailMeta,
-  detailText,
   folderWhat,
   lastActive,
   longDate,
@@ -62,10 +61,7 @@ describe("strings", () => {
     expect(longDate(new Date(2026, 9, 25, 9, 5).getTime())).toBe("Sun, Oct 25 2026  09:05");
   });
 
-  it("details text says when the session runs", () => {
-    expect(detailText("Fix it", 0)).toBe("Fix it");
-    expect(detailText("Fix it", 1)).toBe("This session is open. Double-click to switch to it.\nFix it");
-    expect(detailText("Fix it", 2)).toBe("Claude is working in this session. Double-click to switch to it.\nFix it");
+  it("details meta line", () => {
     const s = { modified: new Date(2026, 0, 2, 23, 59).getTime(), count: 7, id: "abc" };
     expect(detailMeta(s, "work")).toBe("Fri, Jan 2 2026  23:59     7 messages     profile: work     abc");
   });
@@ -154,14 +150,13 @@ describe("scope and details pane", () => {
     expect(buildScope(sel, projects, "windows", new Set(), true)?.showingArchived).toBe(false);
   });
 
-  it("shows the selected session, else a hint for what is selected", () => {
+  it("shows the selected session's meta line, a project's folders, else a hint", () => {
     const folder = buildScope({ kind: "folder", key: "f", path: "C:\\code\\a" }, projects, "windows");
-    // the label until the full text is fetched, then that
-    expect(detailsFor(folder, [a1], 1, name).text).toBe("This session is open. Double-click to switch to it.\na1");
-    expect(detailsFor(folder, [a1], 0, name, undefined, "a1 (full text)").text).toBe("a1 (full text)");
-    expect(detailsFor(folder, [a1], 0, name).meta).toContain("12 messages     profile: work     ");
+    // the title is in the row already: no text, only the meta line
+    expect(detailsFor(folder, [a1], name).text).toBe("");
+    expect(detailsFor(folder, [a1], name).meta).toContain("12 messages     profile: work     ");
     const empty = buildScope({ kind: "folder", key: "f", path: "C:\\code\\empty" }, projects, "windows");
-    expect(detailsFor(empty, [], 0, name)).toEqual({
+    expect(detailsFor(empty, [], name)).toEqual({
       text: "No sessions yet. Double-click the folder (or press New Session) to start one.",
       meta: "C:\\code\\empty",
     });
@@ -170,14 +165,14 @@ describe("scope and details pane", () => {
       projects,
       "windows",
     );
-    expect(detailsFor(group, [], 0, name)).toEqual({
-      text: "Web has 2 folders. Drag folders onto it in the sidebar to add more; folders on disk are never moved.",
+    expect(detailsFor(group, [], name)).toEqual({
+      text: "",
       meta: "a  ·  b     in C:\\code",
     });
-    expect(detailsFor(null, [], 0, name).text).toBe(
+    expect(detailsFor(null, [], name).text).toBe(
       "Double-click a project to start a session, or a session to resume it. Drop a folder on the window to start there. Right-click for more.",
     );
-    expect(detailsFor(folder, [], 0, name).meta).toBe("C:\\code\\a");
+    expect(detailsFor(folder, [], name).meta).toBe("C:\\code\\a");
   });
 
   it("lists a project's folders by name under their shared parent, else in full", () => {

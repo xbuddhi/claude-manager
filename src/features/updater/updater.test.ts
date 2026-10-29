@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   check: vi.fn(),
   relaunch: vi.fn(),
   ask: vi.fn(),
+  /** app_translocated: whether the app runs from macOS's read-only copy. */
+  readOnly: false,
 }));
 
 vi.mock("@tauri-apps/api/core", async (orig) => ({
@@ -19,12 +21,14 @@ vi.mock("@tauri-apps/plugin-log", () => {
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
 vi.mock("../../ui/dialog", () => ({ ask: mocks.ask }));
+vi.mock("../../core/api", () => ({ call: async () => ({ ok: true, value: mocks.readOnly }) }));
 
 const {
   BANNER_ID,
   CHECK_EVERY_MS,
   FIRST_CHECK_MS,
   checkForUpdate,
+  isReadOnlyCopy,
   isUnavailable,
   liveTerminals,
   progressText,
@@ -32,6 +36,7 @@ const {
   restartQuestion,
   restartToUpdate,
   startChecks,
+  warnIfReadOnly,
 } = await import("./updater");
 const { checkNow } = await import("./api");
 
@@ -68,6 +73,7 @@ function term(patch: Partial<TermInfo>): TermInfo {
 
 beforeEach(() => {
   resetForTests();
+  mocks.readOnly = false;
   store.set({ terminals: [] });
 });
 
@@ -203,5 +209,30 @@ describe("restart to update", () => {
     expect(bannerText()).toContain("could not be installed");
     expect(bannerText()).toContain("signature mismatch");
     expect(banner()?.querySelector(".banner-action")?.textContent).toBe("Try again");
+  });
+});
+
+describe("macOS read-only copy (App Translocation)", () => {
+  it("knows the install error of a read-only copy", () => {
+    expect(isReadOnlyCopy('Read-only file system (os error 30) at path "/private/var/T/AppTranslocation/x"')).toBe(
+      true,
+    );
+    expect(isReadOnlyCopy("signature mismatch")).toBe(false);
+  });
+
+  it("says to move the app at startup, and does not download there", async () => {
+    mocks.readOnly = true;
+    await warnIfReadOnly();
+    expect(bannerText()).toContain("Applications folder");
+    const update = fakeUpdate("1.1.0");
+    await restartToUpdate(update);
+    expect(update.downloadAndInstall).not.toHaveBeenCalled();
+    expect(bannerText()).toContain("Update available: v1.1.0");
+    expect(bannerText()).toContain("Applications folder");
+  });
+
+  it("stays quiet when the app runs from where it was installed", async () => {
+    await warnIfReadOnly();
+    expect(banner()).toBeNull();
   });
 });

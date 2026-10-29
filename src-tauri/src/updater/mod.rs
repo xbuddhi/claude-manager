@@ -39,10 +39,32 @@ pub fn configured(config: Option<&Value>) -> bool {
     has_key && https
 }
 
+/// macOS runs a downloaded app that was opened where it landed (the dmg, Downloads) from a read-only copy
+/// under `.../AppTranslocation/` ("App Translocation"); an update cannot replace that copy.
+pub fn is_translocated(exe: &std::path::Path) -> bool {
+    exe.components().any(|c| c.as_os_str() == "AppTranslocation")
+}
+
+/// True when this app runs from such a read-only copy (always false outside macOS).
+#[tauri::command]
+pub async fn app_translocated() -> AppResult<bool> {
+    Ok(cfg!(target_os = "macos") && std::env::current_exe().is_ok_and(|exe| is_translocated(&exe)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn sees_a_translocated_app() {
+        use std::path::Path;
+        let moved =
+            "/private/var/folders/g5/x/T/AppTranslocation/6EC0/d/Claude Manager.app/Contents/MacOS/claude-manager";
+        assert!(is_translocated(Path::new(moved)));
+        let installed = "/Applications/Claude Manager.app/Contents/MacOS/claude-manager";
+        assert!(!is_translocated(Path::new(installed)));
+    }
 
     #[test]
     fn needs_a_key_and_https_endpoints() {
