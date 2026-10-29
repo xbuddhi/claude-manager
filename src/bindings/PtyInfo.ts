@@ -24,4 +24,9 @@ title: string,
  * Label of the window showing the terminal ("main", "win-<n>"); null when that window is gone, so
  * the main window takes it.
  */
-window: string | null, };
+window: string | null, 
+/**
+ * A shell under a tab (its own terminal, in the tab's folder): the id of that tab's terminal. Null for
+ * a tab.
+ */
+owner: number | null, };

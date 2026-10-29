@@ -21,6 +21,9 @@ pub struct PtyInfo {
     /// Label of the window showing the terminal ("main", "win-<n>"); null when that window is gone, so
     /// the main window takes it.
     pub window: Option<String>,
+    /// A shell under a tab (its own terminal, in the tab's folder): the id of that tab's terminal. Null for
+    /// a tab.
+    pub owner: Option<u32>,
 }
 
 /// A point on the screen, in logical pixels (CSS `screenX`/`screenY`).

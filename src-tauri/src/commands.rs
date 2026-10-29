@@ -27,6 +27,7 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         // ---- pty + launch (WP2) ----
         crate::pty::pty_new,
         crate::pty::pty_resume,
+        crate::pty::pty_shell,
         crate::pty::pty_write,
         crate::pty::pty_resize,
         crate::pty::pty_kill,

@@ -30,3 +30,22 @@ html.resizing * {
   /* biome-ignore lint/complexity/noImportantStyles: during a drag the pointer passes over elements with their own cursor */
   cursor: col-resize !important;
 }
+/* axis "y": a horizontal divider */
+.splitter.splitter-y {
+  cursor: row-resize;
+}
+.splitter.splitter-y::after {
+  top: 50%;
+  bottom: auto;
+  left: 12px;
+  right: 12px;
+  width: auto;
+  height: 2px;
+  margin-left: 0;
+  margin-top: -1px;
+}
+html.resizing-y,
+html.resizing-y * {
+  /* biome-ignore lint/complexity/noImportantStyles: during a drag the pointer passes over elements with their own cursor */
+  cursor: row-resize !important;
+}

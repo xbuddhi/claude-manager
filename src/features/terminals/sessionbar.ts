@@ -1,7 +1,7 @@
 // The bar above the terminal in front: a button showing or hiding the files panel, the session's folder
 // (its full path; a click copies it), the git branch there with how many files changed (a click lists the
 // branches to switch to), and buttons to open the folder in VS Code or in Explorer / Finder, and to show or
-// hide the source control panel.
+// hide the terminal panel (the user's shell) and the source control panel.
 
 import { call } from "../../core/api";
 import { h } from "../../core/dom";
@@ -20,13 +20,14 @@ export class SessionBar {
   private git: HTMLButtonElement;
   private files: HTMLButtonElement;
   private source: HTMLButtonElement;
+  private shell: HTMLButtonElement;
   private gitText: HTMLSpanElement;
   private dir: string | null = null;
   private timer: ReturnType<typeof setInterval> | undefined;
   private seq = 0;
 
-  /** The files and source control panel buttons were pressed. */
-  constructor(toggleFiles: () => void, toggleSource: () => void) {
+  /** The files, source control and terminal panel buttons were pressed. */
+  constructor(toggleFiles: () => void, toggleSource: () => void, toggleShell: () => void) {
     this.files = button({ icon: "sidebar", kind: "plain", title: "Files", onClick: toggleFiles });
     this.gitText = h("span", { class: "ses-git-text" });
     this.path = h("button", { type: "button", class: "ses-path" });
@@ -48,6 +49,7 @@ export class SessionBar {
       title: folderLabel(),
       onClick: () => this.dir && void openFolder(this.dir),
     });
+    this.shell = button({ icon: "terminal", kind: "plain", title: "Terminal", onClick: toggleShell });
     this.source = button({ icon: "branch", kind: "plain", title: "Source control", onClick: toggleSource });
     this.el = h(
       "div",
@@ -59,6 +61,7 @@ export class SessionBar {
       h("span", { class: "ses-gap" }),
       code,
       folder,
+      this.shell,
       this.source,
     );
     window.addEventListener("focus", () => void this.readGit());
@@ -74,6 +77,12 @@ export class SessionBar {
   setSourceOpen(open: boolean): void {
     this.source.setAttribute("aria-pressed", String(open));
     this.source.dataset.tip = open ? "Hide source control" : "Show source control";
+  }
+
+  /** Marks the terminal panel button as on or off. */
+  setShellOpen(open: boolean): void {
+    this.shell.setAttribute("aria-pressed", String(open));
+    this.shell.dataset.tip = `${open ? "Hide terminal" : "Show terminal"} (Ctrl+\`)`;
   }
 
   /** Shows the bar for the session in front (null = none, e.g. Home). */

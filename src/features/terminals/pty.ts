@@ -23,6 +23,11 @@ declare module "../../core/api" {
       args: { sessionId: string; profile: string; fork: boolean; dir: string; title: string } & Size & PtyOutput;
       result: PtyInfo;
     };
+    /** The user's shell in the panel under tab terminal `owner`, in that tab's folder and profile. */
+    pty_shell: {
+      args: { owner: number; dir: string; profile: string } & Size & PtyOutput;
+      result: PtyInfo;
+    };
     /** Text as UTF-8, a number array as raw bytes. Queued; returns at once. */
     pty_write: { args: { id: number; data: string | number[] }; result: null };
     pty_resize: { args: { id: number } & Size; result: null };

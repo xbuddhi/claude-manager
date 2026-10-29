@@ -20,6 +20,17 @@ pub fn build(launch: &Launch, claude: &Path, home: &Path) -> AppResult<CommandBu
     Ok(cmd)
 }
 
+/// The user's shell for the panel under a tab: interactive, in `dir`, with the tab's profile, so `claude`
+/// typed there uses the same one. A login shell on macOS (profile and rc files, like Terminal); PowerShell
+/// without its banner on Windows.
+pub fn shell(dir: &Path, profile: &Path, shell: &Path, home: &Path) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new(shell);
+    cmd.arg(if cfg!(windows) { "-NoLogo" } else { "-l" });
+    cmd.cwd(dir);
+    child_env(&mut cmd, profile, home);
+    cmd
+}
+
 /// Cleaned environment, the profile's config folder, and what a terminal program expects to find.
 pub fn child_env(cmd: &mut CommandBuilder, profile: &Path, home: &Path) {
     env::clean_env(cmd);
@@ -84,6 +95,19 @@ mod tests {
         assert_eq!(var("COLORTERM").as_deref(), Some("truecolor"));
         assert_eq!(cmd.get_argv()[0], "/opt/claude");
         assert_eq!(cmd.get_cwd().map(|c| c.as_os_str()), Some(root.path().as_os_str()));
+    }
+
+    #[test]
+    fn shell_runs_interactive_in_the_folder_with_the_profile() {
+        let (root, profile) = profile_with_session();
+        let cmd = shell(root.path(), &profile, Path::new("/bin/zsh"), root.path());
+        let argv = cmd.get_argv();
+        assert_eq!(argv[0], "/bin/zsh");
+        assert_eq!(argv[1], if cfg!(windows) { "-NoLogo" } else { "-l" });
+        assert_eq!(argv.len(), 2);
+        assert_eq!(cmd.get_cwd().map(|c| c.as_os_str()), Some(root.path().as_os_str()));
+        assert_eq!(cmd.get_env("CLAUDE_CONFIG_DIR"), Some(profile.as_os_str()));
+        assert_eq!(cmd.get_env("TERM").and_then(|v| v.to_str()), Some("xterm-256color"));
     }
 
     #[test]
