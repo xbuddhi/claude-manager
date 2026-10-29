@@ -82,7 +82,7 @@ export class SessionBar {
   /** Marks the terminal panel button as on or off. */
   setShellOpen(open: boolean): void {
     this.shell.setAttribute("aria-pressed", String(open));
-    this.shell.dataset.tip = `${open ? "Hide terminal" : "Show terminal"} (Ctrl+\`)`;
+    this.shell.dataset.tip = `${open ? "Minimize terminal" : "Show terminal"} (Ctrl+\`)`;
   }
 
   /** Shows the bar for the session in front (null = none, e.g. Home). */

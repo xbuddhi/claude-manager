@@ -162,17 +162,22 @@ function syncFiles() {
   syncShell();
 }
 
-/** Shows the terminal panel with the tab in front's shells, starting the first one. */
+/**
+ * Shows the terminal panel with the tab in front's shells, starting the first one. Minimized, it stays as a
+ * bar at the bottom of every tab (naming its shells, if any); a click on it opens the panel.
+ */
 function syncShell() {
   const tab = active;
   const show = shellOpen && tab !== null;
-  panel.el.hidden = !show;
+  const minimized = !shellOpen && tab !== null;
+  panel.el.hidden = !show && !minimized;
+  panel.setMinimized(minimized);
   center.classList.toggle("shell-max", show && shellMax);
   panel.setMaximized(shellMax);
   bar.setShellOpen(shellOpen);
   for (const t of tabs) for (const sh of t.shells) sh.view.pane.hidden = !show || t !== tab || sh !== t.shell;
+  if (tab && (show || minimized)) panel.render(tab.shells, tab.shell?.id ?? null);
   if (!show || !tab) return;
-  panel.render(tab.shells, tab.shell?.id ?? null);
   if (tab.shell) tab.shell.view.fitNow();
   // once the tab's own terminal is up, so the shell can be found under it again after a reload
   else if (tab.ptyId !== null || tab.exited) addShell(tab, true);
@@ -214,9 +219,10 @@ function addShell(tab: Tab, first: boolean) {
 
 function newShell(term: TermModule, tab: Tab, name: string): Shell {
   const view = new term.TermView(panel.panes, {
+    tinted: true,
     menuItems: () => [
       { label: "New terminal", icon: "plus", shortcut: "Ctrl+Shift+`", run: newTerminal },
-      { label: "Hide panel", shortcut: "Ctrl+`", run: toggleShell },
+      { label: "Minimize panel", shortcut: "Ctrl+`", run: toggleShell },
       { label: "Kill terminal", icon: "trash", danger: true, run: () => killShell(tab, shell) },
     ],
   });
@@ -287,7 +293,7 @@ async function adoptShell(info: PtyInfo): Promise<void> {
 
 /**
  * Removes a shell from its tab (its process is ended by the caller, or already gone). The one before it
- * comes to the front; with none left the panel closes, as in VS Code.
+ * comes to the front; with none left the panel goes back to its bar.
  */
 function dropShell(tab: Tab, shell: Shell) {
   const i = tab.shells.indexOf(shell);
@@ -925,7 +931,7 @@ export function mount(): void {
     },
     select: selectShell,
     toggleMax,
-    hide: toggleShell,
+    toggleOpen: toggleShell,
   });
   const shellSide = panel.el;
   shellSide.addEventListener("focusin", () => {
@@ -964,7 +970,8 @@ export function mount(): void {
   });
   // the terminal panel is below the chat: the splitter moves its top edge, measured from the top
   const setShellHeight = (px: number) => {
-    shellSide.style.height = `${px}px`;
+    // a variable, not the height: minimized, the bar keeps its own height
+    shellSide.style.setProperty("--shell-h", `${px}px`);
   };
   splitter({
     el: panel.divider,

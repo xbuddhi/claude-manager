@@ -1,6 +1,7 @@
 // The terminal panel under the chat, like VS Code's: a header with its name and actions (new terminal,
-// kill, maximize, hide), the terminals' panes, and the list of the tab's terminals on the right once it
-// has more than one. index.ts owns the terminals; this draws them and reports what was pressed.
+// kill, maximize, minimize), the terminals' panes, and the list of the tab's terminals on the right once it
+// has more than one. Minimized, only the header stays, as a bar at the bottom of every tab naming its
+// terminals; a click on it opens the panel (starting a shell when there is none). index.ts owns the terminals; this draws them and reports what was pressed.
 
 import { h } from "../../core/dom";
 import { iconNode } from "../../core/icons";
@@ -16,7 +17,8 @@ export interface ShellPanelActions {
   kill(id: number): void;
   select(id: number): void;
   toggleMax(): void;
-  hide(): void;
+  /** Minimize, or open again from the bar. */
+  toggleOpen(): void;
 }
 
 function svg(markup: string): Element {
@@ -54,6 +56,10 @@ export class ShellPanel {
   private max: HTMLButtonElement;
   private kill: HTMLButtonElement;
   private current: number | null = null;
+  private minimize: HTMLButtonElement;
+  private title: HTMLElement;
+  private summary: HTMLElement;
+  private minimized = false;
 
   constructor(private actions: ShellPanelActions) {
     const add = button({ icon: "plus", kind: "plain", title: "New terminal (Ctrl+Shift+`)", onClick: actions.add });
@@ -64,19 +70,26 @@ export class ShellPanel {
       onClick: () => this.current !== null && actions.kill(this.current),
     });
     this.max = button({ icon: maximizeIcon(), kind: "plain", title: "Maximize panel", onClick: actions.toggleMax });
-    const hide = button({ icon: "close", kind: "plain", title: "Hide panel (Ctrl+`)", onClick: actions.hide });
-    for (const b of [add, this.kill, this.max, hide]) b.classList.add("term-shell-act");
+    this.minimize = button({ icon: "chevronDown", kind: "plain", onClick: actions.toggleOpen });
+    for (const b of [add, this.kill, this.max, this.minimize]) b.classList.add("term-shell-act");
+    this.summary = h("span", { class: "term-shell-summary" });
+    this.title = h("span", { class: "term-shell-title" }, "Terminal");
     const head = h(
       "div",
       { class: "term-shell-head" },
-      h("span", { class: "term-shell-title" }, "Terminal"),
+      this.title,
+      this.summary,
       h("span", { class: "ses-gap" }),
       add,
       this.kill,
       h("span", { class: "term-shell-sep", attrs: { "aria-hidden": "true" } }),
       this.max,
-      hide,
+      this.minimize,
     );
+    // minimized, the whole bar opens the panel again
+    head.addEventListener("click", (e) => {
+      if (this.minimized && !(e.target as Element).closest("button")) actions.toggleOpen();
+    });
     this.panes = h("div", { class: "term-shell-panes" });
     this.list = h("div", { class: "term-shell-list", role: "tablist", attrs: { "aria-label": "Terminals" } });
     this.list.setAttribute("aria-orientation", "vertical");
@@ -89,6 +102,7 @@ export class ShellPanel {
       head,
       h("div", { class: "term-shell-body" }, this.panes, this.list),
     );
+    this.setMinimized(false);
   }
 
   /** The tab's terminals, `active` in front. The list shows from two terminals on. */
@@ -96,6 +110,7 @@ export class ShellPanel {
     this.current = active;
     this.kill.disabled = active === null;
     const labels = shellLabels(items);
+    this.summary.textContent = labels.join(", ");
     this.list.hidden = items.length < 2;
     this.list.replaceChildren(
       ...items.map((item, i) => {
@@ -117,6 +132,16 @@ export class ShellPanel {
         return h("div", { class: on ? "term-shell-row active" : "term-shell-row" }, pick, kill);
       }),
     );
+  }
+
+  /** Minimized: only the bar, naming the terminals; pressing it opens the panel again. */
+  setMinimized(on: boolean): void {
+    this.minimized = on;
+    this.el.classList.toggle("minimized", on);
+    const tip = on ? "Open the terminal panel (Ctrl+`)" : "Minimize the terminal panel (Ctrl+`)";
+    this.minimize.dataset.tip = tip;
+    this.minimize.setAttribute("aria-label", tip);
+    this.minimize.setAttribute("aria-expanded", String(!on));
   }
 
   setMaximized(on: boolean): void {

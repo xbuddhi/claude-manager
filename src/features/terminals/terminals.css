@@ -468,11 +468,13 @@ html.mode-terminal .term-tab.active {
 .term-shell {
   position: relative;
   flex: none;
-  height: 240px;
+  height: var(--shell-h, 240px);
   display: flex;
   flex-direction: column;
   border-top: 1px solid color-mix(in srgb, var(--term-fg) 12%, transparent);
-  background: var(--term-bg);
+  /* a shade off the chat above it (term.ts SHELL_TINT, the same mix for xterm) */
+  --shell-bg: color-mix(in srgb, var(--term-fg) 5%, var(--term-bg));
+  background: var(--shell-bg);
   --text: var(--term-fg);
   --muted: color-mix(in srgb, var(--term-fg) 60%, transparent);
   --ctrl-hover: color-mix(in srgb, var(--term-fg) 10%, transparent);
@@ -693,4 +695,42 @@ html.mode-terminal .term-tab.active {
 }
 .term-tab.grouped.active::after {
   opacity: 0;
+}
+
+/* the shell panel's terminals on its own shade */
+.term-shell-panes > .term-pane {
+  background: var(--shell-bg);
+}
+.term-shell-summary {
+  min-width: 0;
+  margin-left: 8px;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* minimized: only the bar, naming the terminals; a click opens the panel again */
+.term-shell.minimized {
+  height: auto;
+}
+.term-shell.minimized > .term-shell-body,
+.term-shell.minimized > .term-shell-divider {
+  display: none;
+}
+.term-shell.minimized > .term-shell-head {
+  cursor: pointer;
+}
+.term-shell.minimized > .term-shell-head:hover {
+  background: color-mix(in srgb, var(--term-fg) 6%, transparent);
+}
+.term-shell:not(.minimized) .term-shell-summary,
+.term-shell.minimized .term-shell-act:not([aria-expanded]) {
+  display: none;
+}
+.term-shell.minimized .term-shell-sep {
+  display: none;
+}
+/* the minimize chevron points up while minimized */
+.term-shell.minimized .term-shell-act[aria-expanded] > svg {
+  transform: rotate(180deg);
 }
