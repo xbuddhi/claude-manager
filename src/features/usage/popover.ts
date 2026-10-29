@@ -1,12 +1,14 @@
 // The usage popover's content (Windows app: UsagePanel): plan limits first (real numbers), then this
-// computer's token counts as a small footnote with a 7-day bar chart.
+// computer's token counts as a small footnote with a 7-day bar chart, then "Other accounts" (folded): the
+// other signed-in profiles' session and week, one line each.
 
 import type { PlanLimit } from "../../bindings/PlanLimit";
 import type { PlanReport } from "../../bindings/PlanReport";
 import type { UsageReport } from "../../bindings/UsageReport";
 import { html, type SafeHtml } from "../../core/dom";
 import { fmtTokens, levelColor, resetText } from "../../core/format";
-import { headerText, statusLine } from "./model";
+import { icon } from "../../core/icons";
+import { headerText, sessionPercent, statusLine, weekPercent } from "./model";
 
 export interface PanelData {
   scope: string;
@@ -14,6 +16,8 @@ export interface PanelData {
   plansBusy: boolean;
   local: UsageReport | null;
   localBusy: boolean;
+  /** The other signed-in accounts (null: none, or All profiles is in view, which shows them all). */
+  others?: { count: number; open: boolean; plans: PlanReport[] } | null;
 }
 
 const skeleton = html`<div class="use-skel" aria-hidden="true"><i></i><i></i><i></i></div>`;
@@ -52,13 +56,39 @@ function footer(local: UsageReport | null): SafeHtml {
   </div>`;
 }
 
+/** A small bar and its percent ("Session ▬ 19%"); a dash when the plan does not say. */
+function miniMeter(label: string, pct: number): SafeHtml {
+  if (pct < 0) return html`<span class="use-o-m"><span class="use-o-l">${label}</span><b>–</b></span>`;
+  const color = levelColor(pct);
+  const w = Math.max(0, Math.min(100, pct));
+  return html`<span class="use-o-m"><span class="use-o-l">${label}</span><span class="use-o-bar"><i style="width: max(4px, ${w.toFixed(1)}%); background: ${color}"></i></span><b style="color: ${color}">${Math.round(pct)}%</b></span>`;
+}
+
+function otherRow(p: PlanReport): SafeHtml {
+  const name = p.plan ? `${p.name}  ·  ${p.plan}` : p.name;
+  const body =
+    p.error !== null
+      ? html`<div class="use-o-err">${p.error}</div>`
+      : html`<div class="use-o-meters">${miniMeter("Session", sessionPercent([p]))}${miniMeter("Week", weekPercent([p]))}</div>`;
+  return html`<div class="use-o-row"><div class="use-o-name">${name}</div>${body}</div>`;
+}
+
+function othersBlock(o: PanelData["others"]): SafeHtml | "" {
+  if (!o) return "";
+  const toggle = html`<button type="button" class="use-others-toggle" aria-expanded="${String(o.open)}"><span>Other accounts</span><span class="use-others-n">${String(o.count)}</span>${icon("chevronDown")}</button>`;
+  if (!o.open) return html`<div class="use-others">${toggle}</div>`;
+  const rows = o.plans.length ? o.plans.map(otherRow) : [skeleton];
+  return html`<div class="use-others open">${toggle}${rows}</div>`;
+}
+
 export function panelHtml(d: PanelData, now = Date.now()): SafeHtml {
   const spinner = d.plansBusy || d.localBusy ? html`<span class="use-spinner" aria-label="Refreshing"></span>` : "";
   const plans = d.plans.length ? d.plans.map((p) => profileBlock(p, d.plans.length > 1, now)) : [skeleton, skeleton];
   return html`<div class="use-head"><span class="use-title">USAGE</span><span class="use-scope">${headerText(d.scope, d.plans)}</span>${spinner}</div>
     <div class="use-status" role="status">${statusLine(d.plans, d.plansBusy, now)}</div>
     ${plans}
-    ${footer(d.local)}`;
+    ${footer(d.local)}
+    ${othersBlock(d.others)}`;
 }
 
 /**

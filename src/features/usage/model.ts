@@ -7,10 +7,29 @@ import { samePath } from "../../core/paths";
 
 const clock = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
 
-/** Profile folders whose plan limits are shown: the one in view, or every signed-in one for All profiles. */
-export function planScope(current: string | null, profiles: Profile[]): string[] {
-  if (current !== null) return [current];
+/**
+ * Profile folders whose plan limits are fetched: the one in view (with `others`, then every other signed-in
+ * one, for the popover's "Other accounts"), or every signed-in one for All profiles.
+ */
+export function planScope(current: string | null, profiles: Profile[], others = false, os = ""): string[] {
+  if (current !== null) return others ? [current, ...otherProfiles(current, profiles, os)] : [current];
   return profiles.filter((p) => p.signedIn !== false).map((p) => p.dir);
+}
+
+/** The signed-in profiles besides `current`. */
+export function otherProfiles(current: string, profiles: Profile[], os: string): string[] {
+  return profiles.filter((p) => p.signedIn !== false && !samePath(p.dir, current, os)).map((p) => p.dir);
+}
+
+/** The plans of the profile in view (all of them for All profiles), and the other accounts' plans. */
+export function splitPlans(
+  plans: PlanReport[],
+  current: string | null,
+  os: string,
+): { mine: PlanReport[]; others: PlanReport[] } {
+  if (current === null) return { mine: plans, others: [] };
+  const mine = plans.filter((p) => samePath(p.profile, current, os));
+  return { mine, others: plans.filter((p) => !mine.includes(p)) };
 }
 
 /** Profile folders whose transcripts are counted: the one in view, or all of them. */

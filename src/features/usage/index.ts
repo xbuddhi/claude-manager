@@ -12,7 +12,18 @@ import { $, setHtml } from "../../core/dom";
 import { store } from "../../core/store";
 import { openPopover, type Popover } from "../../ui/popover";
 import { profileLabel } from "../profiles/api";
-import { localScope, planScope, plansStale, ringFraction, ringState, sameDirs, samePlans, weekPercent } from "./model";
+import {
+  localScope,
+  otherProfiles,
+  planScope,
+  plansStale,
+  ringFraction,
+  ringState,
+  sameDirs,
+  samePlans,
+  splitPlans,
+  weekPercent,
+} from "./model";
 import { type PanelData, panelHtml, tickPanel } from "./popover";
 import { createRing, type Ring } from "./ring";
 import "./state";
@@ -52,7 +63,16 @@ function active(): boolean {
 
 function scopes() {
   const s = store.get();
-  return { plans: planScope(s.currentProfile, s.profiles), local: localScope(s.currentProfile, s.profiles) };
+  return {
+    plans: planScope(s.currentProfile, s.profiles, s.usageOthersOpen, s.platform.os),
+    local: localScope(s.currentProfile, s.profiles),
+  };
+}
+
+/** The plans of the profile in view, and the other accounts' (fetched while "Other accounts" is open). */
+function plansInView() {
+  const s = store.get();
+  return splitPlans(s.usagePlans, s.currentProfile, s.platform.os);
 }
 
 function isInView(plans: PlanReport[]): boolean {
@@ -115,22 +135,22 @@ async function scopeChanged() {
 function paintRing() {
   const s = store.get();
   ring.el.hidden = !active();
-  const week = weekPercent(s.usagePlans);
-  ring.set(
-    ringState(s.usagePlans, scopes().plans.length === 0),
-    ringFraction(s.usagePlans, s.usageLocal),
-    week >= 0 ? week / 100 : -1,
-  );
+  const { mine } = plansInView();
+  const week = weekPercent(mine);
+  ring.set(ringState(mine, scopes().plans.length === 0), ringFraction(mine, s.usageLocal), week >= 0 ? week / 100 : -1);
 }
 
 function panelData(): PanelData {
   const s = store.get();
+  const { mine, others } = plansInView();
+  const count = s.currentProfile === null ? 0 : otherProfiles(s.currentProfile, s.profiles, s.platform.os).length;
   return {
     scope: profileLabel(s.currentProfile),
-    plans: s.usagePlans,
+    plans: mine,
     plansBusy: s.usagePlansBusy,
     local: s.usageLocal,
     localBusy: s.usageLocalBusy,
+    others: count ? { count, open: s.usageOthersOpen, plans: others } : null,
   };
 }
 
@@ -169,6 +189,12 @@ function open(by: "hover" | "click") {
     },
   });
   pop.el.addEventListener("pointerenter", () => clearTimeout(leaveTimer));
+  pop.el.addEventListener("click", (e) => {
+    if (!(e.target as Element).closest(".use-others-toggle")) return;
+    // keep it open while the other accounts load, even if it was opened by hovering
+    openedBy = "click";
+    store.set((s) => ({ usageOthersOpen: !s.usageOthersOpen }));
+  });
   pop.el.addEventListener("pointerleave", scheduleClose);
   ring.el.setAttribute("aria-expanded", "true");
   paintPanel();
@@ -203,7 +229,7 @@ export function mount(): void {
   void listen("usage-plans", (update) => applyPlans(update, true));
 
   store.select(
-    (s) => [s.usagePlans, s.usagePlansBusy, s.usageLocal, s.usageLocalBusy] as const,
+    (s) => [s.usagePlans, s.usagePlansBusy, s.usageLocal, s.usageLocalBusy, s.usageOthersOpen] as const,
     () => {
       paintRing();
       paintPanel();
@@ -221,7 +247,7 @@ export function mount(): void {
   // what they come from changes, and acted on only when they differ.
   let inView = "";
   store.select(
-    (s) => [s.screen, s.settings.showUsage, s.currentProfile, s.profiles] as const,
+    (s) => [s.screen, s.settings.showUsage, s.currentProfile, s.profiles, s.usageOthersOpen] as const,
     () => {
       const next = JSON.stringify([active(), scopes()]);
       if (next === inView) return;
