@@ -38,7 +38,8 @@
   width: 56px;
   height: 6px;
   border-radius: 3px;
-  background: var(--track);
+  /* the pill is a control: --track is only a shade off it in every skin, so tint from the text instead */
+  background: color-mix(in srgb, var(--text) 16%, transparent);
   overflow: hidden;
 }
 .use-m-bar i {
