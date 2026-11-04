@@ -39,9 +39,27 @@
   html:root[data-ui-style="glass"] #overlay-root > .menu,
   html:root[data-ui-style="glass"] #overlay-root > .popover,
   html:root[data-ui-style="glass"] #overlay-root > .search-pop,
+  html:root[data-ui-style="glass"] #overlay-root > .tooltip,
   html:root[data-ui-style="glass"] .dlg,
-  html:root[data-ui-style="glass"] .set-sheet {
+  html:root[data-ui-style="glass"] .set-sheet,
+  html:root[data-ui-style="glass"] .toast {
     background: color-mix(in srgb, var(--menu) 72%, transparent);
+  }
+
+  /* the hidden sidebar sliding in over the content is solid, as the docked one looks: glass over the page
+     would show the page's text through it */
+  html:root[data-ui-style="glass"].sidebar-hidden #sidebar-slot {
+    background: var(--side);
+    border-color: var(--border);
+    /* biome-ignore lint/correctness/noUnknownProperty: WebKit's private Liquid Glass property */
+    -apple-visual-effect: none;
+  }
+
+  /* the selected segment: a subtle wash and a hairline edge on the glass, so the choice reads without
+     standing out */
+  html:root[data-ui-style="glass"] .seg-pill {
+    background: color-mix(in srgb, var(--text) 9%, transparent);
+    box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--text) 16%, transparent);
   }
 
   /* a split button is one piece of glass; its halves only show hover */
