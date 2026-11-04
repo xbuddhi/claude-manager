@@ -82,6 +82,13 @@ windows = { version = "0.62", features = [
 # events reach Tauri's handler.
 muda = { version = "0.20", default-features = false }
 objc2 = "0.6"
+# the webview configuration with WebKit's system appearance (core/webview.rs, Liquid Glass style); the
+# version wry uses, so nothing new is built
+objc2-web-kit = { version = "0.3.2", default-features = false, features = [
+  "std",
+  "WKPreferences",
+  "WKWebViewConfiguration",
+] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

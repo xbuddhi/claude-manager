@@ -4,7 +4,9 @@
 // scheme (terminalColors, core/termColors.ts) the terminal tokens.
 
 import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Effect, EffectState, getCurrentWindow } from "@tauri-apps/api/window";
+import type { InterfaceSize } from "../bindings/InterfaceSize";
 import type { Settings } from "../bindings/Settings";
 import { skinPalette, skinTokens, terminalColorsFor } from "./appColors";
 import { isMac } from "./platform";
@@ -74,6 +76,14 @@ export function initTheme(): void {
     apply,
     { equals: (a, b) => a.every((v, i) => v === b[i]) },
   );
+  // interface style: <html data-ui-style> picks the skin or Liquid Glass (styles/glass.css)
+  store.select(
+    (s) => s.settings.uiStyle,
+    (style) => {
+      document.documentElement.dataset.uiStyle = style;
+    },
+    { immediate: true },
+  );
   // the native frame (macOS traffic lights, menus) follows the app's choice
   if (!isTauri()) return;
   store.select(
@@ -87,6 +97,26 @@ export function initTheme(): void {
   // window glass (macOS): the system's own blur behind the window (no CSS blur, nothing to download);
   // <html data-glass> lets the title bar and sidebar show it. It rests while the window is inactive.
   store.select((s) => isMac() && s.settings.windowGlass, applyGlass, { immediate: true });
+  // interface size: the page zoom, so text, icons, spacing and terminals scale together and the layout
+  // reflows (the styles are in px, so a font size alone would not scale them)
+  store.select(
+    (s) => s.settings.interfaceSize,
+    (size) =>
+      void getCurrentWebview()
+        .setZoom(zoomFor(size))
+        .catch(() => {}),
+    { immediate: true },
+  );
+}
+
+/** The page zoom of an interface size. */
+export function zoomFor(size: InterfaceSize): number {
+  return { small: 0.9, default: 1, large: 1.1, larger: 1.25 }[size] ?? 1;
+}
+
+/** Whether this webview has the system's Liquid Glass material (macOS 26+ with system appearance on). */
+export function liquidGlassAvailable(): boolean {
+  return typeof CSS !== "undefined" && CSS.supports("-apple-visual-effect", "-apple-system-glass-material");
 }
 
 function applyGlass(on: boolean) {

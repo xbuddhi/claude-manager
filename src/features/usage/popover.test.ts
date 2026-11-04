@@ -1,9 +1,39 @@
 import { describe, expect, it } from "vitest";
 import type { PlanReport } from "../../bindings/PlanReport";
-import { type PanelData, panelHtml, tickPanel } from "./popover";
+import { elapsed, type PanelData, panelHtml, tickPanel, windowLength } from "./popover";
 
 const MIN = 60_000;
 const NOW = new Date(2026, 0, 5, 12, 0, 0).getTime();
+
+describe("pace", () => {
+  const HOUR = 60 * MIN;
+  it("knows the session's and the weekly windows only", () => {
+    expect(windowLength("Current session")).toBe(5 * HOUR);
+    expect(windowLength("Weekly · all models")).toBe(7 * 24 * HOUR);
+    expect(windowLength("Monthly")).toBeNull();
+  });
+
+  it("is the share of the window gone, kept within 0..1", () => {
+    const at = (label: string, resets: number | null) => elapsed({ label, percent: 10, resets }, NOW);
+    expect(at("Current session", NOW + 4 * HOUR)).toBeCloseTo(0.2);
+    // no reset time, or an unknown window: no marker
+    expect(at("Current session", null)).toBeNull();
+    expect(at("Monthly", NOW + HOUR)).toBeNull();
+    // a reset already past, or further away than the window (a clock change): clamped
+    expect(at("Current session", NOW - MIN)).toBe(1);
+    expect(at("Current session", NOW + 9 * HOUR)).toBe(0);
+  });
+
+  it("draws no marker without a reset time", () => {
+    const d = data();
+    const first = d.plans[0];
+    if (first) first.limits = [{ label: "Current session", percent: 40, resets: null }];
+    const root = document.createElement("div");
+    root.innerHTML = panelHtml(d, NOW).value;
+    expect(root.querySelector(".use-pace")).toBeNull();
+    expect(root.querySelector(".use-fill")).not.toBeNull();
+  });
+});
 
 const data = (): PanelData => ({
   scope: "Work",

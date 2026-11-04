@@ -68,6 +68,23 @@ pub fn raise(w: &WebviewWindow) {
 /// Opens a new app window labelled `label` (see [`new_label`]), the size of the window in front: with
 /// its tab strip under the logical screen point `at` (a dropped tab), else offset from that window.
 pub fn create(app: &AppHandle, label: &str, at: Option<(f64, f64)>) -> AppResult<WebviewWindow> {
+    // macOS: the webview configuration (webview::harden) is made on the main thread; a command thread waits
+    #[cfg(target_os = "macos")]
+    if objc2::MainThreadMarker::new().is_none() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (handle, label) = (app.clone(), label.to_string());
+        app.run_on_main_thread(move || {
+            let _ = tx.send(build(&handle, &label, at));
+        })?;
+        // a busy main thread (a modal menu) answers late; a command never waits forever
+        return rx
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .map_err(|_| AppError::Internal("the window was not created".into()))?;
+    }
+    build(app, label, at)
+}
+
+fn build(app: &AppHandle, label: &str, at: Option<(f64, f64)>) -> AppResult<WebviewWindow> {
     let mut config = app
         .config()
         .app

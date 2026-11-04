@@ -662,3 +662,17 @@ svg.pc.pc-breath {
   text-align: center;
   line-height: 1.25;
 }
+
+/* "Add profile" (picker.ts): the bold plus icon, centred in its circle */
+.avatar.prof-avatar-add svg {
+  width: 30px;
+  height: 30px;
+  stroke-width: 2.2;
+}
+/* "Add profile" and "All profiles": the card already marks the hover, so their plain circles get no accent
+   ring (that is for profile pictures), only a lighter fill */
+.prof-card:hover > .avatar.prof-avatar-all,
+.prof-card:focus-visible > .avatar.prof-avatar-all {
+  box-shadow: none;
+  background: var(--ctrl-hover);
+}

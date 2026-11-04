@@ -89,6 +89,7 @@ pub fn handler() -> impl Fn(Invoke) -> bool + Send + Sync + 'static {
         crate::os::vscode::open_in_code,
         crate::os::reveal::reveal_path,
         crate::os::reveal::open_path,
+        crate::os::app_icon::set_app_icon,
         // ---- updater (WP10) ----
         crate::updater::app_translocated,
     ]

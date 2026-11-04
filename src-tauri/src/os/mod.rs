@@ -1,6 +1,7 @@
 //! Operating system integration (WP9 owns this feature): tray / menu bar icon, native menu, Explorer
 //! right-click menu, VS Code, Explorer / Finder, launch arguments and the WebView2 memory target.
 
+pub mod app_icon;
 pub mod args;
 #[cfg(target_os = "macos")]
 pub mod dock;

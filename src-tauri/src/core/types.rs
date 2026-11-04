@@ -143,6 +143,44 @@ pub enum TerminalColors {
     Graphite,
 }
 
+/// The look of the interface: the app's own skin, or Liquid Glass (macOS 26+: WebKit's system glass material
+/// on the sidebar, bars and menus; the layout is the same). Elsewhere it is always the skin.
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum UiStyle {
+    #[default]
+    Skin,
+    Glass,
+}
+
+/// How large the whole interface is drawn (text, icons, spacing, terminals): the page zoom of every window.
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum InterfaceSize {
+    Small,
+    #[default]
+    Default,
+    Large,
+    Larger,
+}
+
+/// The app icon in the Dock (macOS): the app's own, or one in the colours of an interface skin
+/// (`src/assets/app-icons`, drawn by scripts/make-icons.mjs).
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum AppIcon {
+    #[default]
+    Claude,
+    Modern,
+    Mono,
+    Paper,
+    Linear,
+    Graphite,
+}
+
 /// Colours of the app itself (an interface skin); each has a dark and a light version (the theme picks one).
 #[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -208,6 +246,12 @@ pub struct Settings {
     pub app_colors: AppColors,
     /// macOS: the window blurs the desktop behind the title bar and sidebar.
     pub window_glass: bool,
+    /// macOS: the app's skin or Liquid Glass.
+    pub ui_style: UiStyle,
+    /// macOS: the icon shown in the Dock while the app runs.
+    pub app_icon: AppIcon,
+    /// Scale of the whole interface.
+    pub interface_size: InterfaceSize,
     /// Source control split position; null = default layout.
     pub git_split: Option<f64>,
     /// Absolute path to the claude executable, overriding discovery.
@@ -250,6 +294,9 @@ impl Default for Settings {
             terminal_colors: TerminalColors::Default,
             app_colors: AppColors::Claude,
             window_glass: false,
+            ui_style: UiStyle::Skin,
+            app_icon: AppIcon::Claude,
+            interface_size: InterfaceSize::Default,
             git_split: None,
             claude_path: None,
             mac_option_is_meta: true,

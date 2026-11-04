@@ -33,6 +33,16 @@ function suppressContextMenu() {
 
 /** How long the peeking sidebar stays after the pointer leaves it. */
 const PEEK_LINGER_MS = 280;
+/** How long the pointer rests at the left edge before the sidebar slides in (a pointer passing by does not). */
+const PEEK_DELAY_MS = 140;
+
+/**
+ * Whether something opened over the window (a menu, popover or dialog) holds the peeking sidebar in. The
+ * tooltip and the toast stack stay in the overlay root once created, so they never count.
+ */
+export function overlayHoldsPeek(overlay: Element): boolean {
+  return [...overlay.children].some((c) => !c.matches(".tooltip, .toast-stack"));
+}
 
 /**
  * Hidden sidebar: hiding slides it out to the left while the content grows into its place. While hidden,
@@ -66,7 +76,19 @@ function initSidebarHiding() {
   side.addEventListener("animationend", (e) => {
     if (e.target === side && root.classList.contains("sidebar-peek-out")) settle();
   });
-  edge.addEventListener("pointerenter", () => peek(true));
+  // the pointer resting on the left edge, or on the show-sidebar button, slides it in: it must rest a moment
+  // (a pointer passing by does not), and coming back while it slides away brings it back at once
+  let delay: ReturnType<typeof setTimeout> | undefined;
+  const peekOnRest = (target: HTMLElement) => {
+    target.addEventListener("pointerenter", () => {
+      clearTimeout(delay);
+      if (!root.classList.contains("sidebar-hidden")) return;
+      if (root.classList.contains("sidebar-peek-out")) return peek(true);
+      delay = setTimeout(() => peek(true), PEEK_DELAY_MS);
+    });
+    target.addEventListener("pointerleave", () => clearTimeout(delay));
+  };
+  peekOnRest(edge);
   // while peeking, the pointer's position decides: over the sidebar (or just beside it) keeps it, anywhere
   // else hides it after a moment. Enter/leave events alone miss a pointer that touches the edge and leaves.
   window.addEventListener("pointermove", (e) => {
@@ -80,8 +102,8 @@ function initSidebarHiding() {
     } else if (linger === undefined) {
       linger = setTimeout(() => {
         linger = undefined;
-        // a menu or dialog opened from the sidebar keeps it out
-        if ($("#overlay-root").childElementCount > 0) return;
+        // a menu or dialog opened from the sidebar keeps it out (a tooltip or a toast does not)
+        if (overlayHoldsPeek($("#overlay-root"))) return;
         peek(false);
       }, PEEK_LINGER_MS);
     }
@@ -100,17 +122,18 @@ function initSidebarHiding() {
   const show = button({ icon: "sidebar", kind: "plain", title: "Show sidebar  (Ctrl+S)", onClick: toggle });
   show.id = "sidebar-show";
   $("#card-head").prepend(show);
+  // resting on it previews the sidebar (the click keeps it)
+  peekOnRest(show);
 
-  // Classic: the tabs span the whole width above the sidebar; Docked: they sit in the content column
+  // the tabs sit in the content column in both styles (index.html), so the sidebar runs the full height beside
+  // them and a tab joins its own card (Classic hides the sidebar while a terminal is in front: the tabs then
+  // span the window). Docked keeps the sidebar beside terminals too, and has no Home tab.
   store.select(
     (s) => s.settings.sidebarStyle,
     (style) => {
       const docked = style === "docked";
       root.classList.toggle("layout-docked", docked);
       root.classList.toggle("layout-classic", !docked);
-      const strip = $("#tabstrip-slot");
-      if (docked) $("#content").prepend(strip);
-      else $("#main").prepend(strip);
     },
     { immediate: true },
   );

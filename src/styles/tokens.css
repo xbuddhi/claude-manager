@@ -16,6 +16,9 @@
   --text: #1d1d1f;
   --muted: #6e6e73; /* darker than the Windows app's #86868B, for contrast */
   --border: #d6d6da;
+  /* hairline between panes and bars (a lighter step of the border, in every theme and skin); controls keep
+     --border */
+  --divider: color-mix(in srgb, var(--border) 55%, transparent);
   --accent: #d97757;
   --accent-hover: #c4643f;
   --accent-strong: #b8532f; /* fills behind white text (4.6:1) */

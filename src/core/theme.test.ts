@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { appScheme, termScheme } from "./theme";
+import { appScheme, termScheme, zoomFor } from "./theme";
+
+describe("interface size", () => {
+  it("is a page zoom around 100%", () => {
+    expect(zoomFor("small")).toBe(0.9);
+    expect(zoomFor("default")).toBe(1);
+    expect(zoomFor("large")).toBe(1.1);
+    expect(zoomFor("larger")).toBe(1.25);
+  });
+});
 
 describe("theme", () => {
   it("app follows the OS only on system", () => {

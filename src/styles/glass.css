@@ -1,0 +1,99 @@
+/* Liquid Glass interface style (settings.uiStyle "glass", macOS 26+; core/theme.ts sets <html data-ui-style>).
+   The layout is the skin's: only the surfaces change. WebKit draws the system's own Liquid Glass material for
+   `-apple-visual-effect` (exposed by the webview's system appearance setting, src-tauri/src/core/webview.rs),
+   not a CSS blur. A WebKit without it keeps the skin: every rule is inside @supports.
+   Glass: the chrome and everything that floats (sidebar, title bar controls, switchers, secondary buttons,
+   banners, profile cards, menus, popovers, tooltips, dialogs, Settings, toasts). Solid: the content (the
+   cards, terminals, lists), so text reads as before, and the accent buttons, which keep their colour.
+   The material draws its own edge and depth: the skin's background, border and shadow are taken off, or they
+   show as a slab around the glass.
+   Imported last (main.ts) with `html:root` in front, so it outranks the skin's rules for the same elements. */
+
+/* biome-ignore lint/correctness/noUnknownProperty: WebKit's private Liquid Glass property */
+@supports (-apple-visual-effect: -apple-system-glass-material) {
+  html:root[data-ui-style="glass"] #sidebar-slot,
+  html:root[data-ui-style="glass"] .search,
+  html:root[data-ui-style="glass"] .use-ring,
+  html:root[data-ui-style="glass"] .seg,
+  html:root[data-ui-style="glass"] .btn-secondary,
+  html:root[data-ui-style="glass"] .btn-danger,
+  html:root[data-ui-style="glass"] .sbtn-secondary,
+  html:root[data-ui-style="glass"] .banner,
+  html:root[data-ui-style="glass"] .prof-card,
+  html:root[data-ui-style="glass"] #overlay-root > .menu,
+  html:root[data-ui-style="glass"] #overlay-root > .popover,
+  html:root[data-ui-style="glass"] #overlay-root > .search-pop,
+  html:root[data-ui-style="glass"] #overlay-root > .tooltip,
+  html:root[data-ui-style="glass"] .dlg,
+  html:root[data-ui-style="glass"] .set-sheet,
+  html:root[data-ui-style="glass"] .toast {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    /* biome-ignore lint/correctness/noUnknownProperty: WebKit's private Liquid Glass property */
+    -apple-visual-effect: -apple-system-glass-material;
+  }
+
+  /* large panels of text: the glass carries a tint of the skin's panel colour, so what is behind it (the title
+     bar under the Settings sheet) does not show through as smudges */
+  html:root[data-ui-style="glass"] #overlay-root > .menu,
+  html:root[data-ui-style="glass"] #overlay-root > .popover,
+  html:root[data-ui-style="glass"] #overlay-root > .search-pop,
+  html:root[data-ui-style="glass"] #overlay-root > .tooltip,
+  html:root[data-ui-style="glass"] .dlg,
+  html:root[data-ui-style="glass"] .set-sheet,
+  html:root[data-ui-style="glass"] .toast {
+    background: color-mix(in srgb, var(--menu) 72%, transparent);
+  }
+
+  /* the hidden sidebar sliding in over the content is solid, as the docked one looks: glass over the page
+     would show the page's text through it */
+  html:root[data-ui-style="glass"].sidebar-hidden #sidebar-slot {
+    background: var(--side);
+    border-color: var(--border);
+    /* biome-ignore lint/correctness/noUnknownProperty: WebKit's private Liquid Glass property */
+    -apple-visual-effect: none;
+  }
+
+  /* the selected segment: a subtle wash and a hairline edge on the glass, so the choice reads without
+     standing out */
+  html:root[data-ui-style="glass"] .seg-pill {
+    background: color-mix(in srgb, var(--text) 9%, transparent);
+    box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--text) 16%, transparent);
+  }
+
+  /* a split button is one piece of glass; its halves only show hover */
+  html:root[data-ui-style="glass"] .sbtn-secondary .sbtn-main,
+  html:root[data-ui-style="glass"] .sbtn-secondary .sbtn-arrow {
+    background: transparent;
+  }
+  html:root[data-ui-style="glass"] .sbtn-secondary .sbtn-main:hover,
+  html:root[data-ui-style="glass"] .sbtn-secondary .sbtn-arrow:hover {
+    background: var(--hover);
+  }
+
+  /* hover and focus: a light wash over the glass instead of the skin's fills */
+  html:root[data-ui-style="glass"] .btn-secondary:hover:not(:disabled),
+  html:root[data-ui-style="glass"] .btn-danger:hover:not(:disabled),
+  html:root[data-ui-style="glass"] .use-ring:hover,
+  html:root[data-ui-style="glass"] .use-ring[aria-expanded="true"],
+  html:root[data-ui-style="glass"] .prof-card:hover {
+    background: var(--hover);
+  }
+  html:root[data-ui-style="glass"] .search:focus-within,
+  html:root[data-ui-style="glass"] .prof-card:focus-visible {
+    border-color: var(--accent);
+  }
+  /* a banner's kind still shows on its edge */
+  html:root[data-ui-style="glass"] .banner-error {
+    border-color: var(--danger);
+  }
+  html:root[data-ui-style="glass"] .banner-warning {
+    border-color: var(--warn);
+  }
+  /* the dim behind a modal is lighter: the glass sheet already sets it apart */
+  html:root[data-ui-style="glass"] #overlay-root > .set-backdrop,
+  html:root[data-ui-style="glass"] #overlay-root > .dlg-backdrop {
+    background: color-mix(in srgb, var(--backdrop) 60%, transparent);
+  }
+}

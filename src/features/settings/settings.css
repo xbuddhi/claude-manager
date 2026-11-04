@@ -7,54 +7,196 @@
   padding: 16px;
   background: var(--backdrop);
 }
+/* laid out like macOS System Settings: a sidebar of tabs, the chosen tab's title and its groups beside it */
 .set-sheet {
-  width: 560px;
+  width: 780px;
+  height: 600px;
   max-width: 100%;
   max-height: calc(100vh - 32px);
   display: flex;
-  flex-direction: column;
-  border-radius: 12px;
+  overflow: hidden;
+  border-radius: 14px;
   background: var(--menu);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-pop);
+}
+
+/* ---- the sidebar of tabs ---- */
+.set-nav {
+  flex: none;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 10px;
+  border-right: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+.set-nav-head {
+  padding: 2px 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.set-tab {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  transition: background-color 0.15s var(--ease);
+}
+.set-tab:hover {
+  background: var(--hover);
+}
+/* the chosen tab: filled with the accent, as macOS marks the selection in a sidebar */
+.set-tab.on {
+  background: var(--accent-strong);
+  color: var(--on-accent);
+}
+.set-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.set-tab-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: #fff;
+  box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.18);
+}
+.set-tab-ico svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.set-tab-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+/* ---- the chosen tab ---- */
+.set-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 .set-head {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 14px 6px 22px;
+  padding: 16px 14px 10px 24px;
 }
 .set-title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
 }
 .set-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 22px;
+  padding: 2px 24px 24px;
 }
-.set-section {
-  padding: 10px 0 6px;
+.set-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-.set-section + .set-section {
-  border-top: 1px solid var(--border);
+.set-page[hidden] {
+  display: none;
 }
-.set-section-title {
-  margin: 4px 0;
-  font-size: 12px;
-  font-weight: 600;
+/* rows in a rounded box, divided by hairlines (System Settings' grouped list) */
+.set-group {
+  padding: 0 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+.set-group > * + * {
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+/* About: the app's card, centred above the groups */
+.set-about {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 0 10px;
+  text-align: center;
+}
+.set-about-icon {
+  width: 96px;
+  height: 96px;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 4px 10px rgb(0 0 0 / 0.18));
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.set-about-name {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.set-about-desc {
+  max-width: 440px;
   color: var(--muted);
+  font-size: 13px;
+}
+.set-about-version {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+/* the repository: a regular push button (ui/button.ts) with the GitHub mark, the address under it */
+.set-about-links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+.set-about-gh {
+  padding-left: 11px;
+}
+.btn.set-about-gh .set-gh {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  stroke: none;
+}
+.set-about-repo {
+  color: var(--muted);
+  font-size: 11.5px;
 }
 .set-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 44px;
-  padding: 6px 0;
+  min-height: 48px;
+  padding: 8px 0;
 }
 .set-row-path {
   flex-wrap: wrap;
@@ -112,21 +254,33 @@
 .set-status.missing {
   color: var(--danger);
 }
-.set-foot {
-  flex: none;
-  display: flex;
-  justify-content: flex-end;
-  padding: 12px 22px 18px;
-}
-.set-foot .btn {
-  min-width: 96px;
-}
-
 /* terminal colour schemes: a small terminal preview each, the chosen one ringed */
 .set-row-colors {
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: 10px;
+  padding: 12px 0 14px;
+}
+/* App icon: the icons themselves, six in a row */
+.set-colors:has(.set-icon-preview) {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.set-color-preview.set-icon-preview {
+  height: auto;
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: 22%;
+  box-shadow: none;
+  background: none;
+}
+.set-icon-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.set-color:has(.set-icon-preview) {
+  align-items: center;
+  text-align: center;
 }
 .set-colors {
   display: grid;

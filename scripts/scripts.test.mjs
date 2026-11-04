@@ -179,5 +179,18 @@ describe("third-party-notices", () => {
     assert.equal(out.split("Permission is hereby granted").length, 2);
     assert.match(out, /Used by: alpha 2\.0\.0, zeta 1\.0\.0/);
     assert.ok(out.endsWith("granted\n"));
+    // no artwork: no empty section
+    assert.ok(!out.includes("== Artwork"));
+  });
+
+  it("lists artwork drawn into the interface, with its license text", () => {
+    const isc = "ISC License\n\nPermission to use, copy, modify";
+    const out = renderNotices(
+      [],
+      [],
+      [{ name: "Icons", version: "1.0.0", license: "ISC", url: "https://i", texts: [isc] }],
+    );
+    assert.match(out, /== Artwork \(drawn into the user interface\) ==\n\nIcons 1\.0\.0 - ISC - https:\/\/i/);
+    assert.match(out, /Used by: Icons 1\.0\.0\n\nISC License/);
   });
 });

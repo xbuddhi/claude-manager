@@ -125,21 +125,51 @@ export function render(size, design, layers) {
 
 // ---- the artwork ----
 
-const TOP = [227, 137, 106];
-const BOTTOM = [196, 94, 62];
-const INK = [196, 94, 62, 1];
 const WHITE = [255, 255, 255, 1];
 
+/**
+ * The icon's colours: background gradient (top, bottom), the back card, the front card and the prompt.
+ * "claude" is the app's icon; the others follow the interface skins (core/appColors.ts) for the App icon
+ * setting (os/app_icon.rs shows them in the Dock).
+ */
+export const ICON_PALETTES = {
+  claude: {
+    top: [227, 137, 106],
+    bottom: [196, 94, 62],
+    back: [255, 255, 255, 0.45],
+    card: WHITE,
+    ink: [196, 94, 62, 1],
+  },
+  modern: { top: [64, 150, 236], bottom: [0, 95, 184], back: [255, 255, 255, 0.45], card: WHITE, ink: [0, 95, 184, 1] },
+  mono: { top: [72, 72, 76], bottom: [24, 24, 26], back: [255, 255, 255, 0.3], card: WHITE, ink: [24, 24, 26, 1] },
+  paper: {
+    top: [252, 250, 245],
+    bottom: [232, 227, 216],
+    back: [31, 114, 199, 0.22],
+    card: [31, 114, 199, 1],
+    ink: WHITE,
+  },
+  linear: {
+    top: [128, 138, 232],
+    bottom: [78, 88, 196],
+    back: [255, 255, 255, 0.45],
+    card: WHITE,
+    ink: [78, 88, 196, 1],
+  },
+  graphite: { top: [86, 92, 110], bottom: [38, 41, 52], back: [142, 162, 255, 0.5], card: WHITE, ink: [38, 41, 52, 1] },
+};
+
 /** App icon, 1024 design units: macOS-style rounded square, two cards, a prompt. */
-export function appIconLayers() {
+export function appIconLayers(palette = ICON_PALETTES.claude) {
+  const { top, bottom, back, card, ink: INK } = palette;
   const gradient = (_x, y) => {
     const t = Math.max(0, Math.min(1, (y - 80) / 864));
-    return [...TOP.map((c, i) => c + (BOTTOM[i] - c) * t), 1];
+    return [...top.map((c, i) => c + (bottom[i] - c) * t), 1];
   };
   return [
     { shape: roundedBox(512, 512, 432, 432, 194), color: gradient },
-    { shape: roundedBox(566, 414, 240, 170, 52), color: [255, 255, 255, 0.45] },
-    { shape: roundedBox(468, 572, 272, 196, 60), color: WHITE },
+    { shape: roundedBox(566, 414, 240, 170, 52), color: back },
+    { shape: roundedBox(468, 572, 272, 196, 60), color: card },
     {
       shape: polyline(
         [
@@ -196,5 +226,10 @@ export function trayLayers() {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   writeFileSync(join(root, "app-icon.png"), encodePng(1024, render(1024, 1024, appIconLayers())));
   writeFileSync(join(root, "src-tauri/icons/tray-template.png"), encodePng(44, render(44, 44, trayLayers())));
-  console.log("wrote app-icon.png and src-tauri/icons/tray-template.png");
+  // the App icon setting's choices (512 px: the Dock's largest size at 2x), shared by the Dock and Settings
+  for (const [name, palette] of Object.entries(ICON_PALETTES)) {
+    const file = join(root, `src/assets/app-icons/${name}.png`);
+    writeFileSync(file, encodePng(512, render(512, 1024, appIconLayers(palette))));
+  }
+  console.log("wrote app-icon.png, src-tauri/icons/tray-template.png and src/assets/app-icons/*.png");
 }

@@ -1,7 +1,15 @@
 // The colour pickers in Settings: a small preview of each choice (in the theme in use), the chosen one
-// ringed. Arrow keys move the choice. Terminal colours preview a terminal; interface colours a window.
+// ringed. Arrow keys move the choice. Terminal colours preview a terminal; interface colours a window; the
+// App icon shows the icon itself.
 
+import claudeIcon from "../../assets/app-icons/claude.png";
+import graphiteIcon from "../../assets/app-icons/graphite.png";
+import linearIcon from "../../assets/app-icons/linear.png";
+import modernIcon from "../../assets/app-icons/modern.png";
+import monoIcon from "../../assets/app-icons/mono.png";
+import paperIcon from "../../assets/app-icons/paper.png";
 import type { AppColors } from "../../bindings/AppColors";
+import type { AppIcon } from "../../bindings/AppIcon";
 import type { TerminalColors } from "../../bindings/TerminalColors";
 import { APP_COLORS, skinPalette, terminalColorsFor } from "../../core/appColors";
 import { h } from "../../core/dom";
@@ -158,5 +166,34 @@ export function skinPicker(value: AppColors, onChange: (id: AppColors) => void):
       preview.style.background = c.bg;
     },
     "set-skin-preview",
+  );
+}
+
+const APP_ICONS: ReadonlyArray<{ id: AppIcon; label: string; src: string }> = [
+  { id: "claude", label: "Claude", src: claudeIcon },
+  { id: "modern", label: "Modern", src: modernIcon },
+  { id: "mono", label: "Mono", src: monoIcon },
+  { id: "paper", label: "Paper", src: paperIcon },
+  { id: "linear", label: "Linear", src: linearIcon },
+  { id: "graphite", label: "Graphite", src: graphiteIcon },
+];
+
+/** The image of an App icon (the app's own for an unknown one). */
+export function appIconSrc(id: AppIcon): string {
+  return APP_ICONS.find((i) => i.id === id)?.src ?? claudeIcon;
+}
+
+/** The App icon choices (macOS Dock): the icon itself in each skin's colours, the chosen one ringed. */
+export function iconPicker(value: AppIcon, onChange: (id: AppIcon) => void): ColorPicker<AppIcon> {
+  return picker(
+    "App icon",
+    APP_ICONS,
+    value,
+    onChange,
+    (id, preview) => {
+      if (preview.childElementCount) return;
+      preview.append(h("img", { src: appIconSrc(id), alt: "", attrs: { draggable: "false" } }));
+    },
+    "set-icon-preview",
   );
 }
