@@ -59,7 +59,7 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--divider);
 }
 .git-left {
   flex: none;
@@ -73,7 +73,7 @@
 .git-divider {
   flex: none;
   width: 1px;
-  background: var(--border);
+  background: var(--divider);
 }
 /* a wider invisible grip around the 1px line */
 .git-divider.splitter::before {
@@ -147,7 +147,7 @@
   height: 26px;
   line-height: 26px;
   padding: 0 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--divider);
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
@@ -208,7 +208,7 @@
   flex: none;
   margin: 0 12px;
   padding: 2px 2px 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--divider);
 }
 .git-lists {
   position: relative;
@@ -464,7 +464,7 @@
   display: flex;
   justify-content: flex-end;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--divider);
 }
 .git-diff {
   position: relative;
@@ -639,7 +639,7 @@ html.os-macos .git-diff {
   background: var(--tint);
 }
 .git-half + .git-half {
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--divider);
 }
 .git-half-add {
   --tint: color-mix(in srgb, var(--git-added) 16%, transparent);
@@ -748,7 +748,7 @@ html.os-macos .git-diff {
 .git-card-stats {
   margin-top: 10px;
   padding: 7px 14px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--divider);
 }
 .git-card-ins {
   color: var(--git-added);
@@ -761,7 +761,7 @@ html.os-macos .git-diff {
   align-items: center;
   gap: 8px;
   padding: 5px 10px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--divider);
 }
 .git-card-head + .git-card-subject:last-child,
 .git-card-subject + .git-card-foot,
@@ -801,7 +801,7 @@ html.os-macos .git-diff {
   right: 6px;
   left: 6px;
   height: 1px;
-  background: var(--border);
+  background: var(--divider);
   content: "";
   pointer-events: none;
 }
@@ -866,7 +866,7 @@ html.os-macos .git-diff {
   display: flex;
   justify-content: center;
   padding: 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--divider);
 }
 .git-pr-foot[hidden] {
   display: none;
