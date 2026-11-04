@@ -192,6 +192,8 @@ function renderList() {
       ),
     );
     if (folded) continue;
+    // the group's files in one rounded box, rows divided by inset hairlines (a macOS grouped list)
+    const box = h("div", { class: "mem-box" });
     for (const f of files) {
       const { name, where } = describe(f, folder);
       const row = h(
@@ -206,8 +208,9 @@ function renderList() {
         h("span", { class: "mem-row-where" }, f.exists ? where : `${where} · not created`),
       );
       row.dataset.tip = f.path;
-      out.push(row);
+      box.append(row);
     }
+    out.push(box);
   }
   list.replaceChildren(...out);
 }
