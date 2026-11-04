@@ -2,6 +2,30 @@
 
 All notable changes to Claude Manager. Versions are `X.Y.Z`; each release is tagged `vX.Y.Z`.
 
+## 0.1.5 - 2026-11-04
+
+### Added
+
+- macOS 26+: a Liquid Glass interface style (Settings → Appearance → Interface style): the system glass on
+  the sidebar, bars, menus, popovers and dialogs, with the same layout as the skin.
+- Interface size (Small, Default, Large, Larger): text, icons, spacing and terminals scale together in every
+  window.
+- macOS: app icons in the skins' colours (Claude, Modern, Mono, Paper, Linear, Graphite), shown in the Dock,
+  Finder, Spotlight and Launchpad. Choosing Claude restores the icon the app shipped with.
+- Usage popover: limit meters with a pace marker, and for this computer stat tiles (5-hour window, today,
+  7 days) and a 7-day bar chart.
+- Settings as macOS-style tabs (Appearance, General, Terminal, About), with an About page showing the
+  version and a GitHub link.
+- Memory files as a compact grouped list; refreshed sidebar, profile and Settings icons.
+
+### Fixed
+
+- The hidden sidebar's peek no longer sticks open after a tooltip; it opens after a short rest at the edge.
+- The tab strip sits in the content column, so the sidebar runs the full height of the window.
+- Terminals fit the space inside their padding, so Claude's status lines are no longer cut off.
+- Glass tooltips, toasts and the peeking sidebar stay readable over content.
+- Opening a window no longer hangs when the app is busy (for example, while a menu is open).
+
 ## 0.1.4 - 2026-10-29
 
 ### Added
