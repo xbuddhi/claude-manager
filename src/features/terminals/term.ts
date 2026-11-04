@@ -209,9 +209,16 @@ export class TermView {
     views.add(this);
   }
 
-  /** Opens xterm in its pane; call once the pane is visible, so it measures real cell sizes. */
+  /**
+   * Opens xterm in its pane; call once the pane is visible, so it measures real cell sizes. xterm goes in an
+   * unpadded box filling the pane's padding: the fit addon measures its parent's computed size, which with
+   * border-box sizing would include the pane's padding and give one row (and column) too many, cut off.
+   */
   open(): void {
-    this.term.open(this.pane);
+    const host = document.createElement("div");
+    host.className = "term-host";
+    this.pane.append(host);
+    this.term.open(host);
     this.term.loadAddon(new Unicode11Addon());
     this.term.unicode.activeVersion = "11";
     this.term.attachCustomKeyEventHandler((e) => this.onKey(e));

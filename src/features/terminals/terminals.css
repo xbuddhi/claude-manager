@@ -623,6 +623,12 @@ html.mode-terminal .term-tab.active {
   padding: 8px 4px 4px 10px;
   background: var(--term-bg);
 }
+/* xterm's box: exactly the space inside the pane's padding, so the fit addon sizes rows and columns to what
+   shows (term.ts open) */
+.term-host {
+  width: 100%;
+  height: 100%;
+}
 
 /* ---------- folder groups (tabs.ts): a chip before a folder's tabs, a line in its colour under them ---------- */
 .term-group {
