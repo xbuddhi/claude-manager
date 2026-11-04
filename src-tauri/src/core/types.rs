@@ -154,6 +154,21 @@ pub enum UiStyle {
     Glass,
 }
 
+/// The app icon in the Dock (macOS): the app's own, or one in the colours of an interface skin
+/// (`src/assets/app-icons`, drawn by scripts/make-icons.mjs).
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum AppIcon {
+    #[default]
+    Claude,
+    Modern,
+    Mono,
+    Paper,
+    Linear,
+    Graphite,
+}
+
 /// Colours of the app itself (an interface skin); each has a dark and a light version (the theme picks one).
 #[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -221,6 +236,8 @@ pub struct Settings {
     pub window_glass: bool,
     /// macOS: the app's skin or Liquid Glass.
     pub ui_style: UiStyle,
+    /// macOS: the icon shown in the Dock while the app runs.
+    pub app_icon: AppIcon,
     /// Source control split position; null = default layout.
     pub git_split: Option<f64>,
     /// Absolute path to the claude executable, overriding discovery.
@@ -264,6 +281,7 @@ impl Default for Settings {
             app_colors: AppColors::Claude,
             window_glass: false,
             ui_style: UiStyle::Skin,
+            app_icon: AppIcon::Claude,
             git_split: None,
             claude_path: None,
             mac_option_is_meta: true,

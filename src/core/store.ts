@@ -173,6 +173,7 @@ export const DEFAULT_SETTINGS: Settings = {
   appColors: "claude",
   windowGlass: false,
   uiStyle: "skin",
+  appIcon: "claude",
   gitSplit: null,
   claudePath: null,
   macOptionIsMeta: true,
