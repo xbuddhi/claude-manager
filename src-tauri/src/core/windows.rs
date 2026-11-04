@@ -76,8 +76,9 @@ pub fn create(app: &AppHandle, label: &str, at: Option<(f64, f64)>) -> AppResult
         app.run_on_main_thread(move || {
             let _ = tx.send(build(&handle, &label, at));
         })?;
+        // a busy main thread (a modal menu) answers late; a command never waits forever
         return rx
-            .recv()
+            .recv_timeout(std::time::Duration::from_secs(20))
             .map_err(|_| AppError::Internal("the window was not created".into()))?;
     }
     build(app, label, at)
