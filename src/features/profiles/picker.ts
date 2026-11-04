@@ -5,6 +5,7 @@
 import type { Profile } from "../../bindings/Profile";
 import { emit } from "../../core/bus";
 import { h, reconcile } from "../../core/dom";
+import { iconNode } from "../../core/icons";
 import { scroller } from "../../core/motion";
 import { isMac } from "../../core/platform";
 import { settings, updateSettings } from "../../core/settings";
@@ -140,8 +141,13 @@ function updateCard(card: HTMLElement, id: CardId): void {
   const sig = `${name}\n${mail}\n${count}\n${dir === null ? "" : companionFor(dir).key}`;
   if (card.dataset.sig === sig) return;
   card.dataset.sig = sig;
-  const pic = add ? avatar({ text: "+", color: "var(--ctrl)", size: 84 }) : profileAvatar(dir, 84, undefined, true);
-  if (add) pic.classList.add("prof-avatar-all");
+  const pic = add ? avatar({ text: "", color: "var(--ctrl)", size: 84 }) : profileAvatar(dir, 84, undefined, true);
+  // the plus is the bold icon (as on the sidebar's "+"), centred by the avatar's grid: a "+" character sat
+  // on the font's baseline, a little off centre
+  if (add) {
+    pic.classList.add("prof-avatar-all", "prof-avatar-add");
+    pic.append(iconNode("plus"));
+  }
   card.replaceChildren(
     pic,
     h("span", { class: "prof-card-name" }, name),

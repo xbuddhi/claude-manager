@@ -423,7 +423,8 @@ function onMouseDown(e: MouseEvent) {
 
 export function mountView(slot: HTMLElement): void {
   const add = button({ icon: "plus", kind: "plain", title: S.addTip });
-  add.classList.add("sb-add");
+  // a bold plus in a soft circle, like the Add profile card
+  add.classList.add("sb-add", "sb-add-plus");
   add.addEventListener("click", () => void showMenu(addMenu(), { at: { anchor: add, align: "end" }, label: S.addTip }));
   const hide = button({ icon: "sidebar", kind: "plain", title: "Hide sidebar  (Ctrl+S)" });
   hide.classList.add("sb-add");
