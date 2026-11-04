@@ -125,16 +125,15 @@ function initSidebarHiding() {
   // resting on it previews the sidebar (the click keeps it)
   peekOnRest(show);
 
-  // Classic: the tabs span the whole width above the sidebar; Docked: they sit in the content column
+  // the tabs sit in the content column in both styles (index.html), so the sidebar runs the full height beside
+  // them and a tab joins its own card (Classic hides the sidebar while a terminal is in front: the tabs then
+  // span the window). Docked keeps the sidebar beside terminals too, and has no Home tab.
   store.select(
     (s) => s.settings.sidebarStyle,
     (style) => {
       const docked = style === "docked";
       root.classList.toggle("layout-docked", docked);
       root.classList.toggle("layout-classic", !docked);
-      const strip = $("#tabstrip-slot");
-      if (docked) $("#content").prepend(strip);
-      else $("#main").prepend(strip);
     },
     { immediate: true },
   );
