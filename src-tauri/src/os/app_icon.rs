@@ -24,6 +24,7 @@ use tauri::AppHandle;
 static APPLIED: Mutex<Option<AppIcon>> = Mutex::new(None);
 
 /// Name of the marker file in the app's config folder: the variant last set on the bundle.
+#[cfg(target_os = "macos")]
 const MARKER: &str = "app-icon";
 
 /// The setting's name of a variant ("linear"), as the marker stores it.
