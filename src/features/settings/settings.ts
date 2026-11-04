@@ -10,6 +10,7 @@ import type { Settings } from "../../bindings/Settings";
 import type { SidebarStyle } from "../../bindings/SidebarStyle";
 import type { TerminalTheme } from "../../bindings/TerminalTheme";
 import type { Theme } from "../../bindings/Theme";
+import type { UiStyle } from "../../bindings/UiStyle";
 import { call } from "../../core/api";
 import { h } from "../../core/dom";
 import { describeError, log } from "../../core/log";
@@ -17,6 +18,7 @@ import { animate, Spring } from "../../core/motion";
 import { isMac, isWindows } from "../../core/platform";
 import { settings, updateSettings } from "../../core/settings";
 import { store } from "../../core/store";
+import { liquidGlassAvailable } from "../../core/theme";
 import { button } from "../../ui/button";
 import { segmented } from "../../ui/segmented";
 import { toggle } from "../../ui/toggle";
@@ -192,6 +194,18 @@ export function openSettings(): void {
         onChange: (on) => void updateSettings({ macOptionIsMeta: on }),
       })
     : null;
+  // only where WebKit has the system glass material (macOS 26+)
+  const uiStyle = liquidGlassAvailable()
+    ? segmented<UiStyle>({
+        label: "Interface style",
+        items: [
+          { id: "skin", label: "Skin" },
+          { id: "glass", label: "Liquid Glass" },
+        ],
+        value: s.uiStyle,
+        onChange: (id) => void updateSettings({ uiStyle: id }),
+      })
+    : null;
   const windowGlass = isMac()
     ? toggle({
         checked: s.windowGlass,
@@ -275,6 +289,13 @@ export function openSettings(): void {
     section(
       "Appearance",
       row("Theme", theme.el, "System follows your computer's light or dark mode."),
+      uiStyle
+        ? row(
+            "Interface style",
+            uiStyle.el,
+            "Liquid Glass: the sidebar, bars and menus use the system's glass. The layout stays the same.",
+          )
+        : null,
       pickerRow("Interface colours", appColors.el, "Each comes in light and dark, as the theme picks."),
       windowGlass
         ? row("Window glass", windowGlass.el, "The desktop shows softly through the title bar and sidebar.")
@@ -352,6 +373,7 @@ export function openSettings(): void {
         terminalColors.set(next.terminalColors);
         appColors.set(next.appColors);
         windowGlass?.set(next.windowGlass);
+        uiStyle?.set(next.uiStyle);
         openIn.set(next.openIn);
         optionMeta?.set(next.macOptionIsMeta);
         groupTabs.set(next.groupTabs);

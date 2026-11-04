@@ -172,6 +172,7 @@ export const DEFAULT_SETTINGS: Settings = {
   terminalColors: "default",
   appColors: "claude",
   windowGlass: false,
+  uiStyle: "skin",
   gitSplit: null,
   claudePath: null,
   macOptionIsMeta: true,

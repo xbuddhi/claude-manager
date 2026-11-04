@@ -74,6 +74,14 @@ export function initTheme(): void {
     apply,
     { equals: (a, b) => a.every((v, i) => v === b[i]) },
   );
+  // interface style: <html data-ui-style> picks the skin or Liquid Glass (styles/glass.css)
+  store.select(
+    (s) => s.settings.uiStyle,
+    (style) => {
+      document.documentElement.dataset.uiStyle = style;
+    },
+    { immediate: true },
+  );
   // the native frame (macOS traffic lights, menus) follows the app's choice
   if (!isTauri()) return;
   store.select(
@@ -87,6 +95,11 @@ export function initTheme(): void {
   // window glass (macOS): the system's own blur behind the window (no CSS blur, nothing to download);
   // <html data-glass> lets the title bar and sidebar show it. It rests while the window is inactive.
   store.select((s) => isMac() && s.settings.windowGlass, applyGlass, { immediate: true });
+}
+
+/** Whether this webview has the system's Liquid Glass material (macOS 26+ with system appearance on). */
+export function liquidGlassAvailable(): boolean {
+  return typeof CSS !== "undefined" && CSS.supports("-apple-visual-effect", "-apple-system-glass-material");
 }
 
 function applyGlass(on: boolean) {

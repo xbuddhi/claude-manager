@@ -6,6 +6,7 @@ import type { SidebarStyle } from "./SidebarStyle";
 import type { TerminalColors } from "./TerminalColors";
 import type { TerminalTheme } from "./TerminalTheme";
 import type { Theme } from "./Theme";
+import type { UiStyle } from "./UiStyle";
 
 /**
  * Everything the app remembers between runs (`<app config dir>/settings.json`).
@@ -56,6 +57,10 @@ sidebarHidden: boolean, sidebarStyle: SidebarStyle, theme: Theme, terminalTheme:
  * macOS: the window blurs the desktop behind the title bar and sidebar.
  */
 windowGlass: boolean, 
+/**
+ * macOS: the app's skin or Liquid Glass.
+ */
+uiStyle: UiStyle, 
 /**
  * Source control split position; null = default layout.
  */

@@ -143,6 +143,17 @@ pub enum TerminalColors {
     Graphite,
 }
 
+/// The look of the interface: the app's own skin, or Liquid Glass (macOS 26+: WebKit's system glass material
+/// on the sidebar, bars and menus; the layout is the same). Elsewhere it is always the skin.
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum UiStyle {
+    #[default]
+    Skin,
+    Glass,
+}
+
 /// Colours of the app itself (an interface skin); each has a dark and a light version (the theme picks one).
 #[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -208,6 +219,8 @@ pub struct Settings {
     pub app_colors: AppColors,
     /// macOS: the window blurs the desktop behind the title bar and sidebar.
     pub window_glass: bool,
+    /// macOS: the app's skin or Liquid Glass.
+    pub ui_style: UiStyle,
     /// Source control split position; null = default layout.
     pub git_split: Option<f64>,
     /// Absolute path to the claude executable, overriding discovery.
@@ -250,6 +263,7 @@ impl Default for Settings {
             terminal_colors: TerminalColors::Default,
             app_colors: AppColors::Claude,
             window_glass: false,
+            ui_style: UiStyle::Skin,
             git_split: None,
             claude_path: None,
             mac_option_is_meta: true,

@@ -597,6 +597,7 @@ dependencies = [
  "notify",
  "notify-debouncer-full",
  "objc2",
+ "objc2-web-kit",
  "portable-pty",
  "rayon",
  "reqwest",

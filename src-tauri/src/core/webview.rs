@@ -88,6 +88,14 @@ pub fn harden<'a, R: Runtime, M: Manager<R>>(
     } else {
         None
     };
+    #[cfg(target_os = "macos")]
+    let builder = match objc2::MainThreadMarker::new() {
+        Some(mtm) => builder.with_webview_configuration(system_appearance(mtm)),
+        None => {
+            log::warn!("window built off the main thread: no Liquid Glass in it");
+            builder
+        }
+    };
     builder
         .on_navigation(move |url| {
             let allowed = is_app_url(url, dev_url.as_ref());
@@ -100,6 +108,28 @@ pub fn harden<'a, R: Runtime, M: Manager<R>>(
             log::warn!("blocked new window for {url}");
             NewWindowResponse::Deny
         })
+}
+
+/// macOS: a webview configuration with WebKit's system appearance on. It exposes the system's Liquid Glass
+/// material to CSS (`-apple-visual-effect: -apple-system-glass-material`, macOS 26+), which the glass
+/// interface style uses (styles/glass.css). It is a private WKPreferences setter that must be set before
+/// the webview is created; a WebKit without it is left as it is (the style is then not offered).
+#[cfg(target_os = "macos")]
+fn system_appearance(mtm: objc2::MainThreadMarker) -> objc2::rc::Retained<objc2_web_kit::WKWebViewConfiguration> {
+    use objc2::runtime::NSObjectProtocol;
+    // SAFETY: a plain new configuration and a getter on it, on the main thread
+    let (config, prefs) = unsafe {
+        let config = objc2_web_kit::WKWebViewConfiguration::new(mtm);
+        let prefs = config.preferences();
+        (config, prefs)
+    };
+    if prefs.respondsToSelector(objc2::sel!(_setUseSystemAppearance:)) {
+        // SAFETY: the selector exists (checked above) and takes one BOOL
+        let _: () = unsafe { objc2::msg_send![&*prefs, _setUseSystemAppearance: true] };
+    } else {
+        log::info!("this WebKit has no system appearance setting: no Liquid Glass");
+    }
+    config
 }
 
 /// The app's own pages: `tauri://localhost` (macOS), `http(s)://tauri.localhost` (Windows), or the dev server.
