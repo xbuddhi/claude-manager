@@ -89,8 +89,8 @@
 /* ---- popover ---- */
 
 .use-panel {
-  width: 330px;
-  padding: 12px 16px 14px;
+  width: 360px;
+  padding: 14px 16px 14px;
   font-size: 13px;
   color: var(--text);
 }
@@ -143,11 +143,17 @@
   font-size: 12px;
   color: var(--muted);
 }
+/* a plan limit: label and figure, a meter (the fill carries the level colour --use-c; the track is a light
+   step of the same colour), the pace marker (how much of the window's time has passed), the reset time */
 .use-limit {
-  height: 52px;
+  padding: 8px 0 9px;
+}
+.use-limit + .use-limit {
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 }
 .use-limit-top {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 8px;
   line-height: 18px;
@@ -158,21 +164,64 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.use-track-bar {
+.use-pct {
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.use-pct-v {
+  margin-right: 1px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+/* the first limit (the session) leads: a bigger figure and a thicker meter */
+.use-limit.hero .use-label {
+  font-weight: 600;
+}
+.use-limit.hero .use-pct-v {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+.use-meter {
+  position: relative;
   height: 6px;
-  margin-top: 5px;
+  margin-top: 7px;
   border-radius: 3px;
-  background: var(--track);
-  overflow: hidden;
+  background: color-mix(in srgb, var(--use-c) 20%, transparent);
+}
+.use-limit.hero .use-meter {
+  height: 8px;
+  border-radius: 4px;
 }
 .use-fill {
   display: block;
   height: 100%;
-  border-radius: 3px;
+  border-radius: inherit;
+  background: var(--use-c);
   transition: width 0.4s var(--ease);
 }
+/* where the clock is in the window: a fill past it means the limit is being used faster than time passes */
+.use-pace {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text);
+  opacity: 0.55;
+  box-shadow: 0 0 0 1.5px var(--menu);
+}
+/* a wider target than the 2px mark, for its tooltip */
+.use-pace::after {
+  content: "";
+  position: absolute;
+  inset: -4px -6px;
+}
 .use-reset {
-  margin-top: 3px;
+  margin-top: 6px;
   font-size: 12px;
   line-height: 16px;
   white-space: pre;
@@ -209,40 +258,99 @@
   }
 }
 
-.use-foot {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 10px;
+/* ---------- this PC: stat tiles and the last 7 days ---------- */
+.use-local {
   margin-top: 4px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
-  font-size: 12px;
+}
+.use-sec {
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--muted);
 }
-.use-foot span {
+.use-sec span {
+  margin-left: 4px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 11px;
+  opacity: 0.8;
+}
+.use-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.use-tile {
   min-width: 0;
-  overflow: hidden;
-  white-space: pre;
-  text-overflow: ellipsis;
-}
-.use-bars {
-  flex: none;
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 9px 8px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.use-tile-l,
+.use-tile-s {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--muted);
+}
+.use-tile-v {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.use-chart {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 2px;
-  width: 60px;
-  height: 18px;
+  margin-top: 10px;
 }
-.use-bars i {
-  flex: 1;
-  border-radius: 1.5px;
-  background: var(--muted);
-  opacity: 0.45;
+.use-day {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  border-radius: 6px;
 }
-.use-bars i.today {
+/* the plot: bars on one baseline, rounded only at the data end */
+.use-day-plot {
+  position: relative;
+  height: 44px;
+  margin: 0 5px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+.use-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+  transition: background-color 0.15s var(--ease);
+}
+.use-day.today .use-bar {
   background: var(--accent);
-  opacity: 1;
+}
+.use-day:hover .use-bar {
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.use-day span {
+  font-size: 10.5px;
+  text-align: center;
+  color: var(--muted);
+}
+.use-day.today span {
+  color: var(--text);
+  font-weight: 600;
 }
 
 /* ---------- other accounts (folded at first) ---------- */
@@ -329,7 +437,8 @@
   min-width: 24px;
   height: 4px;
   border-radius: 2px;
-  background: var(--track);
+  /* visible on a solid and a glass popover alike */
+  background: color-mix(in srgb, var(--muted) 28%, transparent);
   overflow: hidden;
 }
 .use-o-bar i {

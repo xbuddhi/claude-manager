@@ -163,7 +163,7 @@ describe("panel", () => {
     const el = render({ scope: "default", plans: [], plansBusy: true, local: null, localBusy: true });
     expect(el.querySelectorAll(".use-skel")).toHaveLength(2);
     expect(el.querySelector(".use-spinner")).not.toBeNull();
-    expect(el.querySelector(".use-foot")?.textContent?.trim()).toBe("This PC: counting...");
+    expect(el.querySelector(".use-local .use-error")?.textContent).toBe("Counting...");
   });
 
   it("shows limits, errors and the local footnote", () => {
@@ -179,14 +179,45 @@ describe("panel", () => {
     expect(el.querySelector(".use-error")?.textContent).toBe("Not signed in");
     const rows = [...el.querySelectorAll(".use-limit")];
     expect(rows).toHaveLength(2);
-    expect(rows[0]?.querySelector("b")?.textContent).toBe("42% used");
-    expect(rows[1]?.querySelector("b")?.textContent).toBe("76% used");
+    expect(rows[0]?.querySelector(".use-pct")?.textContent).toBe("42% used");
+    expect(rows[1]?.querySelector(".use-pct")?.textContent).toBe("76% used");
     expect(rows[0]?.querySelector(".use-reset")?.textContent).toBe("Resets in 2h 0m  ·  2:00 PM");
-    expect(el.querySelector(".use-foot span")?.textContent).toBe("This PC  ·  today 1.2M  ·  week 8.4M");
-    const bars = [...el.querySelectorAll<HTMLElement>(".use-bars i")];
-    expect(bars).toHaveLength(7);
-    expect(bars[6]?.classList.contains("today")).toBe(true);
-    expect(bars[6]?.style.height).toBe("18px");
-    expect(bars[0]?.style.height).toBe("2px");
+    // several profiles: no row leads
+    expect(el.querySelector(".use-limit.hero")).toBeNull();
+    const tiles = [...el.querySelectorAll(".use-tile")].map((t) => [
+      t.querySelector(".use-tile-v")?.textContent,
+      t.querySelector(".use-tile-s")?.textContent,
+    ]);
+    expect(tiles).toEqual([
+      ["500", "25% of your peak"],
+      ["1.2M", "9 replies"],
+      ["8.4M", "peak 5h 2.0K"],
+    ]);
+    const days = [...el.querySelectorAll<HTMLElement>(".use-day")];
+    expect(days).toHaveLength(7);
+    expect(days[6]?.classList.contains("today")).toBe(true);
+    expect(days[6]?.querySelector("span")?.textContent).toBe("Today");
+    expect(days[6]?.dataset.tip).toBe("Today: 40 tokens");
+    const bar = (i: number) => days[i]?.querySelector<HTMLElement>("i")?.style.height;
+    expect(bar(6)).toBe("100.0%");
+    expect(bar(5)).toBe("50.0%");
+    // a day without tokens draws nothing
+    expect(bar(0)).toBe("0.0%");
+  });
+
+  it("marks how much of a limit's window has passed", () => {
+    const el = render({
+      scope: "default",
+      plans: [plan("/h/.claude-work")],
+      plansBusy: false,
+      local,
+      localBusy: false,
+    });
+    const first = el.querySelector(".use-limit");
+    expect(first?.classList.contains("hero")).toBe(true);
+    // the session resets in 2h of its 5h: 60% has passed
+    const marker = first?.querySelector<HTMLElement>(".use-pace");
+    expect(marker?.style.left).toBe("60.0%");
+    expect(marker?.dataset.tip).toBe("60% of this window has passed: well within pace");
   });
 });
