@@ -2,6 +2,7 @@
 import type { AppColors } from "./AppColors";
 import type { AppIcon } from "./AppIcon";
 import type { Group } from "./Group";
+import type { InterfaceSize } from "./InterfaceSize";
 import type { OpenIn } from "./OpenIn";
 import type { SidebarStyle } from "./SidebarStyle";
 import type { TerminalColors } from "./TerminalColors";
@@ -66,6 +67,10 @@ uiStyle: UiStyle,
  * macOS: the icon shown in the Dock while the app runs.
  */
 appIcon: AppIcon, 
+/**
+ * Scale of the whole interface.
+ */
+interfaceSize: InterfaceSize, 
 /**
  * Source control split position; null = default layout.
  */

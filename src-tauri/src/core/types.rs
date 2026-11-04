@@ -154,6 +154,18 @@ pub enum UiStyle {
     Glass,
 }
 
+/// How large the whole interface is drawn (text, icons, spacing, terminals): the page zoom of every window.
+#[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum InterfaceSize {
+    Small,
+    #[default]
+    Default,
+    Large,
+    Larger,
+}
+
 /// The app icon in the Dock (macOS): the app's own, or one in the colours of an interface skin
 /// (`src/assets/app-icons`, drawn by scripts/make-icons.mjs).
 #[derive(Serialize, Deserialize, TS, Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -238,6 +250,8 @@ pub struct Settings {
     pub ui_style: UiStyle,
     /// macOS: the icon shown in the Dock while the app runs.
     pub app_icon: AppIcon,
+    /// Scale of the whole interface.
+    pub interface_size: InterfaceSize,
     /// Source control split position; null = default layout.
     pub git_split: Option<f64>,
     /// Absolute path to the claude executable, overriding discovery.
@@ -282,6 +296,7 @@ impl Default for Settings {
             window_glass: false,
             ui_style: UiStyle::Skin,
             app_icon: AppIcon::Claude,
+            interface_size: InterfaceSize::Default,
             git_split: None,
             claude_path: None,
             mac_option_is_meta: true,
