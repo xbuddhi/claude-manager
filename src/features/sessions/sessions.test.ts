@@ -19,8 +19,10 @@ import { cells } from "./table";
 
 const call = vi.hoisted(() => vi.fn());
 const ask = vi.hoisted(() => vi.fn());
+const toast = vi.hoisted(() => vi.fn());
 vi.mock("../../core/api", () => ({ call, listen: async () => () => {} }));
 vi.mock("../../ui/dialog", () => ({ ask }));
+vi.mock("../../ui/toast", () => ({ toast }));
 
 const { deleteSessions } = await import("./api");
 
@@ -67,18 +69,17 @@ describe("strings", () => {
   });
 
   it("delete confirmation for 1, 3 and 7 sessions, Recycle Bin on Windows and Trash on macOS", () => {
-    expect(deleteConfirm(["a"], false)).toBe(
-      "Move this session to the Recycle Bin?\n\n  - a\n\nIf one is open in a terminal, close it first.",
-    );
-    expect(deleteConfirm(["a", "b", "c"], true)).toBe(
-      "Move these 3 sessions to the Trash?\n\n  - a\n  - b\n  - c\n\nIf one is open in a terminal, close it first.",
-    );
+    expect(deleteConfirm(["a"], false)).toBe("Move this session to the Recycle Bin?\n\n  - a");
+    expect(deleteConfirm(["a", "b", "c"], true)).toBe("Move these 3 sessions to the Trash?\n\n  - a\n  - b\n  - c");
     const seven = deleteConfirm(["1", "2", "3", "4", "5", "6", "7"], false);
     expect(seven).toBe(
-      "Move these 7 sessions to the Recycle Bin?\n\n  - 1\n  - 2\n  - 3\n  - 4\n  - 5\n  ... and 2 more\n\nIf one is open in a terminal, close it first.",
+      "Move these 7 sessions to the Recycle Bin?\n\n  - 1\n  - 2\n  - 3\n  - 4\n  - 5\n  ... and 2 more",
     );
     expect(deleteConfirm(["a", "b"], true, folderWhat(2, "app"))).toMatch(
       /^Move all 2 sessions of 'app' to the Trash\?/,
+    );
+    expect(deleteConfirm(["a"], false, undefined, 2)).toBe(
+      "Move this session to the Recycle Bin?\n\n  - a\n\n2 running sessions are kept. Close them first to delete them.",
     );
   });
 
@@ -190,6 +191,7 @@ describe("deleteSessions", () => {
     store.set(initial);
     call.mockReset();
     ask.mockReset();
+    toast.mockReset();
   });
 
   it("asks, then trashes by profile and id, and unpins the folder", async () => {
@@ -208,6 +210,27 @@ describe("deleteSessions", () => {
     expect(ask.mock.calls[0]?.[0]).toMatch(/^Move all 1 sessions of 'app' to the/);
     expect(call).toHaveBeenCalledWith("trash_sessions", { items: [{ profile: PROFILE, sessionId: s.id }] });
     expect(store.get().settings.pinned).toEqual(["C:\\other"]);
+  });
+
+  it("keeps running sessions out of the delete", async () => {
+    const [busy, idle] = [session("busy", 1), session("idle", 2)];
+    const live = { sessionId: busy.id, pid: 1, level: 1 as const, cwd: null, profile: PROFILE, reachable: true };
+    store.set({ live: { [busy.id]: live } });
+    ask.mockResolvedValue(true);
+    call.mockResolvedValue({ ok: true, value: { trashed: [idle.id], failed: [] } });
+    expect(await deleteSessions([busy, idle])).toBe(true);
+    expect(ask.mock.calls[0]?.[0]).toMatch(/- idle\n\n1 running session is kept/);
+    expect(call).toHaveBeenCalledWith("trash_sessions", { items: [{ profile: PROFILE, sessionId: idle.id }] });
+  });
+
+  it("asks nothing when every session runs", async () => {
+    const busy = session("busy", 1);
+    const live = { sessionId: busy.id, pid: 1, level: 2 as const, cwd: null, profile: PROFILE, reachable: true };
+    store.set({ live: { [busy.id]: live } });
+    expect(await deleteSessions([busy], { unpinFolder: "C:\\code\\app" })).toBe(false);
+    expect(ask).not.toHaveBeenCalled();
+    expect(call).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith("1 running session is kept. Close it first to delete it.", { kind: "error" });
   });
 
   it("does nothing when the question is declined", async () => {

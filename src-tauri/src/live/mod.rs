@@ -215,6 +215,11 @@ fn same_signature(held: &[(String, u8)], new: &[(&str, u8)]) -> bool {
     held.len() == new.len() && held.iter().zip(new).all(|(a, b)| a.0 == b.0 && a.1 == b.1)
 }
 
+/// Whether the last scan saw `session_id` running (in the app or elsewhere).
+pub fn is_running(app: &AppHandle, session_id: &str) -> bool {
+    app.state::<Live>().session(session_id).is_some()
+}
+
 // ---- commands ----
 
 /// The last scan's sessions (the same value `live-changed` carries).

@@ -10,7 +10,7 @@
   <a href="https://github.com/xbuddhi/claude-manager/releases/latest"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/pill-download-dark.svg"><img src="docs/readme/pill-download.svg" alt="Download" height="34"></picture></a>
   <a href="#get-it"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/pill-macos-dark.svg"><img src="docs/readme/pill-macos.svg" alt="macOS" height="34"></picture></a>
   <a href="#get-it"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/pill-windows-dark.svg"><img src="docs/readme/pill-windows.svg" alt="Windows" height="34"></picture></a>
-  <a href="LICENSE"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/pill-open-source-dark.svg"><img src="docs/readme/pill-open-source.svg" alt="Open source" height="34"></picture></a>
+  <a href="LICENSE"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/pill-source-available-dark.svg"><img src="docs/readme/pill-source-available.svg" alt="Source available" height="34"></picture></a>
   <a href="CHANGELOG.md"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/readme/pill-changelog-dark.svg"><img src="docs/readme/pill-changelog.svg" alt="Changelog" height="34"></picture></a>
 </p>
 
@@ -105,7 +105,10 @@ the app to the Bin. Your settings and logs stay; delete the folders under [Your 
 
 ## Your data
 
-The app only reads `~/.claude` and `~/.claude-*`; it never writes there. Its own files:
+The app only reads `~/.claude` and `~/.claude-*`, except when you rename or delete a session: renaming adds a
+title line to the session's transcript (as Claude Code's `/rename` does), and deleting moves the transcript and
+its `file-history` and `session-env` folders to the Recycle Bin / Trash. Running sessions can't be deleted. Its
+own files:
 
 |                                | Windows                                         | macOS                                                     |
 | ------------------------------ | ----------------------------------------------- | --------------------------------------------------------- |

@@ -59,7 +59,7 @@ export function detailMeta(s: Pick<Session, "modified" | "count" | "id">, profil
  * The delete question. `what` names the sessions ("this session", "these 3 sessions", or for a folder
  * "all 3 sessions of 'app'"); up to five labels are listed.
  */
-export function deleteConfirm(labels: readonly string[], mac: boolean, what?: string): string {
+export function deleteConfirm(labels: readonly string[], mac: boolean, what?: string, running = 0): string {
   const n = labels.length;
   const subject = what ?? (n === 1 ? "this session" : `these ${n} sessions`);
   let names = labels
@@ -67,7 +67,15 @@ export function deleteConfirm(labels: readonly string[], mac: boolean, what?: st
     .map((l) => `  - ${l}`)
     .join("\n");
   if (n > 5) names += `\n  ... and ${n - 5} more`;
-  return `Move ${subject} to the ${mac ? "Trash" : "Recycle Bin"}?\n\n${names}\n\nIf one is open in a terminal, close it first.`;
+  const text = `Move ${subject} to the ${mac ? "Trash" : "Recycle Bin"}?\n\n${names}`;
+  return running ? `${text}\n\n${runningKept(running)}` : text;
+}
+
+/** Why running sessions are left out of a delete: "1 running session is kept. Close it first to delete it." */
+export function runningKept(n: number): string {
+  return n === 1
+    ? "1 running session is kept. Close it first to delete it."
+    : `${n} running sessions are kept. Close them first to delete them.`;
 }
 
 /** The question for a folder's "Delete all sessions": "all 3 sessions of 'app'". */

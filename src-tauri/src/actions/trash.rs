@@ -10,6 +10,7 @@ use crate::core::error::{AppError, AppResult, blocking};
 use crate::core::{paths, profiles};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use tauri::AppHandle;
 use ts_rs::TS;
 
 /// One session to move to the trash.
@@ -73,10 +74,12 @@ pub fn session_files(profile: &Path, session_id: &str) -> AppResult<Vec<PathBuf>
     Ok(files)
 }
 
-/// Trashes each item with `remove`; one failing item does not stop the others. `resolve` checks the profile.
+/// Trashes each item with `remove`; one failing item does not stop the others. `resolve` checks the profile;
+/// a session `running` reports as live is refused, since claude would keep writing to a moved transcript.
 pub fn trash_items(
     items: &[TrashItem],
     resolve: impl Fn(&str) -> AppResult<PathBuf>,
+    running: impl Fn(&str) -> bool,
     remove: impl Fn(&[PathBuf]) -> AppResult<()>,
 ) -> TrashReport {
     let mut report = TrashReport::default();
@@ -86,6 +89,9 @@ pub fn trash_items(
             continue;
         }
         let result = resolve(&item.profile).and_then(|profile| {
+            if running(&item.session_id) {
+                return Err(AppError::InvalidInput("It is running. Close it first.".into()));
+            }
             let files = session_files(&profile, &item.session_id)?;
             let (transcript, side) = files.split_at(1);
             remove(transcript)?;
@@ -199,8 +205,9 @@ pub(crate) fn os_trash(files: &[PathBuf]) -> AppResult<()> {
 /// Moves sessions (transcript and side folders) to the Recycle Bin / Trash. Per-session errors are
 /// reported in the result; the list updates through the session index.
 #[tauri::command]
-pub async fn trash_sessions(items: Vec<TrashItem>) -> AppResult<TrashReport> {
-    blocking(move || Ok(trash_items(&items, profiles::resolve_profile, os_trash))).await
+pub async fn trash_sessions(app: AppHandle, items: Vec<TrashItem>) -> AppResult<TrashReport> {
+    let running = move |id: &str| crate::live::is_running(&app, id);
+    blocking(move || Ok(trash_items(&items, profiles::resolve_profile, running, os_trash))).await
 }
 
 /// Moves `path`, which must lie inside the repository folder `root`, to the Recycle Bin / Trash.
@@ -239,6 +246,11 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    /// No session is running.
+    fn idle(_: &str) -> bool {
+        false
     }
 
     fn item(profile: &Path, id: &str) -> TrashItem {
@@ -282,7 +294,7 @@ mod tests {
         let p = profile();
         let resolve = |d: &str| Ok(PathBuf::from(d));
         let items = [item(p.path(), ID), item(p.path(), "not-a-uuid"), item(p.path(), ID)];
-        let report = trash_items(&items, resolve, remove);
+        let report = trash_items(&items, resolve, idle, remove);
         assert_eq!(report.trashed, [ID]);
         assert_eq!(report.failed.len(), 1);
         assert_eq!(report.failed[0].session_id, "not-a-uuid");
@@ -316,13 +328,23 @@ mod tests {
         fs::write(&victim, "{}").unwrap();
 
         let resolve = |d: &str| profiles::resolve_profile_in(d, home.path(), None);
-        let report = trash_items(&[item(stranger.path(), ID)], resolve, remove);
+        let report = trash_items(&[item(stranger.path(), ID)], resolve, idle, remove);
         assert!(report.trashed.is_empty());
         assert!(report.failed[0].message.starts_with("Unknown profile"));
         assert!(victim.exists());
 
-        let report = trash_items(&[item(&known, ID)], resolve, remove);
+        let report = trash_items(&[item(&known, ID)], resolve, idle, remove);
         assert_eq!(report.trashed, [ID]);
+    }
+
+    #[test]
+    fn a_running_session_is_refused() {
+        let p = profile();
+        let resolve = |d: &str| Ok(PathBuf::from(d));
+        let report = trash_items(&[item(p.path(), ID)], resolve, |id| id == ID, remove);
+        assert!(report.trashed.is_empty());
+        assert_eq!(report.failed[0].message, "It is running. Close it first.");
+        assert!(p.path().join("file-history").join(ID).exists());
     }
 
     #[test]
@@ -330,7 +352,7 @@ mod tests {
         let p = profile();
         let resolve = |d: &str| Ok(PathBuf::from(d));
         let fail = |_: &[PathBuf]| Err(AppError::Internal("no trash here".into()));
-        let report = trash_items(&[item(p.path(), ID)], resolve, fail);
+        let report = trash_items(&[item(p.path(), ID)], resolve, idle, fail);
         assert_eq!(report.failed[0].message, "no trash here");
         assert!(p.path().join("file-history").join(ID).exists());
     }
