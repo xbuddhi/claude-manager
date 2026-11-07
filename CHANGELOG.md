@@ -2,6 +2,16 @@
 
 All notable changes to Claude Manager. Versions are `X.Y.Z`; each release is tagged `vX.Y.Z`.
 
+## 0.1.6 - 2026-11-07
+
+### Fixed
+
+- A running session can no longer be deleted: it is left out of the delete, and the question says how many
+  were kept. When every selected session is running, nothing is deleted.
+- A folder's "Delete all sessions" keeps the folder pinned while some of its sessions still run.
+- README: the badge says "Source available" (matching the licence), and "Your data" says that renaming and
+  deleting a session write to the profile folder.
+
 ## 0.1.5 - 2026-11-04
 
 ### Added
