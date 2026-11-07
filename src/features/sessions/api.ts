@@ -12,8 +12,9 @@ import { store } from "../../core/store";
 import { ask, input } from "../../ui/dialog";
 import { toast } from "../../ui/toast";
 import { refreshIndex } from "../index-data/api";
+import { sessionLevel } from "../live/api";
 import "./state";
-import { deleteConfirm, folderWhat } from "./strings";
+import { deleteConfirm, folderWhat, runningKept } from "./strings";
 
 declare module "../../core/api" {
   interface Commands {
@@ -44,20 +45,29 @@ async function unpin(folder: string): Promise<void> {
 /**
  * Asks first, then moves the sessions' transcripts (and their side folders) to the Recycle Bin / Trash.
  * With `unpinFolder` (a folder's "Delete all sessions") the question names the folder, and the folder is
- * unpinned afterwards, also when it has no sessions (then nothing is asked). Resolves true when done.
+ * unpinned afterwards, also when it has no sessions (then nothing is asked). Running sessions are kept
+ * (claude would keep writing to a moved transcript); when all of them run, nothing is asked or done.
+ * Resolves true when done.
  */
 export async function deleteSessions(sessions: readonly Session[], opts: DeleteOptions = {}): Promise<boolean> {
   const folder = opts.unpinFolder;
   if (sessions.length) {
-    const what = folder === undefined ? undefined : folderWhat(sessions.length, leaf(folder));
+    const idle = sessions.filter((s) => !sessionLevel(s.id));
+    const running = sessions.length - idle.length;
+    if (!idle.length) {
+      toast(runningKept(running), { kind: "error" });
+      return false;
+    }
+    const what = folder === undefined ? undefined : folderWhat(idle.length, leaf(folder));
     const text = deleteConfirm(
-      sessions.map((s) => s.label),
+      idle.map((s) => s.label),
       isMac(),
       what,
+      running,
     );
     if (!(await ask(text, "Delete", "warning"))) return false;
     const res = await call("trash_sessions", {
-      items: sessions.map((s) => ({ profile: s.profile, sessionId: s.id })),
+      items: idle.map((s) => ({ profile: s.profile, sessionId: s.id })),
     });
     if (!res.ok) return false;
     const { trashed, failed } = res.value;
