@@ -2,7 +2,7 @@
 // Pure functions: the view passes in names, live levels and the time.
 
 import type { Session } from "../../bindings/Session";
-import { ago } from "../../core/format";
+import { ago, plural } from "../../core/format";
 
 export const TIP_NEW = "Start a Claude session in the selected folder";
 export const TIP_FORK = "Continue in a new copy of this session";
@@ -78,9 +78,12 @@ export function runningKept(n: number): string {
     : `${n} running sessions are kept. Close them first to delete them.`;
 }
 
-/** The question for a folder's "Delete all sessions": "all 3 sessions of 'app'". */
-export function folderWhat(n: number, folderName: string): string {
-  return `all ${n} sessions of '${folderName}'`;
+/**
+ * The question for a folder's "Delete all sessions": "all 3 sessions of 'app'". With running sessions kept
+ * it is not all of them: "2 sessions of 'app'".
+ */
+export function folderWhat(n: number, folderName: string, kept = 0): string {
+  return kept ? `${plural(n, "session")} of '${folderName}'` : `all ${n} sessions of '${folderName}'`;
 }
 
 /** The delete button: an icon alone for one session, "Delete N" for several. */

@@ -78,6 +78,8 @@ describe("strings", () => {
     expect(deleteConfirm(["a", "b"], true, folderWhat(2, "app"))).toMatch(
       /^Move all 2 sessions of 'app' to the Trash\?/,
     );
+    expect(folderWhat(1, "app", 2)).toBe("1 session of 'app'");
+    expect(folderWhat(3, "app", 1)).toBe("3 sessions of 'app'");
     expect(deleteConfirm(["a"], false, undefined, 2)).toBe(
       "Move this session to the Recycle Bin?\n\n  - a\n\n2 running sessions are kept. Close them first to delete them.",
     );
@@ -230,7 +232,19 @@ describe("deleteSessions", () => {
     expect(await deleteSessions([busy], { unpinFolder: "C:\\code\\app" })).toBe(false);
     expect(ask).not.toHaveBeenCalled();
     expect(call).not.toHaveBeenCalled();
-    expect(toast).toHaveBeenCalledWith("1 running session is kept. Close it first to delete it.", { kind: "error" });
+    expect(toast).toHaveBeenCalledWith("1 running session is kept. Close it first to delete it.");
+  });
+
+  it("keeps the folder pinned when a running session is kept", async () => {
+    const [busy, idle] = [session("busy", 1), session("idle", 2)];
+    const live = { sessionId: busy.id, pid: 1, level: 1 as const, cwd: null, profile: PROFILE, reachable: true };
+    store.set({ live: { [busy.id]: live }, settings: { ...DEFAULT_SETTINGS, pinned: ["C:\\code\\app"] } });
+    ask.mockResolvedValue(true);
+    call.mockResolvedValue({ ok: true, value: { trashed: [idle.id], failed: [] } });
+    expect(await deleteSessions([busy, idle], { unpinFolder: "C:\\code\\app" })).toBe(true);
+    expect(ask.mock.calls[0]?.[0]).toMatch(/^Move 1 session of 'app' to the/);
+    expect(call).not.toHaveBeenCalledWith("update_settings", expect.anything());
+    expect(store.get().settings.pinned).toEqual(["C:\\code\\app"]);
   });
 
   it("does nothing when the question is declined", async () => {
