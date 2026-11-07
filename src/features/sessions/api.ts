@@ -46,8 +46,8 @@ async function unpin(folder: string): Promise<void> {
  * Asks first, then moves the sessions' transcripts (and their side folders) to the Recycle Bin / Trash.
  * With `unpinFolder` (a folder's "Delete all sessions") the question names the folder, and the folder is
  * unpinned afterwards, also when it has no sessions (then nothing is asked). Running sessions are kept
- * (claude would keep writing to a moved transcript); when all of them run, nothing is asked or done.
- * Resolves true when done.
+ * (claude would keep writing to a moved transcript), and then the folder stays pinned; when all of them
+ * run, nothing is asked or done. Resolves true when done.
  */
 export async function deleteSessions(sessions: readonly Session[], opts: DeleteOptions = {}): Promise<boolean> {
   const folder = opts.unpinFolder;
@@ -55,10 +55,10 @@ export async function deleteSessions(sessions: readonly Session[], opts: DeleteO
     const idle = sessions.filter((s) => !sessionLevel(s.id));
     const running = sessions.length - idle.length;
     if (!idle.length) {
-      toast(runningKept(running), { kind: "error" });
+      toast(runningKept(running));
       return false;
     }
-    const what = folder === undefined ? undefined : folderWhat(idle.length, leaf(folder));
+    const what = folder === undefined ? undefined : folderWhat(idle.length, leaf(folder), running);
     const text = deleteConfirm(
       idle.map((s) => s.label),
       isMac(),
@@ -77,6 +77,7 @@ export async function deleteSessions(sessions: readonly Session[], opts: DeleteO
     }
     if (trashed.length) void refreshIndex();
     if (!trashed.length) return false;
+    if (running) return true;
   }
   if (folder !== undefined) await unpin(folder);
   return true;
