@@ -2,7 +2,7 @@
 
 All notable changes to Claude Manager. Versions are `X.Y.Z`; each release is tagged `vX.Y.Z`.
 
-## Unreleased
+## 0.1.7 - 2026-11-19
 
 ### Changed
 
