@@ -1,10 +1,13 @@
 //! "New window" mode: claude (or a plain shell, "Terminal here") in a terminal window of the OS. The window
 //! is not the app's: it is not in the job object and keeps running when the app quits.
 //!
-//! - Windows: Windows Terminal (`wt.exe -d <dir> <shell> ...`) when it is installed, else PowerShell in a
-//!   new console. The command PowerShell runs is passed as `-EncodedCommand` (base64 of UTF-16LE), so no
-//!   quoting layer of wt.exe or CreateProcess can change it. As in the Windows app, claude starts before the
-//!   PowerShell profiles (they take about a second) and the profiles load once claude ends.
+//! - Windows: PowerShell in a new console, started directly (the exe as the program, each flag its own
+//!   argument). Windows hosts that console in the user's default terminal, which is Windows Terminal on
+//!   Windows 11. wt.exe is not called: it rebuilds the command line from its own arguments, and on some
+//!   systems that left the whole line as one program name (error 0x80070002, issue #15). The command
+//!   PowerShell runs is passed as `-EncodedCommand` (base64 of UTF-16LE), so no quoting layer of
+//!   CreateProcess can change it. As in the Windows app, claude starts before the PowerShell profiles (they
+//!   take about a second) and the profiles load once claude ends.
 //! - macOS: Terminal (or iTerm when installed) through osascript. The command line is an argument of the
 //!   script (`on run argv`), never part of its source; it is built from POSIX single-quoted values.
 //!
@@ -56,8 +59,8 @@ fn ps_quote(s: &str) -> String {
 }
 
 /// What PowerShell runs: set the profile's config folder, run claude, and load the PowerShell profiles
-/// once it ends (`finally`: also after Ctrl+C). CLAUDE_CONFIG_DIR is also set on the process, but a
-/// Windows Terminal tab may not get the caller's environment, so the script sets it too.
+/// once it ends (`finally`: also after Ctrl+C). CLAUDE_CONFIG_DIR is also set on the process; the script
+/// sets it too, so the value never depends on how the terminal passes the environment on.
 #[cfg(windows)]
 fn ps_claude_script(launch: &Launch, claude: &Path, home: &Path) -> String {
     let config = if is_default_profile(&launch.profile, home) {
@@ -116,7 +119,6 @@ mod imp {
     use super::*;
     use crate::core::env;
     use std::os::windows::process::CommandExt;
-    use std::path::PathBuf;
     use std::process::Command;
     use windows_sys::Win32::System::Threading::CREATE_NEW_CONSOLE;
 
@@ -129,38 +131,11 @@ mod imp {
         open(dir, None, None)
     }
 
-    /// wt.exe is an app execution alias: a reparse point that `is_file` does not accept, but that starts.
-    fn windows_terminal() -> Option<PathBuf> {
-        let path = std::env::var_os("PATH");
-        let on_path = path
-            .iter()
-            .flat_map(std::env::split_paths)
-            .map(|d| d.join("wt.exe"))
-            .find(|p| p.symlink_metadata().is_ok());
-        on_path.or_else(|| {
-            let alias = dirs::data_local_dir()?.join(r"Microsoft\WindowsApps\wt.exe");
-            alias.symlink_metadata().is_ok().then_some(alias)
-        })
-    }
-
     fn open(dir: &Path, script: Option<&str>, profile: Option<(&Path, &Path)>) -> AppResult<()> {
-        let shell = &env::wait_env().shell;
-        let shell_args = powershell_args(script);
-        // wt.exe reads ';' as the start of its next command, even inside a quoted folder
-        let wt = windows_terminal().filter(|_| !dir.to_string_lossy().contains(';'));
-        let mut cmd = match &wt {
-            Some(wt) => {
-                let mut c = Command::new(wt);
-                c.arg("-d").arg(dir).arg(shell).args(&shell_args);
-                c
-            }
-            None => {
-                let mut c = Command::new(shell);
-                c.args(&shell_args).creation_flags(CREATE_NEW_CONSOLE);
-                c
-            }
-        };
-        cmd.current_dir(dir);
+        let mut cmd = Command::new(&env::wait_env().shell);
+        cmd.args(powershell_args(script))
+            .creation_flags(CREATE_NEW_CONSOLE)
+            .current_dir(dir);
         env::clean_env(&mut cmd);
         if let Some((profile, home)) = profile {
             env::apply_profile(&mut cmd, profile, home);

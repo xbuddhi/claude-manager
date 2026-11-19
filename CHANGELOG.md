@@ -2,6 +2,14 @@
 
 All notable changes to Claude Manager. Versions are `X.Y.Z`; each release is tagged `vX.Y.Z`.
 
+## Unreleased
+
+### Fixed
+
+- Windows: "Open in new window" no longer fails with error 0x80070002 ("file not found") (#15). PowerShell
+  is now started directly in a new console instead of through `wt.exe`. On Windows 11 it still opens in
+  Windows Terminal when that is the default terminal; elsewhere it opens a PowerShell console window.
+
 ## 0.1.6 - 2026-11-07
 
 ### Fixed
