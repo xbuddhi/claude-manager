@@ -4,6 +4,10 @@ All notable changes to Claude Manager. Versions are `X.Y.Z`; each release is tag
 
 ## Unreleased
 
+### Changed
+
+- New sessions open inside the app by default. Settings saved with "New window" keep it.
+
 ### Fixed
 
 - Windows: "Open in new window" no longer fails with error 0x80070002 ("file not found") (#15). PowerShell

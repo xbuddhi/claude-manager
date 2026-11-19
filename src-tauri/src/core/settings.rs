@@ -321,7 +321,7 @@ mod tests {
         )
         .unwrap();
         let s = SettingsStore::open(path, None).get();
-        assert_eq!(s.open_in, OpenIn::External);
+        assert_eq!(s.open_in, OpenIn::Embed);
         assert!(s.show_picker);
         assert_eq!(s.pinned, ["C:/a"]);
         assert!(!s.notify);
@@ -353,8 +353,8 @@ mod tests {
         assert!(matches!(err, AppError::InvalidInput(_)));
         assert!(store.get().notify);
         assert!(store.update(json!(["not", "an", "object"])).is_err());
-        let next = store.update(json!({ "openIn": "embed", "claudePath": null })).unwrap();
-        assert_eq!(next.open_in, OpenIn::Embed);
+        let next = store.update(json!({ "openIn": "external", "claudePath": null })).unwrap();
+        assert_eq!(next.open_in, OpenIn::External);
     }
 
     #[test]

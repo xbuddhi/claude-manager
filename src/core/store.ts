@@ -156,7 +156,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenProfiles: [],
   profileCompanions: {},
   account: null,
-  openIn: "external",
+  openIn: "embed",
   showPicker: true,
   lastProfile: null,
   groups: [],
