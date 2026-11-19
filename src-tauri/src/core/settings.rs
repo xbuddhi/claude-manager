@@ -353,7 +353,9 @@ mod tests {
         assert!(matches!(err, AppError::InvalidInput(_)));
         assert!(store.get().notify);
         assert!(store.update(json!(["not", "an", "object"])).is_err());
-        let next = store.update(json!({ "openIn": "external", "claudePath": null })).unwrap();
+        let next = store
+            .update(json!({ "openIn": "external", "claudePath": null }))
+            .unwrap();
         assert_eq!(next.open_in, OpenIn::External);
     }
 
