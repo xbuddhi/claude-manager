@@ -88,8 +88,8 @@ pub struct LiveSession {
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
 pub enum OpenIn {
-    #[default]
     External,
+    #[default]
     Embed,
 }
 
@@ -278,7 +278,7 @@ impl Default for Settings {
             hidden_profiles: Vec::new(),
             profile_companions: BTreeMap::new(),
             account: None,
-            open_in: OpenIn::External,
+            open_in: OpenIn::Embed,
             show_picker: true,
             last_profile: None,
             groups: Vec::new(),

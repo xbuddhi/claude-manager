@@ -86,7 +86,7 @@ pub fn launch_for(dir: &str, profile: &str, session_id: Option<&str>, fork: bool
 // ---- commands ----
 
 /// Opens claude (or, with `shell_only`, a plain shell) in `dir` in a terminal window of the OS:
-/// Windows Terminal or PowerShell on Windows, Terminal or iTerm on macOS.
+/// PowerShell in a new console on Windows (shown in the default terminal), Terminal or iTerm on macOS.
 #[tauri::command]
 pub async fn launch_external(
     app: AppHandle,
